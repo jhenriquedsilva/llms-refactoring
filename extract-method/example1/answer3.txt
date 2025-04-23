@@ -1,0 +1,166 @@
+22-04-2025, 20:53
+### Analysis
+
+The given code is well-structured, but on review, the following code snippet is *duplicated* in both `findMatch` and `logMessage` methods. The logic for selecting the appropriate message is repeated:
+
+```java
+String msg;
+
+if (message == null || message.isEmpty()) {
+    msg = format.pattern();
+}
+else {
+    msg = message;
+}
+
+if (errorCount >= errorLimit) {
+    msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+}
+```
+
+This is a classic opportunity for **extract method refactoring**.
+
+---
+
+## Refactored Code
+
+**Changes:**
+- Extract the duplicate logic into a private `buildLogMessage()` method.
+
+Here is the refactored class:
+
+```java
+// ... [Imports and class-level doc, unchanged] ...
+
+@FileStatefulCheck
+public class RegexpCheck extends AbstractCheck {
+    // ... [Constants and fields, unchanged] ...
+
+    // ... [Setters, unchanged] ...
+
+    @Override
+    public int[] getDefaultTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+        return CommonUtil.EMPTY_INT_ARRAY;
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    @Override
+    public void beginTree(DetailAST rootAST) {
+        matcher = format.matcher(getFileContents().getText().getFullText());
+        matchCount = 0;
+        errorCount = 0;
+        findMatch();
+    }
+
+    /** Recursive method that finds the matches. */
+    @SuppressWarnings("deprecation")
+    private void findMatch() {
+        final boolean foundMatch = matcher.find();
+        if (foundMatch) {
+            final FileText text = getFileContents().getText();
+            final LineColumn start = text.lineColumn(matcher.start());
+            final int startLine = start.getLine();
+
+            final boolean ignore = isIgnore(startLine, text, start);
+
+            if (!ignore) {
+                matchCount++;
+                if (illegalPattern || checkForDuplicates
+                        && matchCount - 1 > duplicateLimit) {
+                    errorCount++;
+                    logMessage(startLine);
+                }
+            }
+            if (canContinueValidation(ignore)) {
+                findMatch();
+            }
+        }
+        else if (!illegalPattern && matchCount == 0) {
+            log(1, MSG_REQUIRED_REGEXP, buildLogMessage());
+        }
+    }
+
+    /**
+     * Build the violation log message based on current message, errorCount,
+     * errorLimit and pattern.
+     *
+     * @return formatted violation message string
+     */
+    private String buildLogMessage() {
+        String msg;
+
+        if (message == null || message.isEmpty()) {
+            msg = format.pattern();
+        }
+        else {
+            msg = message;
+        }
+
+        if (errorCount >= errorLimit) {
+            msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+        }
+        return msg;
+    }
+
+    private boolean canContinueValidation(boolean ignore) {
+        return errorCount <= errorLimit - 1
+                && (ignore || illegalPattern || checkForDuplicates);
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isIgnore(int startLine, FileText text, LineColumn start) {
+        final LineColumn end;
+        if (matcher.end() == 0) {
+            end = text.lineColumn(0);
+        }
+        else {
+            end = text.lineColumn(matcher.end() - 1);
+        }
+        boolean ignore = false;
+        if (ignoreComments) {
+            final FileContents theFileContents = getFileContents();
+            final int startColumn = start.getColumn();
+            final int endLine = end.getLine();
+            final int endColumn = end.getColumn();
+            ignore = theFileContents.hasIntersectionWithComment(startLine,
+                    startColumn, endLine, endColumn);
+        }
+        return ignore;
+    }
+
+    /**
+     * Displays the right message.
+     *
+     * @param lineNumber the line number the message relates to.
+     */
+    private void logMessage(int lineNumber) {
+        if (illegalPattern) {
+            log(lineNumber, MSG_ILLEGAL_REGEXP, buildLogMessage());
+        }
+        else {
+            log(lineNumber, MSG_DUPLICATE_REGEXP, buildLogMessage());
+        }
+    }
+
+}
+```
+
+---
+
+**Summary of the main change:**
+- **Extracted duplicated code** for building the message into a `buildLogMessage()` method.
+- Now, whenever the message is needed, the code just calls `buildLogMessage()`.
+
+**No other structural changes were made.**
+This improves maintainability, readability, and reduces duplication.

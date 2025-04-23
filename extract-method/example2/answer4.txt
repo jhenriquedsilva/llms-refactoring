@@ -1,0 +1,86 @@
+22-04-2025, 21:10
+Certainly! In the given code, there is **duplicate logic** in the form of repeatedly opening a `ClosedInputStream` and asserting that `cis.read()` (or its overloaded forms) returns `EOF`. All test methods use the pattern:
+```java
+try (ClosedInputStream cis = new ClosedInputStream()) {
+    // assertions on cis.read...
+}
+```
+**Extract Method Refactoring** can be applied to make unit tests more concise and improve code readability and maintainability.
+
+### Refactored Code
+
+```java
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Tests {@link ClosedInputStream}.
+ */
+public class ClosedInputStreamTest {
+
+    @Test
+    public void testRead() throws Exception {
+        assertReadEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArray() throws Exception {
+        assertReadEOFWithArrays(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArrayIndex() throws Exception {
+        assertReadEOFWithArraysAndIndexes(new ClosedInputStream());
+    }
+
+    @Test
+    public void testSingleton() throws Exception {
+        @SuppressWarnings("deprecation")
+        ClosedInputStream deprecatedInstance = ClosedInputStream.CLOSED_INPUT_STREAM;
+        assertReadEOF(deprecatedInstance);
+        assertReadEOF(ClosedInputStream.INSTANCE);
+    }
+
+    // --- Extracted helper methods below ---
+
+    private void assertReadEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream input = cis) {
+            assertEquals(EOF, input.read(), "read()");
+        }
+    }
+
+    private void assertReadEOFWithArrays(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream input = cis) {
+            assertEquals(EOF, input.read(new byte[4096]));
+            assertEquals(EOF, input.read(new byte[1]));
+            assertEquals(EOF, input.read(new byte[0]));
+        }
+    }
+
+    private void assertReadEOFWithArraysAndIndexes(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream input = cis) {
+            assertEquals(EOF, input.read(new byte[4096], 0, 1));
+            assertEquals(EOF, input.read(new byte[1], 0, 1));
+            assertEquals(EOF, input.read(new byte[0], 0, 0));
+        }
+    }
+}
+```
+
+---
+
+### **Explanation**
+- Three private helper methods are extracted:
+  - `assertReadEOF` (for `read()` check)
+  - `assertReadEOFWithArrays` (for `read(byte[])` check)
+  - `assertReadEOFWithArraysAndIndexes` (for `read(byte[], int, int)` check)
+- Each test method calls these helper methods, improving readability and reducing code duplication.
+- All resource handling for streams is still covered due to the use of try-with-resources within helpers.
+
+---
+
+**This refactoring enhances code maintainability and clarity by removing duplication and centralizing repeated logic.**

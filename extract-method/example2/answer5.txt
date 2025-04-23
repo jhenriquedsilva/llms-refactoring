@@ -1,0 +1,87 @@
+22-04-2025, 21:12
+**Review and Refactoring Suggestion:**
+
+The snippet contains repeated patterns where a new `ClosedInputStream` is created, and one or more `assertEquals(EOF, cis.read(...))` calls are made. This pattern is repeated in three methods (`testRead`, `testReadArray`, `testReadArrayIndex`), and even in the `testSingleton` test where closed streams are asserted for `EOF`.
+
+There are clear **extract method opportunities** here:
+- The logic to "assert EOF for a given read operation" can be abstracted.
+- The `try-with-resources` block creation per test can be extracted when the concept is generalized (if the tests remain parametrizable).
+
+A clean way is to extract helper methods for repeated assertion logic, improving readability and maintainability.
+
+---
+
+**Refactored Code:**
+
+```java
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Tests {@link ClosedInputStream}.
+ */
+public class ClosedInputStreamTest {
+
+    @Test
+    public void testRead() throws Exception {
+        assertClosedInputStreamReadsEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArray() throws Exception {
+        assertClosedInputStreamReadsArrayEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArrayIndex() throws Exception {
+        assertClosedInputStreamReadsArrayIndexEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testSingleton() throws Exception {
+        assertClosedInputStreamReadsEOF(suppressDeprecation(ClosedInputStream.CLOSED_INPUT_STREAM));
+        assertClosedInputStreamReadsEOF(ClosedInputStream.INSTANCE);
+    }
+
+    private void assertClosedInputStreamReadsEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream stream = cis) {
+            assertEquals(EOF, stream.read(), "read()");
+        }
+    }
+
+    private void assertClosedInputStreamReadsArrayEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream stream = cis) {
+            assertEquals(EOF, stream.read(new byte[4096]));
+            assertEquals(EOF, stream.read(new byte[1]));
+            assertEquals(EOF, stream.read(new byte[0]));
+        }
+    }
+
+    private void assertClosedInputStreamReadsArrayIndexEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream stream = cis) {
+            assertEquals(EOF, stream.read(new byte[4096], 0, 1));
+            assertEquals(EOF, stream.read(new byte[1], 0, 1));
+            assertEquals(EOF, stream.read(new byte[0], 0, 0));
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private ClosedInputStream suppressDeprecation(ClosedInputStream stream) {
+        return stream;
+    }
+}
+```
+
+---
+
+**Explanation:**
+- **Extracted helper methods** (`assertClosedInputStreamReadsEOF`, etc.) for repeated assertion patterns.
+- The `try-with-resources` logic for closing `ClosedInputStream` is encapsulated within helpers.
+- Maintains DRY principle, greatly improving readability.
+
+**Summary:**
+There were clear extract method refactoring opportunities. The repeated patterns were extracted into private helper methods, resulting in more readable and maintainable test code.

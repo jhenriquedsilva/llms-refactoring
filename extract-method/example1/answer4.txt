@@ -1,0 +1,107 @@
+22-04-2025, 20:55
+Yes, there **are opportunities for extract method refactoring** to make the code more readable and reusable. Notice that the following code block appears **twice** (in both `findMatch()` and `logMessage()`):
+
+```java
+String msg;
+
+if (message == null || message.isEmpty()) {
+    msg = format.pattern();
+}
+else {
+    msg = message;
+}
+
+if (errorCount >= errorLimit) {
+    msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+}
+```
+
+**Refactoring Suggestion:** Extract a method, e.g., `getViolationMessage()` to encapsulate this logic.
+
+---
+
+### Refactored Code
+
+Below is the refactored code with a new private method `getViolationMessage()` and the affected methods simplified accordingly. Only the relevant changes are shown for brevity.
+
+```java
+// ... (all the previous code stays the same, up to inside RegexpCheck) ...
+
+    // ... other code unchanged ...
+
+    /**
+     * Builds the violation message.
+     *
+     * @return the violation message to log
+     */
+    private String getViolationMessage() {
+        String msg;
+        if (message == null || message.isEmpty()) {
+            msg = format.pattern();
+        }
+        else {
+            msg = message;
+        }
+
+        if (errorCount >= errorLimit) {
+            msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+        }
+        return msg;
+    }
+
+    /** Recursive method that finds the matches. */
+    @SuppressWarnings("deprecation")
+    private void findMatch() {
+        final boolean foundMatch = matcher.find();
+        if (foundMatch) {
+            final FileText text = getFileContents().getText();
+            final LineColumn start = text.lineColumn(matcher.start());
+            final int startLine = start.getLine();
+
+            final boolean ignore = isIgnore(startLine, text, start);
+
+            if (!ignore) {
+                matchCount++;
+                if (illegalPattern || checkForDuplicates
+                        && matchCount - 1 > duplicateLimit) {
+                    errorCount++;
+                    logMessage(startLine);
+                }
+            }
+            if (canContinueValidation(ignore)) {
+                findMatch();
+            }
+        }
+        else if (!illegalPattern && matchCount == 0) {
+            log(1, MSG_REQUIRED_REGEXP, getViolationMessage());
+        }
+    }
+
+    /**
+     * Displays the right message.
+     *
+     * @param lineNumber the line number the message relates to.
+     */
+    private void logMessage(int lineNumber) {
+        String msg = getViolationMessage();
+        if (illegalPattern) {
+            log(lineNumber, MSG_ILLEGAL_REGEXP, msg);
+        }
+        else {
+            log(lineNumber, MSG_DUPLICATE_REGEXP, msg);
+        }
+    }
+
+    // ... (rest of code unchanged) ...
+
+```
+
+**Key Points:**
+
+- All places constructing the violation message (with possible error limit exceeded prefix) use `getViolationMessage()`.
+- This makes the code clearer, reduces duplication, and encapsulates the logic for constructing a message.
+
+---
+
+**In summary:**
+There **were opportunities** for extract method refactoring, and the code is improved above!

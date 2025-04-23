@@ -1,0 +1,80 @@
+22-04-2025, 21:06
+
+Yes, there **are extract method refactoring opportunities** in the provided code, primarily due to repeated code patterns inside the test methods. Specifically:
+
+- Several test methods involve the repeated logic of instantiating a `ClosedInputStream` and asserting that various read invocations return `EOF`.
+- The assertion logic can be extracted into helper methods to **improve code readability** and **reduce duplication**.
+
+Below is the **refactored code** making use of private helper methods for repeated assert patterns:
+
+```java
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Tests {@link ClosedInputStream}.
+ */
+public class ClosedInputStreamTest {
+
+    @Test
+    public void testRead() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadReturnsEOF(cis, "read()");
+        }
+    }
+
+    @Test
+    public void testReadArray() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayReturnsEOF(cis);
+        }
+    }
+
+    @Test
+    public void testReadArrayIndex() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayIndexReturnsEOF(cis);
+        }
+    }
+
+    @Test
+    public void testSingleton() throws Exception {
+        try (@SuppressWarnings("deprecation")
+             ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
+            assertReadReturnsEOF(cis, "read()");
+        }
+        try (ClosedInputStream cis = ClosedInputStream.INSTANCE) {
+            assertReadReturnsEOF(cis, "read()");
+        }
+    }
+
+    // Helper methods to reduce duplication
+
+    private void assertReadReturnsEOF(ClosedInputStream cis, String message) throws Exception {
+        assertEquals(EOF, cis.read(), message);
+    }
+
+    private void assertReadArrayReturnsEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(new byte[4096]));
+        assertEquals(EOF, cis.read(new byte[1]));
+        assertEquals(EOF, cis.read(new byte[0]));
+    }
+
+    private void assertReadArrayIndexReturnsEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(new byte[4096], 0, 1));
+        assertEquals(EOF, cis.read(new byte[1], 0, 1));
+        assertEquals(EOF, cis.read(new byte[0], 0, 0));
+    }
+}
+```
+
+**Summary of Refactoring:**
+- **Extracted** assertion logic for each repeated read-type usage to dedicated private methods:
+  - `assertReadReturnsEOF`
+  - `assertReadArrayReturnsEOF`
+  - `assertReadArrayIndexReturnsEOF`
+- Increased **readability** and **maintainability** by eliminating duplication and making the intent clear in each test method.

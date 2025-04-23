@@ -1,0 +1,76 @@
+22-04-2025, 21:07
+Yes, there **are** clear refactoring opportunities, especially concerning **extract method refactoring** to remove **duplicate try-with-resources blocks that create a `ClosedInputStream` and assert EOF on `read()`**. This logic appears in several places. Additionally, the repeated assertions (such as `assertEquals(EOF, cis.read())` and similar for arrays) can benefit from private helper methods.
+
+Below is the refactored code with helper methods to avoid duplication and improve readability and reusability:
+
+```java
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Tests {@link ClosedInputStream}.
+ */
+public class ClosedInputStreamTest {
+
+    @Test
+    public void testRead() throws Exception {
+        assertReadReturnsEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArray() throws Exception {
+        assertReadArrayReturnsEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testReadArrayIndex() throws Exception {
+        assertReadArrayIndexReturnsEOF(new ClosedInputStream());
+    }
+
+    @Test
+    public void testSingleton() throws Exception {
+        @SuppressWarnings("deprecation")
+        ClosedInputStream closedInstance = ClosedInputStream.CLOSED_INPUT_STREAM;
+        assertReadReturnsEOF(closedInstance);
+
+        assertReadReturnsEOF(ClosedInputStream.INSTANCE);
+    }
+
+    // --- Helper methods below ---
+
+    private void assertReadReturnsEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream in = cis) {
+            assertEquals(EOF, in.read(), "read()");
+        }
+    }
+
+    private void assertReadArrayReturnsEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream in = cis) {
+            assertEquals(EOF, in.read(new byte[4096]));
+            assertEquals(EOF, in.read(new byte[1]));
+            assertEquals(EOF, in.read(new byte[0]));
+        }
+    }
+
+    private void assertReadArrayIndexReturnsEOF(ClosedInputStream cis) throws Exception {
+        try (ClosedInputStream in = cis) {
+            assertEquals(EOF, in.read(new byte[4096], 0, 1));
+            assertEquals(EOF, in.read(new byte[1], 0, 1));
+            assertEquals(EOF, in.read(new byte[0], 0, 0));
+        }
+    }
+}
+```
+
+### **Summary of Refactoring**
+- Introduced `assertReadReturnsEOF`, `assertReadArrayReturnsEOF`, and `assertReadArrayIndexReturnsEOF` private helper methods to encapsulate repeated assertions and resource management.
+- This reduces duplication, increases clarity, and makes it easier to adapt tests in the future.
+- Improves maintainability and readability.
+
+---
+
+If you want to further unify all `ClosedInputStream` creation as well, you could add a helper to construct instances, but as currently written the helper methods above strike a good balance. Let me know if you'd prefer even more consolidation!

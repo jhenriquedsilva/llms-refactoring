@@ -1,0 +1,79 @@
+22-04-2025, 21:03
+Yes, there **are refactoring opportunities** here, particularly with **extract method refactoring**. The code contains quite a bit of repetition regarding the process of creating a `ClosedInputStream` and asserting that `read()` returns `EOF`. We can extract helper methods to:
+
+- Reduce code duplication in each test case for asserting `EOF` results.
+- Improve readability and maintainability.
+
+**Here's the refactored code:**
+
+```java
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Tests {@link ClosedInputStream}.
+ */
+public class ClosedInputStreamTest {
+
+    @Test
+    public void testRead() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadEOF(cis);
+        }
+    }
+
+    @Test
+    public void testReadArray() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayEOF(cis, 4096);
+            assertReadArrayEOF(cis, 1);
+            assertReadArrayEOF(cis, 0);
+        }
+    }
+
+    @Test
+    public void testReadArrayIndex() throws Exception {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayIndexEOF(cis, 4096, 0, 1);
+            assertReadArrayIndexEOF(cis, 1, 0, 1);
+            assertReadArrayIndexEOF(cis, 0, 0, 0);
+        }
+    }
+
+    @Test
+    public void testSingleton() throws Exception {
+        try (@SuppressWarnings("deprecation")
+             ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
+            assertReadEOF(cis);
+        }
+        try (ClosedInputStream cis = ClosedInputStream.INSTANCE) {
+            assertReadEOF(cis);
+        }
+    }
+
+    // Refactored helper methods to reduce code duplication:
+
+    private void assertReadEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(), "read()");
+    }
+
+    private void assertReadArrayEOF(ClosedInputStream cis, int len) throws Exception {
+        assertEquals(EOF, cis.read(new byte[len]));
+    }
+
+    private void assertReadArrayIndexEOF(ClosedInputStream cis, int len, int off, int n) throws Exception {
+        assertEquals(EOF, cis.read(new byte[len], off, n));
+    }
+}
+```
+
+**Summary of changes:**
+- Introduced `assertReadEOF`, `assertReadArrayEOF`, and `assertReadArrayIndexEOF` helper methods.
+- Tests now delegate repeated code to these helpers, making test logic concise.
+
+**Benefit:**
+This refactoring improves test readability, maintainability, and reduces duplication, following best testing practices.

@@ -1,0 +1,177 @@
+22-04-2025, 20:49
+**Analysis:**
+The provided code uses blocks like:
+
+```java
+String msg;
+
+if (message == null || message.isEmpty()) {
+    msg = format.pattern();
+}
+else {
+    msg = message;
+}
+
+if (errorCount >= errorLimit) {
+    msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+}
+```
+
+This logic appears **twice**:
+- In `findMatch()` when logging `MSG_REQUIRED_REGEXP`
+- In `logMessage()` for illegal/duplicate matches.
+
+Thus, an **Extract Method Refactoring** opportunity exists: extracting this logic to a utility method, such as `createViolationMessage()`.
+
+**Refactored Code**
+
+```java
+// ... (imports and class javadoc unchanged)
+@FileStatefulCheck
+public class RegexpCheck extends AbstractCheck {
+
+    // ... (constants and fields unchanged) ...
+
+    // ... (setters unchanged) ...
+
+    @Override
+    public int[] getDefaultTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+        return CommonUtil.EMPTY_INT_ARRAY;
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    @Override
+    public void beginTree(DetailAST rootAST) {
+        matcher = format.matcher(getFileContents().getText().getFullText());
+        matchCount = 0;
+        errorCount = 0;
+        findMatch();
+    }
+
+    /** Recursive method that finds the matches. */
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    private void findMatch() {
+        final boolean foundMatch = matcher.find();
+        if (foundMatch) {
+            final FileText text = getFileContents().getText();
+            final LineColumn start = text.lineColumn(matcher.start());
+            final int startLine = start.getLine();
+
+            final boolean ignore = isIgnore(startLine, text, start);
+
+            if (!ignore) {
+                matchCount++;
+                if (illegalPattern || checkForDuplicates
+                        && matchCount - 1 > duplicateLimit) {
+                    errorCount++;
+                    logMessage(startLine);
+                }
+            }
+            if (canContinueValidation(ignore)) {
+                findMatch();
+            }
+        }
+        else if (!illegalPattern && matchCount == 0) {
+            String msg = createViolationMessage();
+            log(1, MSG_REQUIRED_REGEXP, msg);
+        }
+    }
+
+    /**
+     * Constructs the correct violation message depending on current settings.
+     *
+     * @return message to display for a violation.
+     */
+    private String createViolationMessage() {
+        String msg;
+
+        if (message == null || message.isEmpty()) {
+            msg = format.pattern();
+        }
+        else {
+            msg = message;
+        }
+
+        if (errorCount >= errorLimit) {
+            msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+        }
+
+        return msg;
+    }
+
+    /**
+     * Check if we can stop validation.
+     *
+     * @param ignore flag
+     * @return true is we can continue
+     */
+    private boolean canContinueValidation(boolean ignore) {
+        return errorCount <= errorLimit - 1
+                && (ignore || illegalPattern || checkForDuplicates);
+    }
+
+    /**
+     * Detect ignore situation.
+     *
+     * @param startLine position of line
+     * @param text file text
+     * @param start line column
+     * @return true is that need to be ignored
+     */
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    private boolean isIgnore(int startLine, FileText text, LineColumn start) {
+        final LineColumn end;
+        if (matcher.end() == 0) {
+            end = text.lineColumn(0);
+        }
+        else {
+            end = text.lineColumn(matcher.end() - 1);
+        }
+        boolean ignore = false;
+        if (ignoreComments) {
+            final FileContents theFileContents = getFileContents();
+            final int startColumn = start.getColumn();
+            final int endLine = end.getLine();
+            final int endColumn = end.getColumn();
+            ignore = theFileContents.hasIntersectionWithComment(startLine,
+                    startColumn, endLine, endColumn);
+        }
+        return ignore;
+    }
+
+    /**
+     * Displays the right message.
+     *
+     * @param lineNumber the line number the message relates to.
+     */
+    private void logMessage(int lineNumber) {
+        String msg = createViolationMessage();
+
+        if (illegalPattern) {
+            log(lineNumber, MSG_ILLEGAL_REGEXP, msg);
+        }
+        else {
+            log(lineNumber, MSG_DUPLICATE_REGEXP, msg);
+        }
+    }
+
+}
+```
+
+**Summary:**
+- **Extracted duplicated message-building logic** into a new method `createViolationMessage()`.
+- **All other code unchanged.**
+- **Result:** Less duplication, improved readability, and easier future maintenance!

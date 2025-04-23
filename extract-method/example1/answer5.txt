@@ -1,0 +1,123 @@
+22-04-2025, 20:57
+**Analysis of Extract Method Refactoring Opportunities**
+
+After reviewing the code, the main source of duplicated logic is in the construction and selection of the `msg` message string, which appears in both `findMatch()` and `logMessage(int)`. Both locations essentially perform:
+
+```java
+String msg;
+if (message == null || message.isEmpty()) {
+    msg = format.pattern();
+}
+else {
+    msg = message;
+}
+if (errorCount >= errorLimit) {
+    msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+}
+```
+
+This should be extracted into a private helper method (e.g., `buildMessage()` or similar), thus increasing readability and reusability.
+
+---
+
+## **Refactored Code**
+
+Here's the improved code with the extract method refactoring applied:
+
+```java
+// ... [imports and Javadoc remain unchanged] ...
+
+@FileStatefulCheck
+public class RegexpCheck extends AbstractCheck {
+
+    // ... [fields and setters remain unchanged] ...
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    @Override
+    public void beginTree(DetailAST rootAST) {
+        matcher = format.matcher(getFileContents().getText().getFullText());
+        matchCount = 0;
+        errorCount = 0;
+        findMatch();
+    }
+
+    /** Recursive method that finds the matches. */
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    private void findMatch() {
+        final boolean foundMatch = matcher.find();
+        if (foundMatch) {
+            final FileText text = getFileContents().getText();
+            final LineColumn start = text.lineColumn(matcher.start());
+            final int startLine = start.getLine();
+
+            final boolean ignore = isIgnore(startLine, text, start);
+
+            if (!ignore) {
+                matchCount++;
+                if (illegalPattern || checkForDuplicates
+                        && matchCount - 1 > duplicateLimit) {
+                    errorCount++;
+                    logMessage(startLine);
+                }
+            }
+            if (canContinueValidation(ignore)) {
+                findMatch();
+            }
+        }
+        else if (!illegalPattern && matchCount == 0) {
+            final String msg = buildMessage();
+            log(1, MSG_REQUIRED_REGEXP, msg);
+        }
+    }
+
+    // ... [other methods unchanged] ...
+
+    /**
+     * Builds the message for a violation, using the custom message, the pattern,
+     * and appending the error limit message if required.
+     *
+     * @return the message to display
+     */
+    private String buildMessage() {
+        String msg;
+        if (message == null || message.isEmpty()) {
+            msg = format.pattern();
+        }
+        else {
+            msg = message;
+        }
+        if (errorCount >= errorLimit) {
+            msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+        }
+        return msg;
+    }
+
+    /**
+     * Displays the right message.
+     *
+     * @param lineNumber the line number the message relates to.
+     */
+    private void logMessage(int lineNumber) {
+        final String msg = buildMessage();
+        if (illegalPattern) {
+            log(lineNumber, MSG_ILLEGAL_REGEXP, msg);
+        }
+        else {
+            log(lineNumber, MSG_DUPLICATE_REGEXP, msg);
+        }
+    }
+
+}
+```
+
+### **What Changed?**
+- Extracted common message-building code into a new `buildMessage()` private method.
+- Now both `findMatch()` and `logMessage(int)` use `buildMessage()` for consistent and maintainable logic.
+- No functional changes, but improved maintainability and clarity.
+
+---
+
+**Conclusion**:
+**Yes, extract method refactoring was applicable.** The result is improved readability and maintainability of the code. If you want a unified diff, let me know!

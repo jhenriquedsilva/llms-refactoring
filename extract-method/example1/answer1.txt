@@ -1,0 +1,150 @@
+22-04-2025, 20:37
+**Analysis and Refactoring Opportunities**
+
+After carefully reviewing the `RegexpCheck` class, there is a clear opportunity for an **Extract Method Refactoring**. Specifically, the following code pattern is duplicated:
+
+```java
+if (message == null || message.isEmpty()) {
+    msg = format.pattern();
+}
+else {
+    msg = message;
+}
+
+if (errorCount >= errorLimit) {
+    msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+}
+```
+
+This logic occurs in both the `logMessage` method and the `findMatch` method (for the message string determination).
+
+**Refactoring - Extract Message Preparation**
+
+We can extract this message preparation logic into a private helper method:
+
+```java
+/**
+ * Prepares the violation message to be logged.
+ *
+ * @return the prepared violation message
+ */
+private String prepareLogMessage() {
+    String msg = (message == null || message.isEmpty())
+        ? format.pattern()
+        : message;
+    if (errorCount >= errorLimit) {
+        msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+    }
+    return msg;
+}
+```
+
+Then, replace the respective code in `logMessage` and `findMatch` with a call to `prepareLogMessage()`.
+
+---
+
+**Here is the refactored class:**
+
+```java
+// ... [Imports and Javadocs unchanged] ...
+
+@FileStatefulCheck
+public class RegexpCheck extends AbstractCheck {
+
+    // ... [Fields and setters unchanged] ...
+
+    @Override
+    public int[] getDefaultTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+        return CommonUtil.EMPTY_INT_ARRAY;
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    @Override
+    public void beginTree(DetailAST rootAST) {
+        matcher = format.matcher(getFileContents().getText().getFullText());
+        matchCount = 0;
+        errorCount = 0;
+        findMatch();
+    }
+
+    /** Recursive method that finds the matches. */
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings("deprecation")
+    private void findMatch() {
+        final boolean foundMatch = matcher.find();
+        if (foundMatch) {
+            final FileText text = getFileContents().getText();
+            final LineColumn start = text.lineColumn(matcher.start());
+            final int startLine = start.getLine();
+
+            final boolean ignore = isIgnore(startLine, text, start);
+
+            if (!ignore) {
+                matchCount++;
+                if (illegalPattern || checkForDuplicates
+                        && matchCount - 1 > duplicateLimit) {
+                    errorCount++;
+                    logMessage(startLine);
+                }
+            }
+            if (canContinueValidation(ignore)) {
+                findMatch();
+            }
+        }
+        else if (!illegalPattern && matchCount == 0) {
+            String msg = prepareLogMessage();
+            log(1, MSG_REQUIRED_REGEXP, msg);
+        }
+    }
+
+    // ... [Other methods unchanged] ...
+
+    /**
+     * Displays the right message.
+     *
+     * @param lineNumber the line number the message relates to.
+     */
+    private void logMessage(int lineNumber) {
+        String msg = prepareLogMessage();
+
+        if (illegalPattern) {
+            log(lineNumber, MSG_ILLEGAL_REGEXP, msg);
+        }
+        else {
+            log(lineNumber, MSG_DUPLICATE_REGEXP, msg);
+        }
+    }
+
+    /**
+     * Prepares the violation message to be logged.
+     *
+     * @return the prepared violation message
+     */
+    private String prepareLogMessage() {
+        String msg = (message == null || message.isEmpty())
+            ? format.pattern()
+            : message;
+        if (errorCount >= errorLimit) {
+            msg = ERROR_LIMIT_EXCEEDED_MESSAGE + msg;
+        }
+        return msg;
+    }
+
+}
+```
+
+---
+
+**Summary:**
+Yes, there was a refactoring opportunity — repeated message preparation logic has been extracted to a new `prepareLogMessage` method, improving maintainability and readability. All other code is left unchanged for clarity.

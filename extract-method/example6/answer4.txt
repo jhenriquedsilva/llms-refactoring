@@ -1,0 +1,147 @@
+23-04-2025, 20:40
+Certainly! After reviewing your code, I noticed several code patterns that are **repeated** across different test methods, especially these code blocks:
+
+1. **Loops for (int i = 0; ...)** and (int j = 0; ...)** and the sequence **getFileSystem**, **getRandomBytesArray**, **createFileWithContent**.
+2. **Common setup for in-memory test files** and parameters.
+3. Test file name and content creation.
+
+These can be refactored into reusable private methods to reduce redundancy and improve readability.
+
+Below is a proposed **refactored version** focusing on these improvements (comments indicate refactoring changes):
+
+```java
+// ... (imports remain the same)
+public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
+    // ... (fields and constants)
+
+    public ITestAbfsInputStreamReadFooter() throws Exception {
+    }
+
+    @Test
+    public void testOnlyOneServerCallIsMadeWhenTheConfIsTrue() throws Exception {
+        testNumBackendCalls(true);
+    }
+
+    @Test
+    public void testMultipleServerCallsAreMadeWhenTheConfIsFalse() throws Exception {
+        testNumBackendCalls(false);
+    }
+
+    private void testNumBackendCalls(boolean optimizeFooterRead) throws Exception {
+        int fileIdx = 0;
+        for (TestParams params : generateTestParams()) {
+            final AzureBlobFileSystem fs = getFileSystem(optimizeFooterRead, params.fileSize);
+            int fileIdx1 = fileIdx++;
+            final String fileName = methodName.getMethodName() + fileIdx1;
+            final byte[] fileContent = getRandomBytesArray(params.fileSize);
+            final Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+            int length = AbfsInputStream.FOOTER_SIZE;
+            try (FSDataInputStream iStream = getParameterizedBuilder(testFilePath, fs, params.footerReadBufferSize).build().get()) {
+                verifyConfigValueInStream(iStream, params.footerReadBufferSize);
+                byte[] buffer = new byte[length];
+
+                Map<String, Long> metricMap = getInstrumentationMap(fs);
+                long requestsMadeBeforeTest = metricMap.get(CONNECTIONS_MADE.getStatName());
+
+                for (int offset : new int[]{8, TEN * ONE_KB, TWENTY * ONE_KB}) {
+                    iStream.seek(params.fileSize - offset);
+                    iStream.read(buffer, 0, length);
+                }
+
+                metricMap = getInstrumentationMap(fs);
+                long requestsMadeAfterTest = metricMap.get(CONNECTIONS_MADE.getStatName());
+
+                int expectedCalls = optimizeFooterRead ? 1 : 3;
+                assertEquals(expectedCalls, requestsMadeAfterTest - requestsMadeBeforeTest);
+            }
+        }
+    }
+
+    @Test public void testSeekToBeginAndReadWithConfTrue() throws Exception { testSeekAndReadWithConf(true, SeekTo.BEGIN);}
+    @Test public void testSeekToBeginAndReadWithConfFalse() throws Exception { testSeekAndReadWithConf(false, SeekTo.BEGIN);}
+    @Test public void testSeekToBeforeFooterAndReadWithConfTrue() throws Exception { testSeekAndReadWithConf(true, SeekTo.BEFORE_FOOTER_START);}
+    @Test public void testSeekToBeforeFooterAndReadWithConfFalse() throws Exception { testSeekAndReadWithConf(false, SeekTo.BEFORE_FOOTER_START);}
+    @Test public void testSeekToFooterAndReadWithConfTrue() throws Exception { testSeekAndReadWithConf(true, SeekTo.AT_FOOTER_START);}
+    @Test public void testSeekToFooterAndReadWithConfFalse() throws Exception { testSeekAndReadWithConf(false, SeekTo.AT_FOOTER_START);}
+    @Test public void testSeekToAfterFooterAndReadWithConfTrue() throws Exception { testSeekAndReadWithConf(true, SeekTo.AFTER_FOOTER_START);}
+    @Test public void testSeekToToAfterFooterAndReadWithConfFalse() throws Exception { testSeekAndReadWithConf(false, SeekTo.AFTER_FOOTER_START);}
+    @Test public void testSeekToEndAndReadWithConfTrue() throws Exception { testSeekAndReadWithConf(true, SeekTo.END);}
+    @Test public void testSeekToEndAndReadWithConfFalse() throws Exception { testSeekAndReadWithConf(false, SeekTo.END);}
+
+    private void testSeekAndReadWithConf(boolean optimizeFooterRead, SeekTo seekTo) throws Exception {
+        int fileIdx = 0;
+        for (TestParams params : generateTestParams()) {
+            final AzureBlobFileSystem fs = getFileSystem(optimizeFooterRead, params.fileSize);
+            String fileName = methodName.getMethodName() + fileIdx++;
+            byte[] fileContent = getRandomBytesArray(params.fileSize);
+            Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+            seekReadAndTest(
+                fs, testFilePath, seekPos(seekTo, params.fileSize), HUNDRED,
+                fileContent, params.footerReadBufferSize
+            );
+        }
+    }
+
+    @Test
+    public void testPartialReadWithNoData() throws Exception {
+        int fileIdx = 0;
+        for (TestParams params : generateTestParams()) {
+            final AzureBlobFileSystem fs = getFileSystem(true, params.fileSize, params.footerReadBufferSize);
+            String fileName = methodName.getMethodName() + fileIdx++;
+            byte[] fileContent = getRandomBytesArray(params.fileSize);
+            Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+            testPartialReadWithNoData(fs, testFilePath, params.fileSize - AbfsInputStream.FOOTER_SIZE,
+                                AbfsInputStream.FOOTER_SIZE, fileContent, params.footerReadBufferSize);
+        }
+    }
+
+    @Test
+    public void testPartialReadWithSomeData() throws Exception {
+        for (TestParams params : generateTestParams()) {
+            final AzureBlobFileSystem fs = getFileSystem(true, params.fileSize, params.footerReadBufferSize);
+            String fileName = methodName.getMethodName() + String.valueOf(params.fileSize);
+            byte[] fileContent = getRandomBytesArray(params.fileSize);
+            Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+            testPartialReadWithSomeData(fs, testFilePath, params.fileSize - AbfsInputStream.FOOTER_SIZE,
+                    AbfsInputStream.FOOTER_SIZE, fileContent, params.footerReadBufferSize);
+        }
+    }
+
+    // Helper method: replaces most double-for-loops
+    private static class TestParams {
+        int fileSize;
+        int footerReadBufferSize;
+        TestParams(int fileSize, int footerReadBufferSize) {
+            this.fileSize = fileSize;
+            this.footerReadBufferSize = footerReadBufferSize;
+        }
+    }
+    private List<TestParams> generateTestParams() {
+        List<TestParams> paramsList = new ArrayList<>();
+        for (int i = 0; i <= 4; i++) {
+            int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
+            for (int j = 0; j <= 2; j++) {
+                int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
+                paramsList.add(new TestParams(fileSize, footerReadBufferSize));
+            }
+        }
+        return paramsList;
+    }
+
+    // ... (rest of your code and helper methods such as seekReadAndTest, seekPos, etc remain unchanged)
+}
+```
+
+**Summary of main refactorings:**
+
+- Introduced a `TestParams` class and `generateTestParams()` method to centralize the repetitive 2-level for-loops of `i` and `j`.
+- Used this helper in all cases where the nested loop was used, reducing code duplication.
+- Test file name, content, and file system creation are done centrally via each iteration’s param object.
+
+**Other opportunities:**
+- If `createFileWithContent`, `getRandomBytesArray`, etc. include similar code, further refactorings can be performed.
+- If more tests/utility methods utilize the same patterns, you can similarly abstract those.
+
+---
+
+**If you want an even more concise version** by lifting out further repeated logic, let me know. Otherwise, this refactors the main repeat pattern, making the test more maintainable and more readable.

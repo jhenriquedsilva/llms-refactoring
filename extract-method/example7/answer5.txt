@@ -1,0 +1,172 @@
+23-04-2025, 20:40
+**Analysis**
+
+Looking for **Extract Method** refactoring opportunities often involves spotting duplicated code (even conceptually), long methods doing multiple things, or repeated code blocks that could be encapsulated.
+
+Reviewing your code, I see three main opportunities:
+
+1. **Cache Eviction Logic** – The logic for evicting cached entities (`evictEntity`) and cached collections (`evictCachedCollections`) contains repeated patterns for creating a cache key, acquiring a lock, removing the item, and registering the unlock.
+
+2. **Trace Logging** – In `refresh`, there are repeated if-debug-log-check code blocks for logging the refresh operation message.
+
+3. **Trace Condition Handling** – Not as strong, but the duplicate trace-check-and-log blocks could be wrapped in a helper to reduce clutter.
+
+However, the most **beneficial extract** would be the Cache Eviction logic (creating cache key, lock, remove, register unlock): both in `evictEntity` and inside `evictCachedCollections`, this logic is repeated.
+
+---
+
+## Refactored Code
+
+Below, I will introduce a private static utility method:
+```java
+private static void evictCache(EntityDataAccess cache, Object key, EventSource source, Object version) {
+    final SoftLock lock = cache.lockItem(source, key, version);
+    cache.remove(source, key);
+    source.getActionQueue().registerProcess( (success, session) -> cache.unlockItem(session, key, lock) );
+}
+```
+I’ll use this in both `evictEntity` and in the cache eviction loop within `evictCachedCollections`.
+Also, I’ll put the trace log into a helper method for clarity.
+
+**Updated code** (showing only the changes):
+
+```java
+// ...existing code...
+
+public class DefaultRefreshEventListener implements RefreshEventListener {
+    // ...existing code...
+
+    // New Extracted method for cache eviction
+    private static void evictCache(EntityDataAccess cache, Object key, EventSource source, Object version) {
+        final SoftLock lock = cache.lockItem(source, key, version);
+        cache.remove(source, key);
+        source.getActionQueue().registerProcess((success, session) -> cache.unlockItem(session, key, lock));
+    }
+
+    // Optionally, Extracted helper for trace logging
+    private static void traceEntityRefresh(EntityPersister persister, Object id, EventSource source, String message) {
+        if (LOG.isTraceEnabled()) {
+            LOG.tracev(message, infoString(persister, id, source.getFactory()));
+        }
+    }
+
+    // ...existing code...
+
+    private static void refresh(RefreshEvent event, RefreshContext refreshedAlready, Object object) {
+        final EventSource source = event.getSession();
+        final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
+        final EntityEntry entry = persistenceContext.getEntry(object);
+
+        final EntityPersister persister;
+        final Object id;
+        if (entry == null) {
+            //refresh() does not pass an entityName
+            persister = source.getEntityPersister(event.getEntityName(), object);
+            id = persister.getIdentifier(object, event.getSession());
+            if (id == null) {
+                throw new TransientObjectException("transient instance passed to refresh");
+            }
+            traceEntityRefresh(persister, id, source, "Refreshing transient {0}");
+            if (persistenceContext.getEntry(source.generateEntityKey(id, persister)) != null) {
+                throw new NonUniqueObjectException(id, persister.getEntityName());
+            }
+        } else {
+            traceEntityRefresh(entry.getPersister(), entry.getId(), source, "Refreshing ");
+            if (!entry.isExistsInDatabase()) {
+                throw new UnresolvableObjectException(
+                        entry.getId(),
+                        "this instance does not yet exist as a row in the database"
+                );
+            }
+            persister = entry.getPersister();
+            id = entry.getId();
+        }
+
+        // cascade the refresh prior to refreshing this entity
+        Cascade.cascade(
+                CascadingActions.REFRESH,
+                CascadePoint.BEFORE_REFRESH,
+                source,
+                persister,
+                object,
+                refreshedAlready
+        );
+
+        if (entry != null) {
+            final EntityKey key = source.generateEntityKey(id, persister);
+            persistenceContext.removeEntity(key);
+            if (persister.hasCollections()) {
+                new EvictVisitor(source, object).process(object, persister);
+            }
+        }
+
+        evictEntity(object, persister, id, source);
+        evictCachedCollections(persister, id, source);
+
+        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
+                CascadingFetchProfile.REFRESH,
+                () -> doRefresh(event, source, object, entry, persister, null, id, persistenceContext)
+        );
+        UnresolvableObjectException.throwIfNull(result, id, persister.getEntityName());
+    }
+
+    private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
+        if (persister.canWriteToCache()) {
+            Object previousVersion = null;
+            if (persister.isVersionPropertyGenerated()) {
+                previousVersion = persister.getVersion(object);
+            }
+            final EntityDataAccess cache = persister.getCacheAccessStrategy();
+            final Object ck = cache.generateCacheKey(
+                    id,
+                    persister,
+                    source.getFactory(),
+                    source.getTenantIdentifier()
+            );
+            evictCache(cache, ck, source, previousVersion);
+        }
+    }
+
+    private static void evictCachedCollections(Type[] types, Object id, EventSource source)
+            throws HibernateException {
+        final ActionQueue actionQueue = source.getActionQueue();
+        final SessionFactoryImplementor factory = source.getFactory();
+        final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
+        for (Type type : types) {
+            if (type.isCollectionType()) {
+                final String role = ((CollectionType) type).getRole();
+                final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor(role);
+                if (collectionPersister.hasCache()) {
+                    final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+                    final Object ck = cache.generateCacheKey(
+                            id,
+                            collectionPersister,
+                            factory,
+                            source.getTenantIdentifier()
+                    );
+                    // == Refactored: use common eviction utility, version is always null ==
+                    evictCache(cache, ck, source, null);
+                }
+            } else if (type.isComponentType()) {
+                final CompositeType compositeType = (CompositeType) type;
+                evictCachedCollections(compositeType.getSubtypes(), id, source);
+            }
+        }
+    }
+
+    // ...rest of your code...
+}
+```
+
+---
+
+## **Summary**
+
+- **Extracted `evictCache` utility:** Cleans up both `evictEntity` and collection cache eviction.
+- **Optionally extracted log method** (minor, for clarity): `traceEntityRefresh`.
+
+### **No behavioral changes, just improved maintainability and readability.**
+
+---
+
+**If you want the full file with these changes, let me know!**

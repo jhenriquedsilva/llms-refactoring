@@ -1,0 +1,184 @@
+23-04-2025, 19:27
+**Analysis for Extract Method Refactoring**
+
+A prime opportunity for Extract Method refactoring arises any time a code block does "too much" or manages several responsibilities, or when a pattern is repeated. Let's analyze the code, focusing on such areas:
+
+- **Method `accept(Field field)`** does a series of field checks, each for a specific business rule.
+- **Method `appendFields(Class<?> clazz)`** has the logic inside the for-loop, where it gets and reads fields, catching exceptions.
+
+Let's focus specifically on `accept(Field field)`. Each if clause is an independent concern and could be extracted for improved readability, debuggability, and reusability.
+
+**Proposed Refactorings**
+Let’s extract the following helper methods from `accept(Field field)`:
+- `isInnerClassField(Field field)`
+- `isTransient(Field field)`
+- `isStatic(Field field)`
+- `isExcludedField(Field field)`
+- `isDiffExcludedAnnotationPresent(Field field)`
+
+Further, the error-handling in `appendFields(Class<?> clazz)` could be separated into its own method for better separation of concerns and testability.
+
+---
+
+### **Refactored Code**
+
+```java
+package org.apache.commons.lang3.builder;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+
+import org.apache.commons.lang3.ArraySorter;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.reflect.FieldUtils;
+
+public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
+
+    public static final class Builder<T> {
+
+        private String[] excludeFieldNames = ArrayUtils.EMPTY_STRING_ARRAY;
+        private DiffBuilder<T> diffBuilder;
+
+        public ReflectionDiffBuilder<T> build() {
+            return new ReflectionDiffBuilder<>(diffBuilder, excludeFieldNames);
+        }
+
+        public Builder<T> setDiffBuilder(final DiffBuilder<T> diffBuilder) {
+            this.diffBuilder = diffBuilder;
+            return this;
+        }
+
+        public Builder<T> setExcludeFieldNames(final String... excludeFieldNames) {
+            this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);
+            return this;
+        }
+
+    }
+
+    public static <T> Builder<T> builder() {
+        return new Builder<>();
+    }
+
+    private static String[] toExcludeFieldNames(final String[] excludeFieldNames) {
+        if (excludeFieldNames == null) {
+            return ArrayUtils.EMPTY_STRING_ARRAY;
+        }
+        // clone and remove nulls
+        return ArraySorter.sort(ReflectionToStringBuilder.toNoNullStringArray(excludeFieldNames));
+    }
+
+    private final DiffBuilder<T> diffBuilder;
+    private String[] excludeFieldNames;
+
+    private ReflectionDiffBuilder(final DiffBuilder<T> diffBuilder, final String[] excludeFieldNames) {
+        this.diffBuilder = diffBuilder;
+        this.excludeFieldNames = excludeFieldNames;
+    }
+
+    @Deprecated
+    public ReflectionDiffBuilder(final T left, final T right, final ToStringStyle style) {
+        this(DiffBuilder.<T>builder().setLeft(left).setRight(right).setStyle(style).build(), null);
+    }
+
+    // --- Extracted Helper Methods for accept ---
+
+    private boolean isInnerClassField(final Field field) {
+        return field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1;
+    }
+
+    private boolean isTransient(final Field field) {
+        return Modifier.isTransient(field.getModifiers());
+    }
+
+    private boolean isStatic(final Field field) {
+        return Modifier.isStatic(field.getModifiers());
+    }
+
+    private boolean isExcludedField(final Field field) {
+        return this.excludeFieldNames != null
+                && Arrays.binarySearch(this.excludeFieldNames, field.getName()) >= 0;
+    }
+
+    private boolean isDiffExcludedAnnotationPresent(final Field field) {
+        return field.isAnnotationPresent(DiffExclude.class);
+    }
+
+    private boolean accept(final Field field) {
+        if (isInnerClassField(field)) {
+            return false;
+        }
+        if (isTransient(field)) {
+            return false;
+        }
+        if (isStatic(field)) {
+            return false;
+        }
+        if (isExcludedField(field)) {
+            return false;
+        }
+        return !isDiffExcludedAnnotationPresent(field);
+    }
+
+    // --- Extracted error-safe append ---
+
+    private void appendFieldWithDiff(final Field field) {
+        try {
+            diffBuilder.append(field.getName(), FieldUtils.readField(field, getLeft(), true), FieldUtils.readField(field, getRight(), true));
+        } catch (final IllegalAccessException e) {
+            throw new IllegalArgumentException("Unexpected IllegalAccessException: " + e.getMessage(), e);
+        }
+    }
+
+    private void appendFields(final Class<?> clazz) {
+        for (final Field field : FieldUtils.getAllFields(clazz)) {
+            if (accept(field)) {
+                appendFieldWithDiff(field);
+            }
+        }
+    }
+
+    @Override
+    public DiffResult<T> build() {
+        if (getLeft().equals(getRight())) {
+            return diffBuilder.build();
+        }
+
+        appendFields(getLeft().getClass());
+        return diffBuilder.build();
+    }
+
+    public String[] getExcludeFieldNames() {
+        return this.excludeFieldNames.clone();
+    }
+
+    private T getLeft() {
+        return diffBuilder.getLeft();
+    }
+
+    private T getRight() {
+        return diffBuilder.getRight();
+    }
+
+    @Deprecated
+    public ReflectionDiffBuilder<T> setExcludeFieldNames(final String... excludeFieldNames) {
+        this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);
+        return this;
+    }
+
+}
+```
+
+---
+
+### **Summary of Refactoring Steps**
+
+1. **Extracted** field property checks from `accept(Field)` into their own private boolean methods.
+2. **Pulled out** the try/catch block from `appendFields` into `appendFieldWithDiff`.
+3. **Improved readability, testing, and debugging** by clear encapsulation of every specific check and process.
+
+---
+
+**Conclusion:**
+There **were** extract method refactoring opportunities, and applying them has made the code more readable and maintainable.

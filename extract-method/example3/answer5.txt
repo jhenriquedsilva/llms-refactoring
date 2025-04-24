@@ -1,0 +1,103 @@
+23-04-2025, 19:32
+### Code Review: Extract Method Refactoring Opportunities
+
+#### Analysis
+
+On reviewing the code, the most prominent opportunity for method extraction appears in two places:
+1. **Field Filtering:**
+   The logic in `accept(Field field)` is a good candidate for breaking into smaller, more focused private methods, each checking a single exclusion criterion. This improves readability and future maintainability.
+2. **Field Exclusion Processing:**
+   The logic for processing the excluded field names appears in `toExcludeFieldNames` and is duplicated (in intent) in both the Builder and main class. However, in this code, the conversion is already placed in a private static method.
+
+Other parts of the code are largely individual actions or are already encapsulated. There aren't significant duplicate code blocks that would directly benefit from extractions, except for `accept(Field)`.
+
+---
+
+### Refactored Code
+
+Here’s the **refactored code** with the `accept(Field)` method broken into smaller methods for clarity:
+
+```java
+private boolean accept(final Field field) {
+    if (isInnerClassField(field)) {
+        return false;
+    }
+    if (isTransientField(field)) {
+        return false;
+    }
+    if (isStaticField(field)) {
+        return false;
+    }
+    if (isExcludedField(field)) {
+        return false;
+    }
+    return !field.isAnnotationPresent(DiffExclude.class);
+}
+
+private boolean isInnerClassField(Field field) {
+    return field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1;
+}
+
+private boolean isTransientField(Field field) {
+    return Modifier.isTransient(field.getModifiers());
+}
+
+private boolean isStaticField(Field field) {
+    return Modifier.isStatic(field.getModifiers());
+}
+
+private boolean isExcludedField(Field field) {
+    return this.excludeFieldNames != null && Arrays.binarySearch(this.excludeFieldNames, field.getName()) >= 0;
+}
+```
+
+You would **replace the original `accept(Field field)`** with this new version and add the new private helper methods to the class.
+
+**No other substantial extract method opportunities were identified.**
+
+---
+
+#### Final Refactored Code (Snippet Only):
+
+```java
+private boolean accept(final Field field) {
+    if (isInnerClassField(field)) {
+        return false;
+    }
+    if (isTransientField(field)) {
+        return false;
+    }
+    if (isStaticField(field)) {
+        return false;
+    }
+    if (isExcludedField(field)) {
+        return false;
+    }
+    return !field.isAnnotationPresent(DiffExclude.class);
+}
+
+private boolean isInnerClassField(Field field) {
+    return field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1;
+}
+
+private boolean isTransientField(Field field) {
+    return Modifier.isTransient(field.getModifiers());
+}
+
+private boolean isStaticField(Field field) {
+    return Modifier.isStatic(field.getModifiers());
+}
+
+private boolean isExcludedField(Field field) {
+    return this.excludeFieldNames != null && Arrays.binarySearch(this.excludeFieldNames, field.getName()) >= 0;
+}
+```
+
+---
+
+If you'd like a full reprint of the class with these changes inserted, let me know!
+**Summary:**
+- **Extracted logic from `accept(Field field)` to smaller private methods.**
+- **Rest of the code does not present duplicate/complex blocks in need of extraction.**
+
+If you require deeper extract method refactoring in other locations, or you have knowledge of code usages outside this snippet indicating further opportunities, please specify!

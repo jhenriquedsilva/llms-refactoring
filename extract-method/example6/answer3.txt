@@ -1,0 +1,173 @@
+23-04-2025, 20:40
+
+There **are** several extract method refactoring opportunities in this code, primarily due to the presence of nested `for` loops initializing test parameters and repeated blocks that do nearly identical things (e.g., creating files, constructing file content, creating file paths). By extracting these common patterns into helper methods, you significantly improve maintainability, clarity, and reduce code duplication.
+
+Below, I will outline the key extractable patterns and then provide a version of your test class with appropriate refactoring:
+
+---
+
+### Repeated Pattern Candidates
+
+1. **Looping for test parameterization**
+The nested for-loops over `i` and `j` with identical bounds and multiplication math appear in several places.
+
+2. **Test file creation workflow**
+Within these loops, the test file system, name, byte array, and file path are always constructed the same way.
+
+3. **File Creation**
+Encapsulate:
+```java
+final AzureBlobFileSystem fs = getFileSystem(optimizeFooterRead, fileSize);
+String fileName = methodName.getMethodName() + fileIdx++;
+byte[] fileContent = getRandomBytesArray(fileSize);
+Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+```
+
+---
+
+## Refactored Code
+
+Below is your code with suggested extract method refactorings, indicated clearly in the affected areas.
+
+```java
+// ... (All the imports and package remain unchanged) ...
+
+public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
+
+    private static final int TEN = 10;
+    private static final int TWENTY = 20;
+
+    public ITestAbfsInputStreamReadFooter() throws Exception {
+    }
+
+    // ------ New Extracted Method for Loop Invocation -----------
+    private interface FileTestExecutor {
+        void execute(AzureBlobFileSystem fs, String fileName,
+                     byte[] fileContent, Path testFilePath,
+                     int fileSize, int footerReadBufferSize) throws Exception;
+    }
+
+    private void forEachFileVariation(boolean optimizeFooterRead, FileTestExecutor executor) throws Exception {
+        int fileIdx = 0;
+        for (int i = 0; i <= 4; i++) {
+            for (int j = 0; j <= 2; j++) {
+                int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
+                int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
+                final AzureBlobFileSystem fs = getFileSystem(optimizeFooterRead, fileSize, footerReadBufferSize);
+                String fileName = methodName.getMethodName() + fileIdx++;
+                byte[] fileContent = getRandomBytesArray(fileSize);
+                Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+
+                executor.execute(fs, fileName, fileContent, testFilePath, fileSize, footerReadBufferSize);
+            }
+        }
+    }
+
+    // ----------------- Now refactor test methods to use this ---------------
+    @Test
+    public void testOnlyOneServerCallIsMadeWhenTheConfIsTrue() throws Exception {
+        testNumBackendCalls(true);
+    }
+
+    @Test
+    public void testMultipleServerCallsAreMadeWhenTheConfIsFalse() throws Exception {
+        testNumBackendCalls(false);
+    }
+
+    private void testNumBackendCalls(boolean optimizeFooterRead) throws Exception {
+        int fileIdx = 0;
+        for (int i = 0; i <= 4; i++) {
+            for (int j = 0; j <= 2; j++) {
+                int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
+                int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
+                final AzureBlobFileSystem fs = getFileSystem(optimizeFooterRead, fileSize);
+                int fileIdx1 = fileIdx++;
+                String fileName = methodName.getMethodName() + fileIdx1;
+                byte[] fileContent = getRandomBytesArray(fileSize);
+                Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+                int length = AbfsInputStream.FOOTER_SIZE;
+                FutureDataInputStreamBuilder builder = getParameterizedBuilder(
+                        testFilePath, fs, footerReadBufferSize);
+                try (FSDataInputStream iStream = builder.build().get()) {
+                    verifyConfigValueInStream(iStream, footerReadBufferSize);
+                    byte[] buffer = new byte[length];
+
+                    Map<String, Long> metricMap = getInstrumentationMap(fs);
+                    long requestsMadeBeforeTest = metricMap
+                            .get(CONNECTIONS_MADE.getStatName());
+
+                    iStream.seek(fileSize - 8);
+                    iStream.read(buffer, 0, length);
+
+                    iStream.seek(fileSize - (TEN * ONE_KB));
+                    iStream.read(buffer, 0, length);
+
+                    iStream.seek(fileSize - (TWENTY * ONE_KB));
+                    iStream.read(buffer, 0, length);
+
+                    metricMap = getInstrumentationMap(fs);
+                    long requestsMadeAfterTest = metricMap
+                            .get(CONNECTIONS_MADE.getStatName());
+
+                    if (optimizeFooterRead) {
+                        assertEquals(1, requestsMadeAfterTest - requestsMadeBeforeTest);
+                    } else {
+                        assertEquals(3, requestsMadeAfterTest - requestsMadeBeforeTest);
+                    }
+                }
+            }
+        }
+    }
+
+    //---- Replace ALL loop/test file creation patterns with forEachFileVariation ------
+
+    // Example for testSeekAndReadWithConf
+    private void testSeekAndReadWithConf(boolean optimizeFooterRead, SeekTo seekTo) throws Exception {
+        forEachFileVariation(optimizeFooterRead, (fs, fileName, fileContent, testFilePath, fileSize, footerReadBufferSize) -> {
+            seekReadAndTest(fs, testFilePath, seekPos(seekTo, fileSize), HUNDRED,
+                    fileContent, footerReadBufferSize);
+        });
+    }
+    // ... rest of the @Test methods calling testSeekAndReadWithConf remain unchanged ...
+
+    @Test
+    public void testPartialReadWithNoData() throws Exception {
+        forEachFileVariation(true, (fs, fileName, fileContent, testFilePath, fileSize, footerReadBufferSize) -> {
+            testPartialReadWithNoData(fs, testFilePath,
+                    fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE,
+                    fileContent, footerReadBufferSize);
+        });
+    }
+
+    @Test
+    public void testPartialReadWithSomeData() throws Exception {
+        forEachFileVariation(true, (fs, fileName, fileContent, testFilePath, fileSize, footerReadBufferSize) -> {
+            testPartialReadWithSomeData(fs, testFilePath,
+                    fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE,
+                    fileContent, footerReadBufferSize);
+        });
+    }
+
+    // ... The rest of your methods remain unchanged, except for loop refactoring above ...
+
+    // The helper `forEachFileVariation` makes it clear how each file test is parameterized
+
+    // ... rest of your code ...
+}
+```
+
+---
+
+## **Summary of Refactoring**
+
+- **Extracted nested file test parameterization** into `forEachFileVariation` helper and a corresponding `FileTestExecutor` interface.
+- **Eliminated code duplication** for creating test files in several test methods.
+- **Facilitated addition of future tests** that need parameterized files.
+
+---
+
+### **Result**
+
+Your code is now more DRY (Don't Repeat Yourself), test data setup is consistent, and future changes to test loop parameters can be made in a single place.
+
+**You should apply this refactoring.** If you want the concise version with all usages replaced, let me know.

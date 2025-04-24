@@ -1,0 +1,110 @@
+23-04-2025, 20:40
+**Review and Refactoring:**
+
+Upon reviewing your code, there **is** a clear extract-method refactoring opportunity. Both `evictEntity` and the loop in `evictCachedCollections` contain **duplicate cache-eviction logic**:
+
+```java
+final SoftLock lock = cache.lockItem( source, ck, previousVersion? );
+cache.remove( source, ck );
+actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+```
+
+This logic appears three times with only minor differences (e.g., `previousVersion` is used in entity cache, but always `null` for collection cache).
+
+**Refactored Approach:**
+- Extract a private static method: `evictCacheEntry(...)`
+- Update both `evictEntity` and `evictCachedCollections` to use this new method, passing the appropriate arguments.
+
+---
+
+### **Refactored Code**
+
+```java
+// ...[imports, class, etc. remain the same]...
+public class DefaultRefreshEventListener implements RefreshEventListener {
+    private static final CoreMessageLogger LOG = CoreLogging.messageLogger( DefaultRefreshEventListener.class );
+
+    // ...[Other methods remain unchanged]...
+
+    private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
+        if ( persister.canWriteToCache() ) {
+            Object previousVersion = null;
+            if ( persister.isVersionPropertyGenerated() ) {
+                previousVersion = persister.getVersion( object );
+            }
+            final EntityDataAccess cache = persister.getCacheAccessStrategy();
+            final Object ck = cache.generateCacheKey(
+                    id,
+                    persister,
+                    source.getFactory(),
+                    source.getTenantIdentifier()
+            );
+            evictCacheEntry(cache, source.getActionQueue(), source, ck, previousVersion);
+        }
+    }
+
+    private static void evictCachedCollections(EntityPersister persister, Object id, EventSource source) {
+        evictCachedCollections( persister.getPropertyTypes(), id, source );
+    }
+
+    private static void evictCachedCollections(Type[] types, Object id, EventSource source)
+            throws HibernateException {
+        final ActionQueue actionQueue = source.getActionQueue();
+        final SessionFactoryImplementor factory = source.getFactory();
+        final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
+        for ( Type type : types ) {
+            if ( type.isCollectionType() ) {
+                final String role = ((CollectionType) type).getRole();
+                final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor( role );
+                if ( collectionPersister.hasCache() ) {
+                    final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+                    final Object ck = cache.generateCacheKey(
+                            id,
+                            collectionPersister,
+                            factory,
+                            source.getTenantIdentifier()
+                    );
+                    evictCacheEntry(cache, actionQueue, source, ck, null);
+                }
+            }
+            else if ( type.isComponentType() ) {
+                final CompositeType compositeType = (CompositeType) type;
+                evictCachedCollections( compositeType.getSubtypes(), id, source );
+            }
+        }
+    }
+
+    // --- EXTRACTED METHOD ---
+    private static void evictCacheEntry(
+            Object cacheAccess, // Can be EntityDataAccess or CollectionDataAccess
+            ActionQueue actionQueue,
+            EventSource source,
+            Object cacheKey,
+            Object versionForLock // can be null for collection eviction
+    ) {
+        // Type parameterization workaround due to type erasure: both EntityDataAccess and CollectionDataAccess share this API.
+        SoftLock lock = ((org.hibernate.cache.spi.access.SoftLockable) cacheAccess).lockItem( source, cacheKey, versionForLock );
+        ((org.hibernate.cache.spi.access.SoftLockable) cacheAccess).remove( source, cacheKey );
+        actionQueue.registerProcess(
+            (success, session) -> ((org.hibernate.cache.spi.access.SoftLockable) cacheAccess).unlockItem( session, cacheKey, lock )
+        );
+    }
+
+    // ...[Other methods remain unchanged]...
+}
+```
+
+---
+
+**Key Points:**
+
+- **Reduced duplication:** Three occurrences of identical logic are now maintained in a single place.
+- **Safer change management:** Any future changes to cache eviction would be made in one method.
+- **Adheres to DRY principle.**
+
+**Note**: The extracted method’s first parameter type is kept as `Object` with a cast to `SoftLockable` (`EntityDataAccess` and `CollectionDataAccess` both implement `SoftLockable`). You may further specialize the method using generics or overloads if you want stricter type checking, but this approach is concise for the provided code.
+
+---
+
+**Summary:**
+**Refactoring was necessary** and is provided above. The main opportunity was eliminating code duplication for cache entry eviction.

@@ -1,0 +1,230 @@
+23-04-2025, 21:00
+Certainly! **Extract Method** refactoring is about taking code fragments that occur multiple times or represent a meaningful unit of behavior, and moving them to a new, well-named method. This both removes duplication and increases readability.
+
+### Potential Refactoring Opportunities
+
+Looking through the code, the most obvious candidates for extraction are the following **duplicate blocks**:
+
+1. **Code to log the "Refresh" action in `refresh()`**:
+   Both branches (`entry == null` and `entry != null`) in `refresh()` call very similar trace logging code:
+   ```java
+   LOG.tracev(
+       "Refreshing ...",
+       infoString( persister, id, source.getFactory() )
+   );
+   ```
+
+   - **However**, the parameter values differ: one uses `(persister, id, ...)`, the other `(entry.getPersister(), entry.getId(), ...)`.
+   - The string format used differs: one is `"Refreshing transient {0}"`, the other `"Refreshing "` (with nothing).
+
+   So, this duplication is minimal, and further unification may reduce clarity instead of improving it.
+
+2. **Eviction of cached collections**:
+   The `evictCachedCollections(EntityPersister, Object, EventSource)` method is only a convenience wrapper over another method, which is already extracted.
+
+#### Opportunity: **Evict Cache Key Pattern**
+
+Much more obvious is the repeated pattern for *evicting cache keys*, present both for entities (`evictEntity()`) and collections (inside `evictCachedCollections()`):
+```java
+final SoftLock lock = cache.lockItem( source, ck, previousVersion ); // sometimes 3 args, sometimes null for 3rd arg
+cache.remove( source, ck );
+actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+```
+This sequence is duplicated with only the third argument and the `cache` object type differing.
+We can extract this sequence into a private method for repeated use:
+
+#### Opportunity: **Cache Key Generation**
+
+There is also cache key generation:
+```java
+final Object ck = cache.generateCacheKey(
+    id, persister, source.getFactory(), source.getTenantIdentifier()
+);
+```
+and
+```java
+final Object ck = cache.generateCacheKey(
+        id, collectionPersister, factory, source.getTenantIdentifier()
+);
+```
+They differ on the type of their persister, but the pattern is nearly identical. Extracting this is not greatly beneficial unless you parameterize by persister type.
+
+---
+
+## **Proposed Refactoring**
+
+**We will extract a method to perform the "lock-remove-unlock" pattern for a cache item, parameterized on previousVersion (nullable) and the cache object.** This improves code clarity and removes the duplicate logic.
+
+---
+
+### **Extracted Method**
+```java
+private static void removeFromCacheWithLock(
+    Object ck,
+    Object previousVersion,
+    Object cacheAccessStrategy, // either EntityDataAccess or CollectionDataAccess, so use Object here
+    EventSource source,
+    ActionQueue actionQueue
+) {
+    SoftLock lock;
+    if (cacheAccessStrategy instanceof EntityDataAccess) {
+        lock = ((EntityDataAccess) cacheAccessStrategy).lockItem(source, ck, previousVersion);
+        ((EntityDataAccess) cacheAccessStrategy).remove(source, ck);
+        actionQueue.registerProcess((success, session) -> ((EntityDataAccess) cacheAccessStrategy).unlockItem(session, ck, lock));
+    } else if (cacheAccessStrategy instanceof CollectionDataAccess) {
+        lock = ((CollectionDataAccess) cacheAccessStrategy).lockItem(source, ck, previousVersion);
+        ((CollectionDataAccess) cacheAccessStrategy).remove(source, ck);
+        actionQueue.registerProcess((success, session) -> ((CollectionDataAccess) cacheAccessStrategy).unlockItem(session, ck, lock));
+    }
+}
+```
+Or, we can overload with the correct types, to retain type safety. Here, we present *both usages*.
+
+#### Refactored `evictEntity()` and `evictCachedCollections()`:
+```java
+private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
+    if ( persister.canWriteToCache() ) {
+        Object previousVersion = null;
+        if ( persister.isVersionPropertyGenerated() ) {
+            previousVersion = persister.getVersion( object );
+        }
+        final EntityDataAccess cache = persister.getCacheAccessStrategy();
+        final Object ck = cache.generateCacheKey(
+                id,
+                persister,
+                source.getFactory(),
+                source.getTenantIdentifier()
+        );
+        removeEntityFromCacheWithLock(ck, previousVersion, cache, source, source.getActionQueue());
+    }
+}
+
+private static void removeEntityFromCacheWithLock(
+        Object ck,
+        Object previousVersion,
+        EntityDataAccess cache,
+        EventSource source,
+        ActionQueue actionQueue) {
+    final SoftLock lock = cache.lockItem( source, ck, previousVersion );
+    cache.remove( source, ck );
+    actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+}
+
+private static void evictCachedCollections(Type[] types, Object id, EventSource source)
+        throws HibernateException {
+    final ActionQueue actionQueue = source.getActionQueue();
+    final SessionFactoryImplementor factory = source.getFactory();
+    final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
+    for ( Type type : types ) {
+        if ( type.isCollectionType() ) {
+            final String role = ((CollectionType) type).getRole();
+            final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor( role );
+            if ( collectionPersister.hasCache() ) {
+                final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+                final Object ck = cache.generateCacheKey(
+                        id,
+                        collectionPersister,
+                        factory,
+                        source.getTenantIdentifier()
+                );
+                removeCollectionFromCacheWithLock(ck, cache, source, actionQueue);
+            }
+        }
+        else if ( type.isComponentType() ) {
+            final CompositeType compositeType = (CompositeType) type;
+            evictCachedCollections( compositeType.getSubtypes(), id, source );
+        }
+    }
+}
+
+private static void removeCollectionFromCacheWithLock(
+        Object ck,
+        CollectionDataAccess cache,
+        EventSource source,
+        ActionQueue actionQueue) {
+    final SoftLock lock = cache.lockItem( source, ck, null );
+    cache.remove( source, ck );
+    actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+}
+```
+
+---
+
+## **Final Refactored Code**
+
+Below is only the **modified/additional parts** for brevity. (If you want the full class source pasted, specify!)
+
+---
+
+### **Inserted Helper Methods (toward the bottom)**
+```java
+private static void removeEntityFromCacheWithLock(
+        Object ck,
+        Object previousVersion,
+        EntityDataAccess cache,
+        EventSource source,
+        ActionQueue actionQueue) {
+    final SoftLock lock = cache.lockItem( source, ck, previousVersion );
+    cache.remove( source, ck );
+    actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+}
+
+private static void removeCollectionFromCacheWithLock(
+        Object ck,
+        CollectionDataAccess cache,
+        EventSource source,
+        ActionQueue actionQueue) {
+    final SoftLock lock = cache.lockItem( source, ck, null );
+    cache.remove( source, ck );
+    actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+}
+```
+
+### **In `evictEntity()` (replace body with:)**
+```java
+if ( persister.canWriteToCache() ) {
+    Object previousVersion = null;
+    if ( persister.isVersionPropertyGenerated() ) {
+        previousVersion = persister.getVersion( object );
+    }
+    final EntityDataAccess cache = persister.getCacheAccessStrategy();
+    final Object ck = cache.generateCacheKey(
+            id,
+            persister,
+            source.getFactory(),
+            source.getTenantIdentifier()
+    );
+    removeEntityFromCacheWithLock( ck, previousVersion, cache, source, source.getActionQueue() );
+}
+```
+
+### **In `evictCachedCollections()` (inside the for loop, replace this block:)**
+```java
+final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+final Object ck = cache.generateCacheKey(
+        id,
+        collectionPersister,
+        factory,
+        source.getTenantIdentifier()
+);
+final SoftLock lock = cache.lockItem( source, ck, null );
+cache.remove( source, ck );
+actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+```
+**with:**
+```java
+final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+final Object ck = cache.generateCacheKey(
+        id,
+        collectionPersister,
+        factory,
+        source.getTenantIdentifier()
+);
+removeCollectionFromCacheWithLock( ck, cache, source, actionQueue );
+```
+
+---
+
+## **Conclusion**
+There **are** repeated segments that benefit from **extract method** refactoring (especially cache eviction with locking and deferred unlock). The above refactoring applies **Extract Method** to these blocks, yielding a clearer, more maintainable implementation.
+If you want the full class code with these changes applied, just say so!

@@ -1,0 +1,223 @@
+23-04-2025, 20:40
+Yes, there **are multiple opportunities for Extract Method refactoring** in this code. The most prominent code smell is repeated code blocks across several test methods, particularly in the repeated form of nested for-loops that calculate fileSize, footerReadBufferSize, create files, and invoke similar per-file test logic.
+
+## Primary Opportunities:
+
+1. The **nested for-loops** in these test methods are repeated:
+    - `testNumBackendCalls(boolean)`
+    - `testSeekAndReadWithConf(boolean, SeekTo)`
+    - `testPartialReadWithNoData()`
+    - `testPartialReadWithSomeData()`
+
+2. **File Preparation & Test Execution** within the loops are also repeated.
+
+### Let’s EXTRACT the nested loop pattern into a utility/helper method named `forEachFileParameter` which takes a lambda for per-case logic.
+
+---
+
+## **Refactored Code:**
+Below, repetitive for-loop code has been extracted. Pay attention to **how simple the test methods become**, and how each per-file closure/lambda captures the unique per-test logic.
+
+```java
+// ... imports unchanged ...
+
+public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
+
+    private static final int TEN = 10;
+    private static final int TWENTY = 20;
+
+    // Helper interface for per-case logic
+    @FunctionalInterface
+    private interface FileTestCase {
+        void run(int fileIdx, int fileSize, int footerReadBufferSize,
+                 AzureBlobFileSystem fs, String fileName, byte[] fileContent, Path testFilePath) throws Exception;
+    }
+
+    public ITestAbfsInputStreamReadFooter() throws Exception {}
+
+    // --- Utility to iterate all file/size/param cases ---
+    private void forEachFileParameter(
+            boolean optimizeFooterRead,
+            FileTestCase testCaseLogic
+    ) throws Exception {
+        int fileIdx = 0;
+        for (int i = 0; i <= 4; i++) {
+            for (int j = 0; j <= 2; j++) {
+                int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
+                int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
+                final AzureBlobFileSystem fs = getFileSystem(
+                        optimizeFooterRead, fileSize, footerReadBufferSize);
+                String fileName = methodName.getMethodName() + fileIdx++;
+                byte[] fileContent = getRandomBytesArray(fileSize);
+                Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+                testCaseLogic.run(fileIdx-1, fileSize, footerReadBufferSize,
+                        fs, fileName, fileContent, testFilePath);
+            }
+        }
+    }
+
+    // For overloads where only optimizeFooterRead, fileSize are needed
+    private void forEachFileParameterSimple(
+            boolean optimizeFooterRead,
+            FileTestCase testCaseLogic
+    ) throws Exception {
+        int fileIdx = 0;
+        for (int i = 0; i <= 4; i++) {
+            for (int j = 0; j <= 2; j++) {
+                int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
+                int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
+                final AzureBlobFileSystem fs = getFileSystem(
+                        optimizeFooterRead, fileSize);
+                String fileName = methodName.getMethodName() + fileIdx++;
+                byte[] fileContent = getRandomBytesArray(fileSize);
+                Path testFilePath = createFileWithContent(fs, fileName, fileContent);
+                testCaseLogic.run(fileIdx-1, fileSize, footerReadBufferSize,
+                        fs, fileName, fileContent, testFilePath);
+            }
+        }
+    }
+
+    //--- TESTS ---
+
+    @Test
+    public void testOnlyOneServerCallIsMadeWhenTheConfIsTrue() throws Exception {
+        testNumBackendCalls(true);
+    }
+
+    @Test
+    public void testMultipleServerCallsAreMadeWhenTheConfIsFalse() throws Exception {
+        testNumBackendCalls(false);
+    }
+
+    private void testNumBackendCalls(boolean optimizeFooterRead) throws Exception {
+        forEachFileParameterSimple(optimizeFooterRead,
+            (fileIdx, fileSize, footerReadBufferSize, fs, fileName, fileContent, testFilePath) -> {
+                int length = AbfsInputStream.FOOTER_SIZE;
+                FutureDataInputStreamBuilder builder = getParameterizedBuilder(
+                        testFilePath, fs, footerReadBufferSize);
+                try (FSDataInputStream iStream = builder.build().get()) {
+                    verifyConfigValueInStream(iStream, footerReadBufferSize);
+                    byte[] buffer = new byte[length];
+                    Map<String, Long> metricMap = getInstrumentationMap(fs);
+                    long requestsMadeBeforeTest = metricMap.get(CONNECTIONS_MADE.getStatName());
+                    iStream.seek(fileSize - 8);
+                    iStream.read(buffer, 0, length);
+                    iStream.seek(fileSize - (TEN * ONE_KB));
+                    iStream.read(buffer, 0, length);
+                    iStream.seek(fileSize - (TWENTY * ONE_KB));
+                    iStream.read(buffer, 0, length);
+                    metricMap = getInstrumentationMap(fs);
+                    long requestsMadeAfterTest = metricMap.get(CONNECTIONS_MADE.getStatName());
+                    if (optimizeFooterRead) {
+                        assertEquals(1, requestsMadeAfterTest - requestsMadeBeforeTest);
+                    } else {
+                        assertEquals(3, requestsMadeAfterTest - requestsMadeBeforeTest);
+                    }
+                }
+            }
+        );
+    }
+
+    // SeekAndRead tests
+    @Test
+    public void testSeekToBeginAndReadWithConfTrue() throws Exception {
+        testSeekAndReadWithConf(true, SeekTo.BEGIN);
+    }
+    @Test
+    public void testSeekToBeginAndReadWithConfFalse() throws Exception {
+        testSeekAndReadWithConf(false, SeekTo.BEGIN);
+    }
+    @Test
+    public void testSeekToBeforeFooterAndReadWithConfTrue() throws Exception {
+        testSeekAndReadWithConf(true, SeekTo.BEFORE_FOOTER_START);
+    }
+    @Test
+    public void testSeekToBeforeFooterAndReadWithConfFalse() throws Exception {
+        testSeekAndReadWithConf(false, SeekTo.BEFORE_FOOTER_START);
+    }
+    @Test
+    public void testSeekToFooterAndReadWithConfTrue() throws Exception {
+        testSeekAndReadWithConf(true, SeekTo.AT_FOOTER_START);
+    }
+    @Test
+    public void testSeekToFooterAndReadWithConfFalse() throws Exception {
+        testSeekAndReadWithConf(false, SeekTo.AT_FOOTER_START);
+    }
+    @Test
+    public void testSeekToAfterFooterAndReadWithConfTrue() throws Exception {
+        testSeekAndReadWithConf(true, SeekTo.AFTER_FOOTER_START);
+    }
+    @Test
+    public void testSeekToToAfterFooterAndReadWithConfFalse() throws Exception {
+        testSeekAndReadWithConf(false, SeekTo.AFTER_FOOTER_START);
+    }
+    @Test
+    public void testSeekToEndAndReadWithConfTrue() throws Exception {
+        testSeekAndReadWithConf(true, SeekTo.END);
+    }
+    @Test
+    public void testSeekToEndAndReadWithConfFalse() throws Exception {
+        testSeekAndReadWithConf(false, SeekTo.END);
+    }
+
+    private void testSeekAndReadWithConf(boolean optimizeFooterRead, SeekTo seekTo) throws Exception {
+        forEachFileParameterSimple(optimizeFooterRead,
+            (fileIdx, fileSize, footerReadBufferSize, fs, fileName, fileContent, testFilePath) -> {
+                seekReadAndTest(fs, testFilePath, seekPos(seekTo, fileSize), HUNDRED,
+                        fileContent, footerReadBufferSize);
+            }
+        );
+    }
+
+    @Test
+    public void testPartialReadWithNoData() throws Exception {
+        forEachFileParameter(true,
+            (fileIdx, fileSize, footerReadBufferSize, fs, fileName, fileContent, testFilePath) -> {
+                testPartialReadWithNoData(fs, testFilePath,
+                        fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE,
+                        fileContent, footerReadBufferSize);
+            }
+        );
+    }
+
+    @Test
+    public void testPartialReadWithSomeData() throws Exception {
+        forEachFileParameter(true,
+            (fileIdx, fileSize, footerReadBufferSize, fs, fileName, fileContent, testFilePath) -> {
+                testPartialReadWithSomeData(fs, testFilePath,
+                        fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE,
+                        fileContent, footerReadBufferSize);
+            }
+        );
+    }
+
+    // ... rest of the code (original helper methods, etc) remain unchanged ...
+    // Including: seekPos(), seekReadAndTest(), testPartialReadWithNoData(...), testPartialReadWithSomeData(...), etc
+
+    // ... the rest of your code ...
+}
+```
+
+---
+
+## **Summary of Refactoring:**
+
+- Introduced a **FileTestCase** interface and two utility methods (`forEachFileParameter`, `forEachFileParameterSimple`) to factor out all nested for-loops for file parameter variation.
+- Updated all test methods to use these extract-method helpers.
+- No change to your actual core logic, only the test _iteration_ code is extracted.
+
+---
+
+### **Benefits**
+- **Removes Duplicated Loop Code:** Further changes (e.g., number of iterations, param calculations) will now only need to be done in a single place.
+- **Enhances Readability:** The intention of each test case is clearer now, by separating setup/iteration from the test logic.
+- Provides a single point for customizing file test parameterization for all tests.
+
+---
+
+If you want **further reduction** or to address other micro-duplications also possible (e.g., for file creation/naming, content generation), you can further refactor those into helpers as well.
+
+---
+
+### **Conclusion**
+**Extract Method refactoring greatly improves maintainability and readability for this test class by centralizing repeated loop logic and reducing code duplication.**

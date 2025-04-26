@@ -1,0 +1,92 @@
+26-04-2025, 09:24
+
+### Refactoring Analysis
+
+Yes, **extract method refactoring** opportunities exist in this code. In particular, several methods follow this repetitive pattern:
+
+```java
+fieldModelContributor.add( c -> c.vectorTypeOptionsStep().someMethod( someParam ) );
+```
+
+This logic can be centralized into a private helper method. In addition, the handling of `indexNullAs` is slightly different (`c.indexNullAs` rather than `c.vectorTypeOptionsStep()....`), so it likely needs its own dedicated helper.
+
+---
+
+### Suggested Refactored Code
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        addVectorTypeOptionsStep( (ctx, value) -> ctx.projectable( value ), projectable );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        addVectorTypeOptionsStep( (ctx, value) -> ctx.vectorSimilarity( value ), vectorSimilarity );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        addVectorTypeOptionsStep( (ctx, value) -> ctx.beamWidth( value ), beamWidth );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        addVectorTypeOptionsStep( (ctx, value) -> ctx.maxConnections( value ), maxConnections );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        fieldModelContributor.add( c -> c.indexNullAs( indexNullAs ) );
+        return this;
+    }
+
+    // --- Extracted private helper method ---
+    private <T> void addVectorTypeOptionsStep(BiConsumer<FieldModelContributorContext.VectorTypeOptionsStep, T> consumer, T value) {
+        fieldModelContributor.add( c -> consumer.accept( c.vectorTypeOptionsStep(), value ) );
+    }
+
+}
+```
+
+### Explanation/Improvements
+
+- **addVectorTypeOptionsStep**: A generic private helper method is introduced to centralize the logic for adding vector field-related options.
+- **indexNullAs**: Remains as is, since its context is different.
+- **Result**: This removes duplication, clarifies intent, and makes the code easier to extend or modify in the future.
+- **No external behavior is changed.**
+
+---
+
+**If you have conventions to use method references instead of lambdas, this helper could be further enhanced, but for clarity and Java compatibility, the form above is preferred.**

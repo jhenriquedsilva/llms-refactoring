@@ -1,0 +1,93 @@
+26-04-2025, 09:24
+
+### Analysis & Identification
+
+There is some repetition in these methods:
+- `projectable`
+- `vectorSimilarity`
+- `beamWidth`
+- `maxConnections`
+
+Each adds to `fieldModelContributor` a lambda, which calls a specific method on `vectorTypeOptionsStep`.
+This duplicated pattern is a prime candidate for an *extract method* refactoring.
+
+The `indexNullAs` method is slightly different (doesn't call `.vectorTypeOptionsStep()`, but calls directly on `c`), so it should remain as is.
+
+### Suggested Refactoring
+
+We can extract a private helper method to wrap the repetitive pattern for `vectorTypeOptionsStep()` calls.
+
+---
+
+#### **Refactored Code**
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import java.util.function.Consumer;
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    private PropertyMappingVectorFieldStep addVectorFieldContributor(Consumer<FieldModelContributorContext.VectorTypeOptionsStep> contributor) {
+        fieldModelContributor.add( c -> contributor.accept( c.vectorTypeOptionsStep() ) );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        return addVectorFieldContributor( s -> s.projectable( projectable ) );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        return addVectorFieldContributor( s -> s.vectorSimilarity( vectorSimilarity ) );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        return addVectorFieldContributor( s -> s.beamWidth( beamWidth ) );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        return addVectorFieldContributor( s -> s.maxConnections( maxConnections ) );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        fieldModelContributor.add( c -> c.indexNullAs( indexNullAs ) );
+        return this;
+    }
+
+}
+```
+
+---
+
+**Summary of changes:**
+- Introduced `addVectorFieldContributor` to reduce duplication in handling vector-related options.
+- Kept `indexNullAs` separate due to its distinctive behavior.
+
+**Benefits:**
+- Improved maintainability.
+- Reduced code duplication.
+- Clearer intent for vector field configuration methods.

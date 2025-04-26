@@ -1,0 +1,94 @@
+26-04-2025, 10:55
+
+**Analysis of Refactoring Opportunities (Extract Method):**
+
+In the given `MvcUriComponentsBuilder` class, several public static methods follow a pattern like:
+
+- Obtain a `Method` based on class, method name, and arguments
+- Delegate to another `fromMethodInternal(...)` helper
+
+This results in similar blocks in:
+
+- `fromMethodName(Class, String, Object...)`
+- `fromMethodName(UriComponentsBuilder, Class, String, Object...)`
+- `fromMethod(Class, Method, Object...)`
+- `fromMethod(UriComponentsBuilder, @Nullable Class, Method, Object...)`
+- `fromMethodCall(Object)`
+- `fromMethodCall(UriComponentsBuilder, Object)`
+
+All these end up extracting the method, controller type, and arguments, then call `fromMethodInternal()`.
+
+However, in terms of pure *code duplication*, the only notable duplication is the block in `fromMethodCall` and `fromMethodCall(UriComponentsBuilder,...)`:
+
+```java
+Assert.isInstanceOf(MethodInvocationInfo.class, info, "MethodInvocationInfo required");
+MethodInvocationInfo invocationInfo = (MethodInvocationInfo) info;
+Class<?> controllerType = invocationInfo.getControllerType();
+Method method = invocationInfo.getControllerMethod();
+Object[] arguments = invocationInfo.getArgumentValues();
+return fromMethodInternal(builder, controllerType, method, arguments);
+```
+
+This could be extracted into a private helper:
+
+```java
+private static UriComponentsBuilder fromMethodInvocationInfo(@Nullable UriComponentsBuilder builder, Object info) {
+    Assert.isInstanceOf(MethodInvocationInfo.class, info, "MethodInvocationInfo required");
+    MethodInvocationInfo invocationInfo = (MethodInvocationInfo) info;
+    Class<?> controllerType = invocationInfo.getControllerType();
+    Method method = invocationInfo.getControllerMethod();
+    Object[] arguments = invocationInfo.getArgumentValues();
+    return fromMethodInternal(builder, controllerType, method, arguments);
+}
+```
+
+Then both methods become thin delegates.
+
+**Resulting Class (with Refactored Extracted Method)**
+Below is the class with that duplicated code extracted into a helper method (marked with `// extracted`):
+
+```java
+package org.springframework.web.servlet.mvc.method.annotation;
+
+// ... imports as before ...
+
+public class MvcUriComponentsBuilder {
+
+    // ... all static fields and blocks as before ...
+
+    // ... all other methods as before ...
+
+    public static UriComponentsBuilder fromMethodCall(Object info) {
+        return fromMethodInvocationInfo(null, info); // << refactored
+    }
+
+    public static UriComponentsBuilder fromMethodCall(UriComponentsBuilder builder, Object info) {
+        return fromMethodInvocationInfo(builder, info); // << refactored
+    }
+
+    // ... all other methods as before ...
+
+    /**
+     * Extracted method to reduce code duplication for fromMethodCall variants.
+     */
+    private static UriComponentsBuilder fromMethodInvocationInfo(@Nullable UriComponentsBuilder builder, Object info) {
+        Assert.isInstanceOf(MethodInvocationInfo.class, info, "MethodInvocationInfo required");
+        MethodInvocationInfo invocationInfo = (MethodInvocationInfo) info;
+        Class<?> controllerType = invocationInfo.getControllerType();
+        Method method = invocationInfo.getControllerMethod();
+        Object[] arguments = invocationInfo.getArgumentValues();
+        return fromMethodInternal(builder, controllerType, method, arguments);
+    }
+
+    // ... remaining code as before ...
+}
+```
+
+**Rest of the class remains unchanged.**
+
+---
+
+### Summary
+There is a refactoring opportunity due to duplicated code in `fromMethodCall(Object)` and `fromMethodCall(UriComponentsBuilder, Object)`. Extracting that logic into a private helper (`fromMethodInvocationInfo`) improves readability and maintainability, and removes duplication. All other code does not warrant further extraction based on visible duplication.
+
+If you need the **full verbatim class** with this change pasted in, let me know! Otherwise, the above illustrates the only necessary refactoring based on the code you provided.

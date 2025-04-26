@@ -1,0 +1,207 @@
+26-04-2025, 15:45
+
+Certainly! There **are several opportunities for extract method refactoring** in the given `PulsarPropertiesMapper` class to enhance readability, maintainability, and follow the single responsibility principle. Here are areas where logic is repetitious or where distinct responsibilities can be encapsulated in smaller methods:
+
+1. **Mapping timeouts and URLs** in `customizeClientBuilder` and `customizeAdminBuilder` can be extracted.
+2. **Serializing authentication parameters** in `customizeAuthentication` can be extracted.
+3. **Subscription customization** in both consumer builder and container can be shared.
+4. For each builder customization (`ProducerBuilder`, `ConsumerBuilder`, etc.), the mapping steps for properties can be extracted to their own helper methods.
+
+Below is the **refactored class with extract method refactorings applied**.
+
+---
+
+```java
+package org.springframework.boot.autoconfigure.pulsar;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import org.apache.pulsar.client.admin.PulsarAdminBuilder;
+import org.apache.pulsar.client.api.ClientBuilder;
+import org.apache.pulsar.client.api.ConsumerBuilder;
+import org.apache.pulsar.client.api.ProducerBuilder;
+import org.apache.pulsar.client.api.PulsarClientException.UnsupportedAuthenticationException;
+import org.apache.pulsar.client.api.ReaderBuilder;
+import org.apache.pulsar.common.util.ObjectMapperFactory;
+
+import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.pulsar.listener.PulsarContainerProperties;
+import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
+import org.springframework.util.StringUtils;
+
+/**
+ * Helper class used to map {@link PulsarProperties} to various builder customizers.
+ *
+ * @author Chris Bono
+ * @author Phillip Webb
+ */
+final class PulsarPropertiesMapper {
+
+    private final PulsarProperties properties;
+
+    PulsarPropertiesMapper(PulsarProperties properties) {
+        this.properties = properties;
+    }
+
+    void customizeClientBuilder(ClientBuilder clientBuilder, PulsarConnectionDetails connectionDetails) {
+        PulsarProperties.Client clientProps = this.properties.getClient();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+
+        map.from(connectionDetails::getBrokerUrl).to(clientBuilder::serviceUrl);
+        mapTimeoutsForClient(clientProps, map, clientBuilder);
+        customizeAuthentication(clientBuilder::authentication, clientProps.getAuthentication());
+    }
+
+    private void mapTimeoutsForClient(PulsarProperties.Client clientProps, PropertyMapper map, ClientBuilder clientBuilder) {
+        map.from(clientProps::getConnectionTimeout).to(timeoutProperty(clientBuilder::connectionTimeout));
+        map.from(clientProps::getOperationTimeout).to(timeoutProperty(clientBuilder::operationTimeout));
+        map.from(clientProps::getLookupTimeout).to(timeoutProperty(clientBuilder::lookupTimeout));
+    }
+
+    void customizeAdminBuilder(PulsarAdminBuilder adminBuilder, PulsarConnectionDetails connectionDetails) {
+        PulsarProperties.Admin adminProps = this.properties.getAdmin();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+
+        map.from(connectionDetails::getAdminUrl).to(adminBuilder::serviceHttpUrl);
+        mapTimeoutsForAdmin(adminProps, map, adminBuilder);
+        customizeAuthentication(adminBuilder::authentication, adminProps.getAuthentication());
+    }
+
+    private void mapTimeoutsForAdmin(PulsarProperties.Admin adminProps, PropertyMapper map, PulsarAdminBuilder adminBuilder) {
+        map.from(adminProps::getConnectionTimeout).to(timeoutProperty(adminBuilder::connectionTimeout));
+        map.from(adminProps::getReadTimeout).to(timeoutProperty(adminBuilder::readTimeout));
+        map.from(adminProps::getRequestTimeout).to(timeoutProperty(adminBuilder::requestTimeout));
+    }
+
+    private void customizeAuthentication(AuthenticationConsumer authentication, PulsarProperties.Authentication properties) {
+        if (StringUtils.hasText(properties.getPluginClassName())) {
+            try {
+                String authParamString = getSortedAuthParamsString(properties.getParameters());
+                authentication.accept(properties.getPluginClassName(), authParamString);
+            }
+            catch (UnsupportedAuthenticationException ex) {
+                throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
+            }
+        }
+    }
+
+    private String getSortedAuthParamsString(Map<String, String> params) {
+        try {
+            Map<String, String> sortedParams = new TreeMap<>(params);
+            return ObjectMapperFactory.create().writeValueAsString(sortedParams);
+        }
+        catch (Exception ex) {
+            throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
+        }
+    }
+
+    <T> void customizeProducerBuilder(ProducerBuilder<T> producerBuilder) {
+        PulsarProperties.Producer producerProps = this.properties.getProducer();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        mapProducerProperties(producerProps, map, producerBuilder);
+    }
+
+    private <T> void mapProducerProperties(PulsarProperties.Producer producerProps, PropertyMapper map, ProducerBuilder<T> producerBuilder) {
+        map.from(producerProps::getName).to(producerBuilder::producerName);
+        map.from(producerProps::getTopicName).to(producerBuilder::topic);
+        map.from(producerProps::getSendTimeout).to(timeoutProperty(producerBuilder::sendTimeout));
+        map.from(producerProps::getMessageRoutingMode).to(producerBuilder::messageRoutingMode);
+        map.from(producerProps::getHashingScheme).to(producerBuilder::hashingScheme);
+        map.from(producerProps::isBatchingEnabled).to(producerBuilder::enableBatching);
+        map.from(producerProps::isChunkingEnabled).to(producerBuilder::enableChunking);
+        map.from(producerProps::getCompressionType).to(producerBuilder::compressionType);
+        map.from(producerProps::getAccessMode).to(producerBuilder::accessMode);
+    }
+
+    <T> void customizeConsumerBuilder(ConsumerBuilder<T> consumerBuilder) {
+        PulsarProperties.Consumer consumerProps = this.properties.getConsumer();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        mapConsumerProperties(consumerProps, map, consumerBuilder);
+        customizeConsumerBuilderSubscription(consumerBuilder);
+    }
+
+    private <T> void mapConsumerProperties(PulsarProperties.Consumer consumerProps, PropertyMapper map, ConsumerBuilder<T> consumerBuilder) {
+        map.from(consumerProps::getName).to(consumerBuilder::consumerName);
+        map.from(consumerProps::getTopics).as(ArrayList::new).to(consumerBuilder::topics);
+        map.from(consumerProps::getTopicsPattern).to(consumerBuilder::topicsPattern);
+        map.from(consumerProps::getPriorityLevel).to(consumerBuilder::priorityLevel);
+        map.from(consumerProps::isReadCompacted).to(consumerBuilder::readCompacted);
+        map.from(consumerProps::getDeadLetterPolicy).as(DeadLetterPolicyMapper::map).to(consumerBuilder::deadLetterPolicy);
+        map.from(consumerProps::isRetryEnable).to(consumerBuilder::enableRetry);
+    }
+
+    private void customizeConsumerBuilderSubscription(ConsumerBuilder<?> consumerBuilder) {
+        PulsarProperties.Consumer.Subscription subscriptionProps = this.properties.getConsumer().getSubscription();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        mapSubscriptionProperties(subscriptionProps, map, consumerBuilder);
+    }
+
+    private void mapSubscriptionProperties(PulsarProperties.Consumer.Subscription subscriptionProps, PropertyMapper map, ConsumerBuilder<?> consumerBuilder) {
+        map.from(subscriptionProps::getName).to(consumerBuilder::subscriptionName);
+        map.from(subscriptionProps::getInitialPosition).to(consumerBuilder::subscriptionInitialPosition);
+        map.from(subscriptionProps::getMode).to(consumerBuilder::subscriptionMode);
+        map.from(subscriptionProps::getTopicsMode).to(consumerBuilder::subscriptionTopicsMode);
+        map.from(subscriptionProps::getType).to(consumerBuilder::subscriptionType);
+    }
+
+    void customizeContainerProperties(PulsarContainerProperties containerProperties) {
+        customizePulsarContainerConsumerSubscriptionProperties(containerProperties);
+        customizePulsarContainerListenerProperties(containerProperties);
+    }
+
+    private void customizePulsarContainerConsumerSubscriptionProperties(PulsarContainerProperties containerProperties) {
+        PulsarProperties.Consumer.Subscription subscriptionProps = this.properties.getConsumer().getSubscription();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        map.from(subscriptionProps::getType).to(containerProperties::setSubscriptionType);
+    }
+
+    private void customizePulsarContainerListenerProperties(PulsarContainerProperties containerProperties) {
+        PulsarProperties.Listener listenerProps = this.properties.getListener();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        map.from(listenerProps::getSchemaType).to(containerProperties::setSchemaType);
+        map.from(listenerProps::isObservationEnabled).to(containerProperties::setObservationEnabled);
+    }
+
+    <T> void customizeReaderBuilder(ReaderBuilder<T> readerBuilder) {
+        PulsarProperties.Reader readerProps = this.properties.getReader();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        mapReaderProperties(readerProps, map, readerBuilder);
+    }
+
+    private <T> void mapReaderProperties(PulsarProperties.Reader readerProps, PropertyMapper map, ReaderBuilder<T> readerBuilder) {
+        map.from(readerProps::getName).to(readerBuilder::readerName);
+        map.from(readerProps::getTopics).to(readerBuilder::topics);
+        map.from(readerProps::getSubscriptionName).to(readerBuilder::subscriptionName);
+        map.from(readerProps::getSubscriptionRolePrefix).to(readerBuilder::subscriptionRolePrefix);
+        map.from(readerProps::isReadCompacted).to(readerBuilder::readCompacted);
+    }
+
+    void customizeReaderContainerProperties(PulsarReaderContainerProperties readerContainerProperties) {
+        PulsarProperties.Reader readerProps = this.properties.getReader();
+        PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        map.from(readerProps::getTopics).to(readerContainerProperties::setTopics);
+    }
+
+    private Consumer<Duration> timeoutProperty(BiConsumer<Integer, TimeUnit> setter) {
+        return (duration) -> setter.accept((int) duration.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private interface AuthenticationConsumer {
+        void accept(String authPluginClassName, String authParamString) throws UnsupportedAuthenticationException;
+    }
+
+}
+```
+
+**Summary of improvements:**
+- **Extracted property mapping code** into `mapXXXProperties` methods, making the main customization methods (`customizeXXXBuilder`) easier to read and maintain.
+- **Authentication logic** for parameter sorting and stringification is delegated to a dedicated method.
+- All "repeat pattern" property mapping steps are now in single-responsibility methods.
+
+**This structure will facilitate future changes and extensions, as each method does exactly one thing.**

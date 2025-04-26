@@ -1,0 +1,84 @@
+26-04-2025, 09:24
+There **are** clear extract method refactoring opportunities in this class. The following repeated pattern appears in multiple methods:
+
+```java
+fieldModelContributor.add( c -> c.vectorTypeOptionsStep().<foo>( <bar> ) );
+```
+
+This can be extracted into a private helper method, reducing duplication and improving readability.
+
+### Refactored Code
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+import java.util.function.BiConsumer;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        vectorFieldOption((options, value) -> options.projectable((Projectable) value), projectable);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        // Intentionally does nothing, per original code.
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        vectorFieldOption((options, value) -> options.vectorSimilarity((VectorSimilarity) value), vectorSimilarity);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        vectorFieldOption((options, value) -> options.beamWidth((Integer) value), beamWidth);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        vectorFieldOption((options, value) -> options.maxConnections((Integer) value), maxConnections);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        fieldModelContributor.add( c -> c.indexNullAs( indexNullAs ) );
+        return this;
+    }
+
+    // Private helper method for repetitive vectorTypeOptionsStep calls
+    private <T> void vectorFieldOption(BiConsumer<FieldModelContributorContext.VectorTypeOptionsStep, T> setter, T value) {
+        fieldModelContributor.add(c -> setter.accept(c.vectorTypeOptionsStep(), value));
+    }
+}
+```
+
+## Notes:
+
+- **`indexNullAs` is left as-is** since it does not use `vectorTypeOptionsStep()`.
+- The helper method `vectorFieldOption` takes a `BiConsumer` to perform the setting, keeping it strongly typed.
+- If you prefer greater type safety and readability, you can create one helper method for each argument type or use method references.
+
+**Summary:**
+**Yes, refactoring is possible** by extracting the common code pattern in methods calling `vectorTypeOptionsStep()`. The above refactored code accomplishes this.

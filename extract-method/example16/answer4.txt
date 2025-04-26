@@ -1,0 +1,253 @@
+26-04-2025, 10:55
+
+### Review and Refactoring Opportunities
+
+**Extract Method** is the process of moving (often duplicated) code into a new method to:
+- Increase code reusability
+- Reduce code duplication
+- Increase method readability (by hiding "how" in favor of "what")
+
+#### Examination
+
+In your shared code, several patterns are candidates for extract method—specifically, repeated blocks used to:
+- Fetch and check values,
+- Assign values after checking for null/length,
+- Interrogate classes for mapping/prefix,
+- Set up controller invocation details.
+
+The **most glaring code duplications** are these two blocks:
+
+```java
+// This block appears in:
+// fromMethodCall(Object), fromMethodCall(UriComponentsBuilder, Object)
+Assert.isInstanceOf(MethodInvocationInfo.class, info, "MethodInvocationInfo required");
+MethodInvocationInfo invocationInfo = (MethodInvocationInfo) info;
+Class<?> controllerType = invocationInfo.getControllerType();
+Method method = invocationInfo.getControllerMethod();
+Object[] arguments = invocationInfo.getArgumentValues();
+return fromMethodInternal([builder], controllerType, method, arguments);
+```
+
+And similarly:
+
+```java
+// This block appears in:
+// fromController(Class), fromController(UriComponentsBuilder, Class)
+builder = getBaseUrlToUse(builder);
+String prefix = getPathPrefix(controllerType);
+builder.path(prefix);
+String mapping = getClassMapping(controllerType);
+mapping = (!StringUtils.hasText(prefix + mapping) ? "/" : mapping);
+builder.path(mapping);
+return builder;
+```
+
+There is no reason to repeat argument extraction block for both overloads of `fromMethodCall`, or to repeat the prefix+mapping+path for "fromController".
+
+#### Refactoring: Extract Helper Methods
+
+Let's extract the following methods:
+
+1. `extractMethodInvocationInfo(...)` for extracting controllerType, method, arguments from an Object.
+2. `setPrefixAndMapping(...)` for adding the prefix and mapping path to a builder.
+
+#### Refactored Class
+
+Below you'll find a version of your class with these two helper methods extracted and _all_ calls replaced.
+
+> **NOTE:** The class is otherwise identical for clarity. Only relevant methods are changed.
+
+---
+
+```java
+package org.springframework.web.servlet.mvc.method.annotation;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.cglib.core.SpringNamingPolicy;
+import org.springframework.cglib.proxy.Callback;
+import org.springframework.cglib.proxy.Enhancer;
+import org.springframework.cglib.proxy.Factory;
+import org.springframework.cglib.proxy.MethodInterceptor;
+import org.springframework.cglib.proxy.MethodProxy;
+import org.springframework.core.DefaultParameterNameDiscoverer;
+import org.springframework.core.MethodIntrospector;
+import org.springframework.core.MethodParameter;
+import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.SynthesizingMethodParameter;
+import org.springframework.lang.Nullable;
+import org.springframework.objenesis.ObjenesisException;
+import org.springframework.objenesis.SpringObjenesis;
+import org.springframework.util.AntPathMatcher;
+import org.springframework.util.Assert;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.PathMatcher;
+import org.springframework.util.ReflectionUtils;
+import org.springframework.util.ReflectionUtils.MethodFilter;
+import org.springframework.util.StringUtils;
+import org.springframework.util.SystemPropertyUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.method.annotation.RequestParamMethodArgumentResolver;
+import org.springframework.web.method.support.CompositeUriComponentsContributor;
+import org.springframework.web.servlet.DispatcherServlet;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfoHandlerMapping;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.pattern.PathPatternParser;
+
+public class MvcUriComponentsBuilder {
+
+    // ... All class fields remain unchanged ...
+
+    // All static initializers, fields, constructors unchanged
+
+    /**
+     * Create a {@link UriComponentsBuilder} from the mapping of a controller class
+     */
+    public static UriComponentsBuilder fromController(Class<?> controllerType) {
+        return fromController(null, controllerType);
+    }
+
+    public static UriComponentsBuilder fromController(@Nullable UriComponentsBuilder builder,
+                                                      Class<?> controllerType) {
+        builder = getBaseUrlToUse(builder);
+        setPrefixAndMapping(builder, controllerType);
+        return builder;
+    }
+
+    /**
+     * Create a {@link UriComponentsBuilder} from the mapping of a controller
+     * method and an array of method argument values.
+     */
+    public static UriComponentsBuilder fromMethodName(Class<?> controllerType,
+                                                      String methodName, Object... args) {
+        Method method = getMethod(controllerType, methodName, args);
+        return fromMethodInternal(null, controllerType, method, args);
+    }
+
+    public static UriComponentsBuilder fromMethodName(UriComponentsBuilder builder,
+                                                      Class<?> controllerType, String methodName, Object... args) {
+        Method method = getMethod(controllerType, methodName, args);
+        return fromMethodInternal(builder, controllerType, method, args);
+    }
+
+    public static UriComponentsBuilder fromMethod(Class<?> controllerType, Method method, Object... args) {
+        return fromMethodInternal(null, controllerType, method, args);
+    }
+
+    public static UriComponentsBuilder fromMethod(UriComponentsBuilder baseUrl,
+                                                  @Nullable Class<?> controllerType, Method method, Object... args) {
+        return fromMethodInternal(baseUrl,
+                (controllerType != null ? controllerType : method.getDeclaringClass()), method, args);
+    }
+
+    public static UriComponentsBuilder fromMethodCall(Object info) {
+        MethodInvocationDetails details = extractMethodInvocationInfo(info);
+        return fromMethodInternal(null, details.controllerType, details.method, details.arguments);
+    }
+
+    public static UriComponentsBuilder fromMethodCall(UriComponentsBuilder builder, Object info) {
+        MethodInvocationDetails details = extractMethodInvocationInfo(info);
+        return fromMethodInternal(builder, details.controllerType, details.method, details.arguments);
+    }
+
+    // ... The rest of the code unchanged except the helpers ...
+
+    /**
+     * Helper to extract method invocation info from an Object (for fromMethodCall)
+     */
+    private static MethodInvocationDetails extractMethodInvocationInfo(Object info) {
+        Assert.isInstanceOf(MethodInvocationInfo.class, info, "MethodInvocationInfo required");
+        MethodInvocationInfo invocationInfo = (MethodInvocationInfo) info;
+        return new MethodInvocationDetails(
+                invocationInfo.getControllerType(),
+                invocationInfo.getControllerMethod(),
+                invocationInfo.getArgumentValues()
+        );
+    }
+
+    // Helper class for grouping the controller type, method, and arguments
+    private static class MethodInvocationDetails {
+        final Class<?> controllerType;
+        final Method method;
+        final Object[] arguments;
+
+        MethodInvocationDetails(Class<?> controllerType, Method method, Object[] arguments) {
+            this.controllerType = controllerType;
+            this.method = method;
+            this.arguments = arguments;
+        }
+    }
+
+    /**
+     * Helper to set prefix and mapping on the given builder for the controllerType
+     */
+    private static void setPrefixAndMapping(UriComponentsBuilder builder, Class<?> controllerType) {
+        // Externally configured prefix via PathConfigurer..
+        String prefix = getPathPrefix(controllerType);
+        builder.path(prefix);
+
+        String mapping = getClassMapping(controllerType);
+        mapping = (!StringUtils.hasText(prefix + mapping) ? "/" : mapping);
+        builder.path(mapping);
+    }
+
+    private static UriComponentsBuilder fromMethodInternal(@Nullable UriComponentsBuilder builder,
+                                                           Class<?> controllerType, Method method, Object... args) {
+
+        builder = getBaseUrlToUse(builder);
+
+        // Externally configured prefix via PathConfigurer..
+        String prefix = getPathPrefix(controllerType);
+        builder.path(prefix);
+
+        String typePath = getClassMapping(controllerType);
+        String methodPath = getMethodMapping(method);
+        String path = pathMatcher.combine(typePath, methodPath);
+        path = PathPatternParser.defaultInstance.initFullPathPattern(path);
+        if (!StringUtils.hasText(prefix + path)) {
+            path = "/";
+        }
+        builder.path(path);
+
+        return applyContributors(builder, method, args);
+    }
+
+    // All other methods remain unchanged...
+
+}
+```
+
+---
+
+### **Summary of Extracted/Refactored Methods**
+
+1. **MethodInvocationDetails + extractMethodInvocationInfo(Object)**
+   - Consolidates repeated casting + assertion + field extraction for fromMethodCall variants.
+2. **setPrefixAndMapping(UriComponentsBuilder, Class)**
+   - Consolidates code for prefix + mapping appending for fromController variants.
+
+Everything else is unchanged; only blatant duplication is moved out as a helper, strictly following your instructions. For deeper refactorings (such as on repeated code across type and method mapping), you could continue down this path—but these two are the most important "extract method" opportunities in your snippet.
+
+---
+
+**If you would like a more aggressive refactor on other methods (e.g., method mapping, logging, argument/parameter checking), let me know!**

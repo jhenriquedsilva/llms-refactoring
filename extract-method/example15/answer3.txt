@@ -1,0 +1,72 @@
+26-04-2025, 10:50
+
+Yes, there is a clear **extract method refactoring opportunity** in the code you provided.
+
+### Explanation
+
+Both methods, `getGenericType(Field field)` and `getGenericType(Parameter parameter)`, have duplicated logic after obtaining the `Type` object. The only difference is how the initial `Type` is obtained:
+- For `Field`, it's `field.getGenericType()`
+- For `Parameter`, it's `parameter.getType()`
+
+**The logic that determines the "generic type" from a `Type` object is duplicated.**
+You can extract this logic into a private helper method, e.g., `resolveGenericType(Type generic)`.
+
+---
+
+## Refactored Code
+```java
+package org.mockito.internal.util.reflection;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+
+public class GenericMaster {
+
+    /**
+     * Finds the generic type (parametrized type) of the field. If the field is not generic it returns Object.class.
+     *
+     * @param field the field to inspect
+     */
+    public Class<?> getGenericType(Field field) {
+        return resolveGenericType(field.getGenericType());
+    }
+
+    /**
+     * Resolves the type (parametrized type) of the parameter. If the field is not generic it returns Object.class.
+     *
+     * @param parameter the parameter to inspect
+     */
+    public Class<?> getGenericType(Parameter parameter) {
+        return resolveGenericType(parameter.getType());
+    }
+
+    /**
+     * Extracts the actual generic class from a Type, or returns Object.class.
+     *
+     * @param generic the type to inspect
+     */
+    private Class<?> resolveGenericType(Type generic) {
+        if (generic instanceof ParameterizedType) {
+            Type actual = ((ParameterizedType) generic).getActualTypeArguments()[0];
+            if (actual instanceof Class) {
+                return (Class<?>) actual;
+            } else if (actual instanceof ParameterizedType) {
+                // in case of nested generics we don't go deep
+                return (Class<?>) ((ParameterizedType) actual).getRawType();
+            }
+        }
+        return Object.class;
+    }
+}
+```
+
+---
+
+### Benefits
+- **Removes duplication** (improves maintainability)
+- Easier to change generic extraction logic in one place
+- Methods are more focused on their distinct responsibilities
+
+**This is a textbook use of the Extract Method refactoring technique.**

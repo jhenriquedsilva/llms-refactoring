@@ -1,0 +1,90 @@
+26-04-2025, 09:24
+
+**Refactoring Review & Opportunities**
+
+Yes, there are clear method extract/abstraction opportunities. Specifically, most of the methods (except `searchable()`) follow a repetitive pattern:
+
+```java
+fieldModelContributor.add( c -> c.vectorTypeOptionsStep().SOME_METHOD(arg) );
+return this;
+```
+
+Similarly for `indexNullAs()` (except it’s called on `c` directly, not on `vectorTypeOptionsStep()`).
+We can extract a private utility method to reduce duplication and improve maintainability.
+
+**Refactored Code**
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+import java.util.function.BiConsumer;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        contributeOption( (step, value) -> step.projectable( (Projectable) value ), projectable );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        contributeOption( (step, value) -> step.vectorSimilarity( (VectorSimilarity) value ), vectorSimilarity );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        contributeOption( (step, value) -> step.beamWidth( (int) value ), beamWidth );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        contributeOption( (step, value) -> step.maxConnections( (int) value ), maxConnections );
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        fieldModelContributor.add( c -> c.indexNullAs( indexNullAs ) );
+        return this;
+    }
+
+    // Private utility method for refactoring
+    private <T> void contributeOption(BiConsumer<FieldModelContributorContext.VectorTypeOptionsStep, T> configFunction, T value) {
+        fieldModelContributor.add( c -> configFunction.accept( c.vectorTypeOptionsStep(), value ) );
+    }
+}
+```
+
+**Explanation of refactoring:**
+
+- Added a private generic utility method `contributeOption` that takes a `BiConsumer` representing the configuration method and the value to apply.
+- Used this in the relevant setter methods (`projectable`, `vectorSimilarity`, `beamWidth`, `maxConnections`).
+- `indexNullAs` remains separate due to operating on `c` directly, not through `vectorTypeOptionsStep()`.
+- This approach improves maintainability, reduces duplication, and makes the class more DRY.
+
+---
+
+**If you want to further refactor (even `indexNullAs`), you could generalize the utility method, but as is, the above refactoring strikes a good balance.**

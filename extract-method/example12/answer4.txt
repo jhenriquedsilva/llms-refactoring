@@ -1,0 +1,264 @@
+26-04-2025, 10:10
+
+Certainly! The provided code, especially in the `load()` and `save()` methods, contains **blocks of code that handle distinct sub-tasks**, making it a strong candidate for _extract method_ refactoring to improve readability and maintainability.
+
+### Refactoring Opportunities
+#### 1. `load()` Method
+- The block within the `readWithRetries` lambda: It contains logic for reading the file, calculating new hash, checking UTF-8 BOM, decoding, snapshot handling, and setting state. These can be split.
+    - Extract: `processLoadedBytes(byte[] in, FileSnapshot newSnapshot, FileSnapshot oldSnapshot)` which performs hash check, decoding and state updates.
+    - Extract: `decodeConfig(byte[] in)` for the UTF-8 and BOM logic.
+
+#### 2. `save()` Method
+- The repetitive `ByteArrayOutputStream` with BOM writing and standard encoding logic can be separated.
+    - Extract: `encodeConfigWithBom(String text)` for the BOM case.
+    - Extract: `writeConfigFile(byte[] out)` for the writing logic with locking.
+
+---
+
+## **Refactored Class**
+
+```java
+package org.eclipse.jgit.storage.file;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.text.MessageFormat;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.eclipse.jgit.errors.ConfigInvalidException;
+import org.eclipse.jgit.errors.LockFailedException;
+import org.eclipse.jgit.internal.JGitText;
+import org.eclipse.jgit.internal.storage.file.FileSnapshot;
+import org.eclipse.jgit.internal.storage.file.LockFile;
+import org.eclipse.jgit.lib.Config;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.util.FS;
+import org.eclipse.jgit.util.FileUtils;
+import org.eclipse.jgit.util.IO;
+import org.eclipse.jgit.util.RawParseUtils;
+
+/**
+ * The configuration file that is stored in the file of the file system.
+ */
+public class FileBasedConfig extends StoredConfig {
+
+    private final File configFile;
+
+    private final FS fs;
+
+    // In-process synchronization between load() and save().
+    private final ReentrantReadWriteLock lock;
+
+    private boolean utf8Bom;
+
+    private volatile FileSnapshot snapshot;
+
+    private volatile ObjectId hash;
+
+    private AtomicBoolean exists = new AtomicBoolean();
+
+    public FileBasedConfig(File cfgLocation, FS fs) {
+        this(null, cfgLocation, fs);
+    }
+
+    public FileBasedConfig(Config base, File cfgLocation, FS fs) {
+        super(base);
+        configFile = cfgLocation;
+        this.fs = fs;
+        this.snapshot = FileSnapshot.DIRTY;
+        this.hash = ObjectId.zeroId();
+        this.lock = new ReentrantReadWriteLock(false);
+    }
+
+    @Override
+    protected boolean notifyUponTransientChanges() {
+        // we will notify listeners upon save()
+        return false;
+    }
+
+    public final File getFile() {
+        return configFile;
+    }
+
+    boolean exists() {
+        return exists.get();
+    }
+
+    @Override
+    public void load() throws IOException, ConfigInvalidException {
+        lock.readLock().lock();
+        try {
+            Boolean wasRead = FileUtils.readWithRetries(getFile(), f -> {
+                FileSnapshot oldSnapshot = snapshot;
+                FileSnapshot newSnapshot = FileSnapshot.saveNoConfig(f);
+                byte[] in = IO.readFully(f);
+                processLoadedBytes(in, newSnapshot, oldSnapshot);
+                return Boolean.TRUE;
+            });
+            if (wasRead == null) {
+                clear();
+                snapshot = FileSnapshot.MISSING_FILE;
+            }
+            exists.set(wasRead != null);
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ConfigInvalidException(MessageFormat
+                    .format(JGitText.get().cannotReadFile, getFile()), e);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Extracted method for handling the loaded data in 'load()'.
+     */
+    private void processLoadedBytes(byte[] in, FileSnapshot newSnapshot, FileSnapshot oldSnapshot) throws ConfigInvalidException {
+        ObjectId newHash = hash(in);
+        if (hash.equals(newHash)) {
+            if (oldSnapshot.equals(newSnapshot)) {
+                oldSnapshot.setClean(newSnapshot);
+            } else {
+                snapshot = newSnapshot;
+            }
+        } else {
+            String decoded = decodeConfig(in);
+            fromText(decoded);
+            snapshot = newSnapshot;
+            hash = newHash;
+        }
+    }
+
+    /**
+     * Extracted method to decode config bytes and set UTF-8 BOM flag.
+     */
+    private String decodeConfig(byte[] in) {
+        if (isUtf8(in)) {
+            utf8Bom = true;
+            return RawParseUtils.decode(UTF_8, in, 3, in.length);
+        } else {
+            utf8Bom = false;
+            return RawParseUtils.decode(in);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Save the configuration as a Git text style configuration file.
+     * <p>
+     * <b>Warning:</b> Although this method uses the traditional Git file
+     * locking approach to protect against concurrent writes of the
+     * configuration file, it does not ensure that the file has not been
+     * modified since the last read, which means updates performed by other
+     * objects accessing the same backing file may be lost.
+     */
+    @Override
+    public void save() throws IOException {
+        lock.writeLock().lock();
+        try {
+            String text = toText();
+            byte[] out = utf8Bom ? encodeConfigWithBom(text) : Constants.encode(text);
+            writeConfigFile(out);
+        } finally {
+            lock.writeLock().unlock();
+        }
+        fireConfigChangedEvent();
+    }
+
+    /**
+     * Extracted method to handle BOM encoding.
+     */
+    private byte[] encodeConfigWithBom(String text) throws IOException {
+        final ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        bos.write(0xEF);
+        bos.write(0xBB);
+        bos.write(0xBF);
+        bos.write(text.getBytes(UTF_8));
+        return bos.toByteArray();
+    }
+
+    /**
+     * Extracted method to lock and write config file.
+     */
+    private void writeConfigFile(byte[] out) throws IOException {
+        LockFile lf = new LockFile(getFile());
+        try {
+            if (!lf.lock()) {
+                throw new LockFailedException(getFile());
+            }
+            lf.setNeedSnapshotNoConfig(true);
+            lf.write(out);
+            if (!lf.commit()) {
+                throw new IOException(MessageFormat.format(
+                        JGitText.get().cannotCommitWriteTo, getFile()));
+            }
+        } finally {
+            lf.unlock();
+        }
+        snapshot = lf.getCommitSnapshot();
+        hash = hash(out);
+        exists.set(true);
+    }
+
+    @Override
+    public void clear() {
+        hash = hash(new byte[0]);
+        super.clear();
+    }
+
+    private static ObjectId hash(byte[] rawText) {
+        return ObjectId.fromRaw(Constants.newMessageDigest().digest(rawText));
+    }
+
+    @SuppressWarnings("nls")
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "[" + getFile().getPath() + "]";
+    }
+
+    public boolean isOutdated() {
+        return snapshot.isModified(getFile());
+    }
+
+    @Override
+    protected byte[] readIncludedConfig(String relPath)
+            throws ConfigInvalidException {
+        final File file;
+        if (relPath.startsWith("~/")) { //$NON-NLS-1$
+            file = fs.resolve(fs.userHome(), relPath.substring(2));
+        } else {
+            file = fs.resolve(configFile.getParentFile(), relPath);
+        }
+
+        if (!file.exists()) {
+            return null;
+        }
+
+        try {
+            return IO.readFully(file);
+        } catch (FileNotFoundException e) {
+            return null;
+        } catch (IOException ioe) {
+            throw new ConfigInvalidException(MessageFormat
+                    .format(JGitText.get().cannotReadFile, relPath), ioe);
+        }
+    }
+}
+```
+
+---
+
+### **Summary of Refactoring**
+- **Extracted logic** from `load()` into `processLoadedBytes()` and `decodeConfig()`.
+- **Extracted encoding and file writing** logic from `save()` into `encodeConfigWithBom()` and `writeConfigFile()`.
+- Improved **readability, maintainability, and testability** of the class.
+
+If you have any specific method you want further extracted or reasoned about, let me know!

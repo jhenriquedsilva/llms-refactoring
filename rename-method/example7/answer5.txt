@@ -1,0 +1,136 @@
+28-04-2025, 20:33
+
+Let's analyze the class **AbstractReturningDelegate** for methods whose names may not be descriptive enough or could be improved for clarity according to typical Java best practices.
+
+### Candidates for Rename Refactoring
+
+- **performInsert:** Reasonable, descriptive within the Hibernate context.
+- **performInsertReturning:** Could be made a bit more descriptive. However, this is also a common naming pattern in Hibernate to distinguish between variations of insert methods.
+- **executeAndExtractReturning:** Quite descriptive for what it does; returns generated values after statement execution.
+- **executeAndExtract:** Deprecated, and its name is a bit more ambiguous. But given it's deprecated, renaming may not be impactful (and could break backward compatibility unnecessarily).
+- **releaseStatement:** Perfectly clear.
+
+#### Analysis:
+
+The names are generally consistent with standard naming conventions in Hibernate and other ORMs that deal with insert/returning patterns. However, **performInsertReturning** could be renamed to **insertAndReturnGeneratedValues** for extra clarity, and **executeAndExtractReturning** could become **executeInsertAndExtractGeneratedValues**. This makes it more explicit what exactly is happening and is slightly more readable to someone new to the code.
+
+#### Variables and other identifiers look adequate and contextually meaningful.
+
+---
+
+## Refactored Code
+
+Here is the refactored class with the proposed method renamings.
+
+```java
+package org.hibernate.id.insert;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.hibernate.engine.jdbc.mutation.JdbcValueBindings;
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementDetails;
+import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.EventType;
+import org.hibernate.generator.values.AbstractGeneratedValuesMutationDelegate;
+import org.hibernate.generator.values.GeneratedValues;
+import org.hibernate.id.PostInsertIdentityPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.pretty.MessageHelper;
+
+/**
+ * Abstract {@link org.hibernate.generator.values.GeneratedValuesMutationDelegate} implementation where
+ * the underlying strategy causes the generated identifier to be returned as
+ * an effect of performing the insert statement.  Thus, there is no need for
+ * an additional sql statement to determine the generated identifier.
+ *
+ * @author Steve Ebersole
+ */
+public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesMutationDelegate
+        implements InsertGeneratedIdentifierDelegate {
+    /**
+     * @deprecated Use {@link #AbstractReturningDelegate(EntityPersister, EventType, boolean, boolean)} instead.
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    public AbstractReturningDelegate(PostInsertIdentityPersister persister) {
+        super( persister, EventType.INSERT );
+    }
+
+    public AbstractReturningDelegate(
+            EntityPersister persister,
+            EventType timing,
+            boolean supportsArbitraryValues,
+            boolean supportsRowId) {
+        super( persister, timing, supportsArbitraryValues, supportsRowId );
+    }
+
+    @Override
+    public GeneratedValues performInsert(
+            PreparedStatementDetails statementDetails,
+            JdbcValueBindings valueBindings,
+            Object entity,
+            SharedSessionContractImplementor session) {
+        session.getJdbcServices().getSqlStatementLogger().logStatement( statementDetails.getSqlString() );
+        valueBindings.beforeStatement( statementDetails );
+        return executeInsertAndExtractGeneratedValues( statementDetails.getSqlString(), statementDetails.getStatement(), session );
+    }
+
+    @Override
+    public final GeneratedValues insertAndReturnGeneratedValues(String sql, SharedSessionContractImplementor session, Binder binder) {
+        try {
+            // prepare and execute the insert
+            PreparedStatement insert = prepareStatement( sql, session );
+            try {
+                binder.bindValues( insert );
+                return executeInsertAndExtractGeneratedValues( sql, insert, session );
+            }
+            finally {
+                releaseStatement( insert, session );
+            }
+        }
+        catch (SQLException sqle) {
+            throw session.getJdbcServices().getSqlExceptionHelper().convert(
+                    sqle,
+                    "could not insert: " + MessageHelper.infoString( persister ),
+                    sql
+            );
+        }
+    }
+
+    /**
+     * @deprecated
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    protected Object executeAndExtract(
+            String sql,
+            PreparedStatement preparedStatement,
+            SharedSessionContractImplementor session) {
+        final GeneratedValues generatedValues = executeInsertAndExtractGeneratedValues( sql, preparedStatement, session );
+        return generatedValues.getGeneratedValue( persister.getIdentifierMapping() );
+    }
+
+    protected abstract GeneratedValues executeInsertAndExtractGeneratedValues(
+            String sql,
+            PreparedStatement preparedStatement,
+            SharedSessionContractImplementor session);
+
+    protected void releaseStatement(PreparedStatement preparedStatement, SharedSessionContractImplementor session) {
+        final JdbcCoordinator jdbcCoordinator = session.getJdbcCoordinator();
+        jdbcCoordinator.getLogicalConnection().getResourceRegistry().release( preparedStatement );
+        jdbcCoordinator.afterStatementExecution();
+    }
+}
+```
+
+**Summary of Changes:**
+- `performInsertReturning` → `insertAndReturnGeneratedValues`
+- `executeAndExtractReturning` → `executeInsertAndExtractGeneratedValues`
+- All calls and method signatures updated accordingly.
+
+> If you are constrained by the existing interface or usage in other code (especially since this is base Hibernate), the original names might actually be preferable for continuity; but if this is a codebase you are free to refactor, these suggestions should improve clarity.
+
+---
+
+**If you want to keep Hibernate’s naming conventions, you may simply state:**
+> No refactoring is necessary; method names are clear within ORM context and follow standard Hibernate conventions.

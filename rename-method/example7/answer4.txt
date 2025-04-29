@@ -1,0 +1,160 @@
+28-04-2025, 20:33
+
+Certainly! Upon reviewing the code, there **are** some identifiers (method and parameter names) that could benefit from more descriptive names, in accordance with best practices for improving code readability and maintainability. Here are the key rename candidates and the rationale:
+
+### 1. **Method Name: `executeAndExtractReturning`**
+- **Problem**: It's a bit verbose and vague; its responsibility can be clarified.
+- **Suggestion**: Since this method executes the statement and extracts the generated values after an insert, a clearer name could be `executeInsertAndReturnGeneratedValues`.
+
+### 2. **Method Name: `performInsert` and `performInsertReturning`**
+- **Reasoning**: These are sufficiently descriptive in the context of insert delegates for generated values, so it's acceptable to keep these names.
+
+### 3. **Parameter Name: `binder` in `performInsertReturning`**
+- **Problem**: If `Binder` is a class designed for binding statement values, then "binder" is reasonable. However, if more specific, can be kept as is.
+
+### 4. **Parameter Names: `sql`, `statementDetails`, `session`**
+- **Problem**: Mostly okay, but perhaps `sql` could be improved to `insertSql` to clarify its intent.
+
+### 5. **Parameter Name: `preparedStatement`**
+- **Suggestion**: Using `preparedInsertStatement` is more precise.
+
+### 6. **Method Name: `releaseStatement`**
+- **Fine as is** – describes what it does.
+
+### 7. **Deprecated Methods**
+- Deprecated methods are clearly indicated; no need to rename.
+
+---
+
+With these considerations, here is the refactored class focusing on renaming `executeAndExtractReturning` to `executeInsertAndReturnGeneratedValues` to improve clarity. All references to this method will be updated accordingly. For parameters, `sql` will be renamed to `insertSql` where applicable, and `preparedStatement` to `preparedInsertStatement` for more explicit meaning.
+
+---
+
+```java
+package org.hibernate.id.insert;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.hibernate.engine.jdbc.mutation.JdbcValueBindings;
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementDetails;
+import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.EventType;
+import org.hibernate.generator.values.AbstractGeneratedValuesMutationDelegate;
+import org.hibernate.generator.values.GeneratedValues;
+import org.hibernate.id.PostInsertIdentityPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.pretty.MessageHelper;
+
+/**
+ * Abstract {@link org.hibernate.generator.values.GeneratedValuesMutationDelegate} implementation where
+ * the underlying strategy causes the generated identifier to be returned as
+ * an effect of performing the insert statement.  Thus, there is no need for
+ * an additional sql statement to determine the generated identifier.
+ *
+ * @author Steve Ebersole
+ */
+public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesMutationDelegate
+        implements InsertGeneratedIdentifierDelegate {
+    /**
+     * @deprecated Use {@link #AbstractReturningDelegate(EntityPersister, EventType, boolean, boolean)} instead.
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    public AbstractReturningDelegate(PostInsertIdentityPersister persister) {
+        super( persister, EventType.INSERT );
+    }
+
+    public AbstractReturningDelegate(
+            EntityPersister persister,
+            EventType timing,
+            boolean supportsArbitraryValues,
+            boolean supportsRowId) {
+        super( persister, timing, supportsArbitraryValues, supportsRowId );
+    }
+
+    @Override
+    public GeneratedValues performInsert(
+            PreparedStatementDetails statementDetails,
+            JdbcValueBindings valueBindings,
+            Object entity,
+            SharedSessionContractImplementor session) {
+        session.getJdbcServices().getSqlStatementLogger().logStatement( statementDetails.getSqlString() );
+        valueBindings.beforeStatement( statementDetails );
+        return executeInsertAndReturnGeneratedValues(
+            statementDetails.getSqlString(),
+            statementDetails.getStatement(),
+            session
+        );
+    }
+
+    @Override
+    public final GeneratedValues performInsertReturning(
+            String insertSql,
+            SharedSessionContractImplementor session,
+            Binder binder) {
+        try {
+            // prepare and execute the insert
+            PreparedStatement preparedInsertStatement = prepareStatement( insertSql, session );
+            try {
+                binder.bindValues( preparedInsertStatement );
+                return executeInsertAndReturnGeneratedValues( insertSql, preparedInsertStatement, session );
+            }
+            finally {
+                releaseStatement( preparedInsertStatement, session );
+            }
+        }
+        catch (SQLException sqle) {
+            throw session.getJdbcServices().getSqlExceptionHelper().convert(
+                    sqle,
+                    "could not insert: " + MessageHelper.infoString( persister ),
+                    insertSql
+            );
+        }
+    }
+
+    /**
+     * @deprecated
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    protected Object executeAndExtract(
+            String insertSql,
+            PreparedStatement preparedInsertStatement,
+            SharedSessionContractImplementor session) {
+        final GeneratedValues generatedValues = executeInsertAndReturnGeneratedValues( insertSql, preparedInsertStatement, session );
+        return generatedValues.getGeneratedValue( persister.getIdentifierMapping() );
+    }
+
+    /**
+     * Executes the given insert SQL using the prepared statement, and extracts the
+     * generated values.
+     *
+     * @param insertSql the SQL insert string
+     * @param preparedInsertStatement the prepared insert statement
+     * @param session the shared session contract implementor
+     * @return the generated values resulting from the insert
+     */
+    protected abstract GeneratedValues executeInsertAndReturnGeneratedValues(
+            String insertSql,
+            PreparedStatement preparedInsertStatement,
+            SharedSessionContractImplementor session);
+
+    protected void releaseStatement(PreparedStatement preparedInsertStatement, SharedSessionContractImplementor session) {
+        final JdbcCoordinator jdbcCoordinator = session.getJdbcCoordinator();
+        jdbcCoordinator.getLogicalConnection().getResourceRegistry().release( preparedInsertStatement );
+        jdbcCoordinator.afterStatementExecution();
+    }
+}
+```
+
+---
+
+## **Summary of Changes**
+
+- **Renamed method** `executeAndExtractReturning` to `executeInsertAndReturnGeneratedValues`.
+- **Renamed parameters** from `sql` to `insertSql`, and `preparedStatement` to `preparedInsertStatement` where appropriate.
+- All usages and JavaDoc updated accordingly.
+
+---
+
+**These changes make the class methods and parameters far more self-explanatory, improving code readability for future developers.**

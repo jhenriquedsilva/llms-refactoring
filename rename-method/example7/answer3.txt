@@ -1,0 +1,147 @@
+28-04-2025, 20:33
+
+Certainly! Let’s perform a review focusing specifically on **method renaming** refactorings to improve readability and clarity, as per your task. Here are the methods defined in the code:
+
+- `performInsert`
+- `performInsertReturning`
+- `executeAndExtract` (deprecated)
+- `executeAndExtractReturning`
+- `releaseStatement`
+
+### Potential Issues
+- The methods `executeAndExtract` and `executeAndExtractReturning` have very similar names but different purposes (`executeAndExtract` is deprecated, used to only extract one identifier; `executeAndExtractReturning` handles returning all generated values).
+- `releaseStatement` could be more explicit about what it releases (a JDBC resource).
+- `performInsertReturning` could have a more descriptive name to clarify that it prepares, binds, and returns generated values, not just "performInsert".
+- Otherwise, method names like `performInsert` and `releaseStatement` are reasonable, but could still possibly be improved for clarity.
+
+### Recommendations
+
+**1. Rename `executeAndExtractReturning` → `executeAndReturnGeneratedValues`**
+
+Why: Better describes what the method does (executes and returns all generated values).
+
+**2. Rename `performInsertReturning` → `prepareBindAndInsertReturning`**
+
+Why: Makes it clearer that this includes preparing, binding, inserting, and returning the values.
+
+**3. Rename `releaseStatement` → `releaseJdbcStatement`**
+
+Why: Clarifies what kind of resource is being released.
+
+**4. The deprecated method `executeAndExtract` -- clarify by renaming to `executeAndExtractIdentifier_DEPRECATED`**
+This is optional but makes it *crystal* clear it's legacy.
+
+---
+
+## Refactored Class
+
+```java
+package org.hibernate.id.insert;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.hibernate.engine.jdbc.mutation.JdbcValueBindings;
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementDetails;
+import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.EventType;
+import org.hibernate.generator.values.AbstractGeneratedValuesMutationDelegate;
+import org.hibernate.generator.values.GeneratedValues;
+import org.hibernate.id.PostInsertIdentityPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.pretty.MessageHelper;
+
+/**
+ * Abstract {@link org.hibernate.generator.values.GeneratedValuesMutationDelegate} implementation where
+ * the underlying strategy causes the generated identifier to be returned as
+ * an effect of performing the insert statement.  Thus, there is no need for
+ * an additional sql statement to determine the generated identifier.
+ *
+ * @author Steve Ebersole
+ */
+public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesMutationDelegate
+        implements InsertGeneratedIdentifierDelegate {
+    /**
+     * @deprecated Use {@link #AbstractReturningDelegate(EntityPersister, EventType, boolean, boolean)} instead.
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    public AbstractReturningDelegate(PostInsertIdentityPersister persister) {
+        super( persister, EventType.INSERT );
+    }
+
+    public AbstractReturningDelegate(
+            EntityPersister persister,
+            EventType timing,
+            boolean supportsArbitraryValues,
+            boolean supportsRowId) {
+        super( persister, timing, supportsArbitraryValues, supportsRowId );
+    }
+
+    @Override
+    public GeneratedValues performInsert(
+            PreparedStatementDetails statementDetails,
+            JdbcValueBindings valueBindings,
+            Object entity,
+            SharedSessionContractImplementor session) {
+        session.getJdbcServices().getSqlStatementLogger().logStatement( statementDetails.getSqlString() );
+        valueBindings.beforeStatement( statementDetails );
+        return executeAndReturnGeneratedValues( statementDetails.getSqlString(), statementDetails.getStatement(), session );
+    }
+
+    @Override
+    public final GeneratedValues prepareBindAndInsertReturning(String sql, SharedSessionContractImplementor session, Binder binder) {
+        try {
+            // prepare and execute the insert
+            PreparedStatement insert = prepareStatement( sql, session );
+            try {
+                binder.bindValues( insert );
+                return executeAndReturnGeneratedValues( sql, insert, session );
+            }
+            finally {
+                releaseJdbcStatement( insert, session );
+            }
+        }
+        catch (SQLException sqle) {
+            throw session.getJdbcServices().getSqlExceptionHelper().convert(
+                    sqle,
+                    "could not insert: " + MessageHelper.infoString( persister ),
+                    sql
+            );
+        }
+    }
+
+    /**
+     * @deprecated
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    protected Object executeAndExtractIdentifier_DEPRECATED(
+            String sql,
+            PreparedStatement preparedStatement,
+            SharedSessionContractImplementor session) {
+        final GeneratedValues generatedValues = executeAndReturnGeneratedValues( sql, preparedStatement, session );
+        return generatedValues.getGeneratedValue( persister.getIdentifierMapping() );
+    }
+
+    protected abstract GeneratedValues executeAndReturnGeneratedValues(
+            String sql,
+            PreparedStatement preparedStatement,
+            SharedSessionContractImplementor session);
+
+    protected void releaseJdbcStatement(PreparedStatement preparedStatement, SharedSessionContractImplementor session) {
+        final JdbcCoordinator jdbcCoordinator = session.getJdbcCoordinator();
+        jdbcCoordinator.getLogicalConnection().getResourceRegistry().release( preparedStatement );
+        jdbcCoordinator.afterStatementExecution();
+    }
+}
+```
+
+---
+
+**Summary of changes:**
+- `executeAndExtractReturning` → `executeAndReturnGeneratedValues`
+- `performInsertReturning` → `prepareBindAndInsertReturning`
+- `releaseStatement` → `releaseJdbcStatement`
+- Deprecated `executeAndExtract` → `executeAndExtractIdentifier_DEPRECATED` (for extra clarity, optional)
+
+> These renamings improve method intention clarity for current and future developers. If you’d like a less aggressive refactoring (e.g. keep deprecated method names unchanged), just let me know!

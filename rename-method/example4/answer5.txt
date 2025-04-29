@@ -1,0 +1,148 @@
+28-04-2025, 20:14
+
+Yes, there **are rename method refactoring opportunities** in your code. Specifically, several method names can be improved for clarity and consistency. Here’s an analysis and suggested refactoring, followed by the revised code:
+
+---
+
+**Opportunities for Rename Method Refactoring:**
+
+1. **Method: `longAsPoint(long encoded)`**
+   - **Problem:** Ambiguous. Does it decode? Convert? "As" can be unclear.
+   - **Suggestion:** Rename to `decodePoint(long encoded)`
+
+2. **Method: `pointAsLong(double x, double y)`**
+   - **Problem:** Ambiguous. Is it encoding, converting, or something else?
+   - **Suggestion:** Rename to `encodePoint(double x, double y)`
+
+3. **Method: `wkbAsLong(BytesRef wkb)`**
+   - **Problem:** Not clear it means decode a point from WKB to long.
+   - **Suggestion:** Rename to `decodePointFromWKB(BytesRef wkb)`
+
+4. **Method: `longAsWkb(long encoded)`**
+   - **Problem:** Not clear that it converts a long to a WKB point.
+   - **Suggestion:** Rename to `encodePointToWKB(long encoded)`
+
+5. **Method: `asWkt(Geometry geometry)`**
+   - **Problem:** Verb-first names are more readable.
+   - **Suggestion:** Rename to `toWKT(Geometry geometry)`
+
+6. **Method: `pointAsWKB(Geometry geometry)`**
+   - **Problem:** Should be consistent with earlier names.
+   - **Suggestion:** Rename to `toWKB(Geometry geometry)`
+
+7. **Method: `wktToWkb(String wkt)` and `wkbToWkt(BytesRef wkb)`**
+   - **Problem:** Lowercase "b" in "wkb" and "wkt" is inconsistent with general Java conventions.
+   - **Suggestion:** Use `toWKBFromWKT` and `toWKTFromWKB`.
+
+---
+
+## **Refactored Class**
+
+```java
+package org.elasticsearch.xpack.ql.util;
+
+import org.apache.lucene.geo.GeoEncodingUtils;
+import org.apache.lucene.geo.XYEncodingUtils;
+import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.geometry.Geometry;
+import org.elasticsearch.geometry.Point;
+import org.elasticsearch.geometry.utils.GeometryValidator;
+import org.elasticsearch.geometry.utils.WellKnownBinary;
+import org.elasticsearch.geometry.utils.WellKnownText;
+
+import java.nio.ByteOrder;
+
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitude;
+import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitude;
+
+public enum SpatialCoordinateTypes {
+    GEO {
+        @Override
+        public Point decodePoint(long encoded) {
+            return new Point(GeoEncodingUtils.decodeLongitude((int) encoded), GeoEncodingUtils.decodeLatitude((int) (encoded >>> 32)));
+        }
+
+        @Override
+        public long encodePoint(double x, double y) {
+            int latitudeEncoded = encodeLatitude(y);
+            int longitudeEncoded = encodeLongitude(x);
+            return (((long) latitudeEncoded) << 32) | (longitudeEncoded & 0xFFFFFFFFL);
+        }
+    },
+    CARTESIAN {
+
+        private static final int MAX_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MAX_VAL_INCL);
+        private static final int MIN_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MIN_VAL_INCL);
+
+        @Override
+        public Point decodePoint(long encoded) {
+            final int x = checkCoordinate((int) (encoded >>> 32));
+            final int y = checkCoordinate((int) (encoded & 0xFFFFFFFF));
+            return new Point(XYEncodingUtils.decode(x), XYEncodingUtils.decode(y));
+        }
+
+        private int checkCoordinate(int i) {
+            if (i > MAX_VAL_ENCODED || i < MIN_VAL_ENCODED) {
+                throw new IllegalArgumentException("Failed to convert invalid encoded value to cartesian point");
+            }
+            return i;
+        }
+
+        @Override
+        public long encodePoint(double x, double y) {
+            final long xi = XYEncodingUtils.encode((float) x);
+            final long yi = XYEncodingUtils.encode((float) y);
+            return (yi & 0xFFFFFFFFL) | xi << 32;
+        }
+    };
+
+    public abstract Point decodePoint(long encoded);
+
+    public abstract long encodePoint(double x, double y);
+
+    public long decodePointFromWKB(BytesRef wkb) {
+        Geometry geometry = WellKnownBinary.fromWKB(GeometryValidator.NOOP, false, wkb.bytes, wkb.offset, wkb.length);
+        if (geometry instanceof Point point) {
+            return encodePoint(point.getX(), point.getY());
+        } else {
+            throw new IllegalArgumentException("Unsupported geometry: " + geometry.type());
+        }
+    }
+
+    public BytesRef encodePointToWKB(long encoded) {
+        return toWKB(decodePoint(encoded));
+    }
+
+    public String toWKT(Geometry geometry) {
+        return WellKnownText.toWKT(geometry);
+    }
+
+    public BytesRef toWKB(Geometry geometry) {
+        return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
+    }
+
+    public BytesRef toWKBFromWKT(String wkt) {
+        // TODO: we should be able to transform WKT to WKB without building the geometry
+        // we should as well use different validator for cartesian and geo?
+        try {
+            Geometry geometry = WellKnownText.fromWKT(GeometryValidator.NOOP, false, wkt);
+            return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse WKT: " + e.getMessage(), e);
+        }
+    }
+
+    public String toWKTFromWKB(BytesRef wkb) {
+        return WellKnownText.fromWKB(wkb.bytes, wkb.offset, wkb.length);
+    }
+}
+```
+
+---
+
+**Summary of Improvements:**
+- All method names now use clear action verbs and describe their operation.
+- Direction of conversion is clear (decode, encode, toWKT, toWKB, etc.)
+- Consistent naming across all geometric data transformations.
+
+If you prefer different naming conventions, feel free to adjust, but these suggestions follow Java best practices for naming and clarity.

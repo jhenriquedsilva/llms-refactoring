@@ -1,0 +1,261 @@
+28-04-2025, 20:58
+
+**Review**
+
+You asked to identify and apply possible *rename method refactoring* to improve readability, focusing on low-quality identifiers in method names. Here's a review and proposal for your provided code snippet of the `LexicalPreservingPrinter` class.
+
+---
+
+### Identified Rename Opportunities
+
+#### 1. **tokensPreceeding**
+- **Current:** `tokensPreceeding`
+- **Reason:** Typo - should be **tokensPreceding** (preceeding → preceding)
+- **Proposed Rename:** `tokensPreceding`
+
+#### 2. **storeInitialTextForOneNode**
+- **Current:** `storeInitialTextForOneNode`
+- **Reason:** Slightly awkward, could be shortened for clarity.
+- **Proposed Rename:** `storeInitialTextForNode`
+
+#### 3. **prettyPrintingTextNode**
+- **Current:** `prettyPrintingTextNode`
+- **Reason:** Unnatural name. "Pretty print" is usually a verb phrase.
+- **Proposed Rename:** `prettyPrintTextNode`
+
+#### 4. **findTokenTextElementForComment**
+- **Current:** `findTokenTextElementForComment`
+- **Reason:** Verbosity, could be plural, since it returns a list.
+- **Proposed Rename:** `findTokenTextElementsForComment`
+
+#### 5. **findChildTextElementForComment**
+- **Current:** `findChildTextElementForComment`
+- **Reason:** Same as above. Should be plural.
+- **Proposed Rename:** `findChildTextElementsForComment`
+
+#### 6. **selectMatchingChildElements**
+- **Current:** `selectMatchingChildElements`
+- **Reason:** This is fine but could be shortened for consistency.
+- **Proposed Rename:** Not necessary. (Optional: `findMatchingChildTextElements` for better clarity.)
+
+#### 7. **isSameComment**
+- **Current:** `isSameComment`
+- **Reason:** This is fine.
+
+---
+
+### **Refactored Code**
+
+Here is the code with the above renamings performed throughout the class, including method calls and invocations (comment `// Renamed from ...` where relevant).
+
+```java
+// ...[imports omitted for brevity]...
+
+public class LexicalPreservingPrinter {
+
+    // ...[other code unchanged]...
+
+    private static Iterator<TokenTextElement> tokensPreceding(final Node node) { // Renamed from tokensPreceeding
+        if (!node.getParentNode().isPresent()) {
+            return new TextElementIteratorsFactory.EmptyIterator<>();
+        }
+        NodeText parentNodeText = getOrCreateNodeText(node.getParentNode().get());
+        int index = parentNodeText.tryToFindChild(node);
+        if (index == NodeText.NOT_FOUND) {
+            if (node.getParentNode().get() instanceof VariableDeclarator) {
+                return tokensPreceding(node.getParentNode().get());
+            }
+            return new TextElementIteratorsFactory.EmptyIterator<TokenTextElement>();
+        }
+        return new TextElementIteratorsFactory.CascadingIterator<>(TextElementIteratorsFactory.partialReverseIterator(parentNodeText, index - 1), () -> tokensPreceding(node.getParentNode().get()));
+    }
+
+    // ...[other code unchanged]...
+
+    private static void storeInitialTextForNode(Node node, List<JavaToken> nodeTokens) { // Renamed from storeInitialTextForOneNode
+        if (nodeTokens == null) {
+            nodeTokens = Collections.emptyList();
+        }
+        List<Pair<Range, TextElement>> elements = new LinkedList<>();
+        for (Node child : node.getChildNodes()) {
+            if (!child.isPhantom()) {
+                if (!child.hasRange()) {
+                    throw new RuntimeException("Range not present on node " + child);
+                }
+                elements.add(new Pair<>(child.getRange().get(), new ChildTextElement(child)));
+            }
+        }
+        for (JavaToken token : nodeTokens) {
+            elements.add(new Pair<>(token.getRange().get(), new TokenTextElement(token)));
+        }
+        elements.sort(comparing(e -> e.a.begin));
+        node.setData(NODE_TEXT_DATA, new NodeText(elements.stream().map(p -> p.b).collect(toList())));
+    }
+
+    private static void storeInitialText(Node root) {
+        Map<Node, List<JavaToken>> tokensByNode = new IdentityHashMap<>();
+        root.getTokenRange().ifPresent(rootTokenRange -> {
+            for (JavaToken token : rootTokenRange) {
+                Range tokenRange = token.getRange().orElseThrow(() -> new RuntimeException("Token without range: " + token));
+                Node owner = findNodeForToken(root, tokenRange).orElseThrow(() -> new RuntimeException("Token without node owning it: " + token));
+                if (!tokensByNode.containsKey(owner)) {
+                    tokensByNode.put(owner, new LinkedList<>());
+                }
+                tokensByNode.get(owner).add(token);
+            }
+            new TreeVisitor() {
+                @Override
+                public void process(Node node) {
+                    if (!node.isPhantom()) {
+                        storeInitialTextForNode(node, tokensByNode.get(node)); // updated
+                    }
+                }
+            }.visitBreadthFirst(root);
+        });
+    }
+
+    //
+    // Printing methods
+    //
+    public static String print(Node node) {
+        LexicalPreservingVisitor visitor = new LexicalPreservingVisitor();
+        final NodeText nodeText = getOrCreateNodeText(node);
+        nodeText.getElements().forEach(element -> element.accept(visitor));
+        return visitor.toString();
+    }
+
+    //
+    // Methods to handle transformations
+    //
+    private static void prettyPrintTextNode(Node node, NodeText nodeText) { // Renamed from prettyPrintingTextNode
+        if (node instanceof PrimitiveType) {
+            PrimitiveType primitiveType = (PrimitiveType) node;
+            switch(primitiveType.getType()) {
+                case BOOLEAN:
+                    nodeText.addToken(BOOLEAN, node.toString());
+                    break;
+                case CHAR:
+                    nodeText.addToken(CHAR, node.toString());
+                    break;
+                case BYTE:
+                    nodeText.addToken(BYTE, node.toString());
+                    break;
+                case SHORT:
+                    nodeText.addToken(SHORT, node.toString());
+                    break;
+                case INT:
+                    nodeText.addToken(INT, node.toString());
+                    break;
+                case LONG:
+                    nodeText.addToken(LONG, node.toString());
+                    break;
+                case FLOAT:
+                    nodeText.addToken(FLOAT, node.toString());
+                    break;
+                case DOUBLE:
+                    nodeText.addToken(DOUBLE, node.toString());
+                    break;
+                default:
+                    throw new IllegalArgumentException();
+            }
+            return;
+        }
+        if (node instanceof JavadocComment) {
+            Comment comment = (JavadocComment) node;
+            nodeText.addToken(JAVADOC_COMMENT, comment.getHeader() + ((JavadocComment) node).getContent() + comment.getFooter());
+            return;
+        }
+        if (node instanceof BlockComment) {
+            Comment comment = (BlockComment) node;
+            nodeText.addToken(MULTI_LINE_COMMENT, comment.getHeader() + ((BlockComment) node).getContent() + comment.getFooter());
+            return;
+        }
+        if (node instanceof LineComment) {
+            Comment comment = (LineComment) node;
+            nodeText.addToken(SINGLE_LINE_COMMENT, comment.getHeader() + comment.getContent());
+            return;
+        }
+        if (node instanceof Modifier) {
+            Modifier modifier = (Modifier) node;
+            nodeText.addToken(LexicalDifferenceCalculator.toToken(modifier), modifier.getKeyword().asString());
+            return;
+        }
+        interpret(node, ConcreteSyntaxModel.forClass(node.getClass()), nodeText);
+    }
+
+    // Visible for testing
+    static NodeText getOrCreateNodeText(Node node) {
+        if (!node.containsData(NODE_TEXT_DATA)) {
+            NodeText nodeText = new NodeText();
+            node.setData(NODE_TEXT_DATA, nodeText);
+            prettyPrintTextNode(node, nodeText); // updated
+        }
+        return node.getData(NODE_TEXT_DATA);
+    }
+
+    // ...[other code unchanged]...
+
+    private static class Observer extends PropagatingAstObserver {
+        // ...[other methods unchanged]...
+
+        private int getIndexOfComment(Comment oldValue, NodeText nodeText) {
+            List<TokenTextElement> matchingTokens = findTokenTextElementsForComment(oldValue, nodeText); // updated
+            if (!matchingTokens.isEmpty()) {
+                TextElement matchingElement = matchingTokens.get(0);
+                return nodeText.findElement(matchingElement.and(matchingElement.matchByRange()));
+            }
+            // If no matching TokenTextElements were found, we try searching through ChildTextElements as well
+            List<ChildTextElement> matchingChilds = findChildTextElementsForComment(oldValue, nodeText); // updated
+            ChildTextElement matchingChild = matchingChilds.get(0);
+            return nodeText.findElement(matchingChild.and(matchingChild.matchByRange()));
+        }
+
+        private List<ChildTextElement> findChildTextElementsForComment(Comment oldValue, NodeText nodeText) { // updated (plural)
+            List<ChildTextElement> matchingChildElements;
+            matchingChildElements = selectMatchingChildElements(oldValue, nodeText);
+            if (matchingChildElements.size() > 1) {
+                matchingChildElements = matchingChildElements.stream().filter(t -> isEqualRange(t.getChild().getRange(), oldValue.getRange())).collect(toList());
+            }
+            if (matchingChildElements.size() != 1) {
+                throw new IllegalStateException("The matching child text element for the comment to be removed could not be found.");
+            }
+            return matchingChildElements;
+        }
+
+        private List<TokenTextElement> findTokenTextElementsForComment(Comment oldValue, NodeText nodeText) { // updated (plural)
+            List<TokenTextElement> matchingTokens;
+            if (oldValue instanceof JavadocComment) {
+                matchingTokens = nodeText.getElements().stream().filter(e -> e.isToken(JAVADOC_COMMENT)).map(e -> (TokenTextElement) e).filter(t -> t.getText().equals(oldValue.getHeader() + oldValue.getContent() + oldValue.getFooter())).collect(toList());
+            } else if (oldValue instanceof BlockComment) {
+                matchingTokens = nodeText.getElements().stream().filter(e -> e.isToken(MULTI_LINE_COMMENT)).map(e -> (TokenTextElement) e).filter(t -> t.getText().equals(oldValue.getHeader() + oldValue.getContent() + oldValue.getFooter())).collect(toList());
+            } else {
+                matchingTokens = nodeText.getElements().stream().filter(e -> e.isToken(SINGLE_LINE_COMMENT)).map(e -> (TokenTextElement) e).filter(t -> t.getText().trim().equals((oldValue.getHeader() + oldValue.getContent()).trim())).collect(toList());
+            }
+            if (matchingTokens.size() > 1) {
+                // Duplicate comments found, refine the result
+                matchingTokens = matchingTokens.stream().filter(t -> isEqualRange(t.getToken().getRange(), oldValue.getRange())).collect(toList());
+            }
+            return matchingTokens;
+        }
+
+        // ...[other methods unchanged]...
+    }
+
+    // ...[rest of class unchanged]...
+}
+```
+
+---
+
+### **Summary of Changes**
+- `tokensPreceeding` → `tokensPreceding`
+- `storeInitialTextForOneNode` → `storeInitialTextForNode`
+- `prettyPrintingTextNode` → `prettyPrintTextNode`
+- `findTokenTextElementForComment` → `findTokenTextElementsForComment`
+- `findChildTextElementForComment` → `findChildTextElementsForComment`
+- All usage sites were updated as well.
+
+---
+
+**Conclusion:**
+Refactoring here improves clarity, correctness, and intention, especially for `tokensPreceding`. If you'd like the imports included in full, let me know!

@@ -1,0 +1,258 @@
+29-04-2025, 20:08
+
+Certainly!
+Let's review the method names for opportunities to improve their clarity, intent, and consistency with typical Java naming conventions.
+
+### Analysis
+
+#### Methods in **Person** class:
+- `getName()` – clear, returns the name.
+- `guessName()` – could be clearer; returns a default name as an object, not guessing.
+- `howMuchDidYouInherit()` – clear but maybe a bit idiomatic.
+- `getNameButDelegateToMethodThatThrows()` – very verbose and specific about implementation. Could be shortened and clarified.
+- `throwSomeException()` – clear.
+
+#### Test methods:
+- `shouldCallRealMethdsEvenDelegatedToOtherSelfMethod()` – typo in "Methds", awkward phrasing.
+- `shouldAllowStubbingOfMethodsThatDelegateToOtherMethods()` – a bit verbose; can be shortened.
+- `shouldAllowStubbingWithThrowablesMethodsThatDelegateToOtherMethods()` – verbose; can be improved for readability.
+- `shouldStackTraceGetFilteredOnUserExceptions()` – awkward phrasing.
+- `shouldStackTraceGetFilteredOnUserExceptionsReflection()` – awkward.
+- `shouldStackTraceGetFilteredOnUserExceptionsReflectionForJavaOfVersionLessThan21()` – very wordy.
+- `shouldStackTraceGetFilteredOnUserExceptionsReflectionForJava21AndHigher()` – very wordy.
+- `verifyTheStackTrace()` – fine for a utility test.
+- `shouldVerify()` – fine.
+- `shouldStub()` – fine.
+- `shouldDealWithPrivateFieldsOfSubclasses()` – fine.
+
+### Suggestions
+
+#### **1. In Person class**
+- `guessName()` → `getDefaultName()`
+- `getNameButDelegateToMethodThatThrows()` → `getNameAndThrowException()` (or `getNameThatThrows()`)
+
+#### **2. Test methods**
+- `shouldCallRealMethdsEvenDelegatedToOtherSelfMethod()` → `shouldCallRealMethodsEvenWhenDelegatedInternally()`
+- `shouldAllowStubbingOfMethodsThatDelegateToOtherMethods()` → `shouldAllowStubbingOfDelegatingMethods()`
+- `shouldAllowStubbingWithThrowablesMethodsThatDelegateToOtherMethods()` → `shouldStubDelegatingMethodsThatThrowExceptions()`
+- `shouldStackTraceGetFilteredOnUserExceptions()` → `shouldFilterStackTraceOnUserException()`
+- `shouldStackTraceGetFilteredOnUserExceptionsReflection()` → `shouldFilterStackTraceOnUserExceptionWithReflection()`
+- `shouldStackTraceGetFilteredOnUserExceptionsReflectionForJavaOfVersionLessThan21()` → `shouldFilterStackTraceOnUserExceptionWithReflectionJavaLessThan21()`
+- `shouldStackTraceGetFilteredOnUserExceptionsReflectionForJava21AndHigher()` → `shouldFilterStackTraceOnUserExceptionWithReflectionJava21OrHigher()`
+
+### Refactored Code
+
+Here is the complete class with these method names refactored (updated method calls included):
+
+```java
+package org.mockitousage.spies;
+
+import static net.bytebuddy.ClassFileVersion.JAVA_V21;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockitoutil.Conditions.methodsInStackTrace;
+
+import net.bytebuddy.ClassFileVersion;
+import org.assertj.core.api.Assertions;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.internal.configuration.plugins.Plugins;
+import org.mockito.internal.creation.bytebuddy.InlineByteBuddyMockMaker;
+import org.mockito.internal.util.reflection.ReflectionMemberAccessor;
+import org.mockitoutil.TestBase;
+
+@SuppressWarnings("unchecked")
+public class PartialMockingWithSpiesTest extends TestBase {
+
+    @Before
+    public void pleaseMakeStackTracesClean() {
+        makeStackTracesClean();
+    }
+
+    class InheritMe {
+        private String inherited = "100$";
+
+        protected String getInherited() {
+            return inherited;
+        }
+    }
+
+    class Person extends InheritMe {
+        private final Name defaultName = new Name("Default name");
+
+        public String getName() {
+            return getDefaultName().name;
+        }
+
+        Name getDefaultName() {
+            return defaultName;
+        }
+
+        public String howMuchDidYouInherit() {
+            return getInherited();
+        }
+
+        public String getNameAndThrowException() {
+            throwSomeException();
+            return getDefaultName().name;
+        }
+
+        private void throwSomeException() {
+            throw new RuntimeException("boo");
+        }
+    }
+
+    class Name {
+        private final String name;
+
+        public Name(String name) {
+            this.name = name;
+        }
+    }
+
+    Person spy = spy(new Person());
+
+    @Test
+    public void shouldCallRealMethodsEvenWhenDelegatedInternally() {
+        // when
+        String name = spy.getName();
+
+        // then
+        assertEquals("Default name", name);
+    }
+
+    @Test
+    public void shouldAllowStubbingOfDelegatingMethods() {
+        // when
+        when(spy.getName()).thenReturn("foo");
+
+        // then
+        assertEquals("foo", spy.getName());
+    }
+
+    @Test
+    public void shouldStubDelegatingMethodsThatThrowExceptions() {
+        // when
+        doThrow(new RuntimeException("appetite for destruction"))
+                .when(spy)
+                .getNameAndThrowException();
+
+        // then
+        try {
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Exception e) {
+            assertEquals("appetite for destruction", e.getMessage());
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceOnUserException() {
+        Assume.assumeThat(
+                Plugins.getMemberAccessor(), not(instanceOf(ReflectionMemberAccessor.class)));
+
+        try {
+            // when
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            // then
+            Assertions.assertThat(t)
+                    .has(
+                            methodsInStackTrace(
+                                    "throwSomeException",
+                                    "getNameAndThrowException",
+                                    "shouldFilterStackTraceOnUserException"));
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceOnUserExceptionWithReflection() {
+        Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
+        Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
+        Assume.assumeTrue(ClassFileVersion.ofThisVm().isLessThan(JAVA_V21));
+
+        try {
+            // when
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            // then
+            Assertions.assertThat(t)
+                    .has(
+                            methodsInStackTrace(
+                                    "throwSomeException",
+                                    "invoke0",
+                                    "invoke",
+                                    "invoke",
+                                    "invoke",
+                                    "getNameAndThrowException",
+                                    "shouldFilterStackTraceOnUserExceptionWithReflectionJavaLessThan21"));
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceOnUserExceptionWithReflectionJava21OrHigher() {
+        Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
+        Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
+        Assume.assumeTrue(ClassFileVersion.ofThisVm().isAtLeast(JAVA_V21));
+
+        try {
+            // when
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            // then
+            Assertions.assertThat(t)
+                    .has(
+                            methodsInStackTrace(
+                                    "throwSomeException",
+                                    "invoke",
+                                    "invoke",
+                                    "getNameAndThrowException",
+                                    "shouldFilterStackTraceOnUserExceptionWithReflectionJava21OrHigher"));
+        }
+    }
+
+    //    @Test //manual verification
+    public void verifyTheStackTrace() {
+        spy.getNameAndThrowException();
+    }
+
+    @Test
+    public void shouldVerify() {
+        // when
+        spy.getName();
+
+        // then
+        verify(spy).getDefaultName();
+    }
+
+    @Test
+    public void shouldStub() {
+        // given
+        when(spy.getDefaultName()).thenReturn(new Name("John"));
+        // when
+        String name = spy.getName();
+        // then
+        assertEquals("John", name);
+    }
+
+    @Test
+    public void shouldDealWithPrivateFieldsOfSubclasses() {
+        assertEquals("100$", spy.howMuchDidYouInherit());
+    }
+}
+```
+
+### Summary
+
+Refactoring was necessary to increase clarity and consistency.
+The above class reflects appropriate method renaming for improved readability and maintainability.

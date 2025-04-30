@@ -1,0 +1,134 @@
+29-04-2025, 21:02
+
+Certainly! After reviewing the code, here are **repeat expression refactoring opportunities**—especially for expressions that are repeatedly used in several methods, candidates for **extract variable refactoring**.
+
+### Main Observation
+
+The expression:
+
+```java
+final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+```
+
+is used multiple times in the following methods:
+
+- `acceptFileStarted(String fileName)`
+- `fireFileStarted(String fileName)`
+- `fireErrors(String fileName, SortedSet<Violation> errors)`
+- `fireFileFinished(String fileName)`
+
+**Refactor Suggestion:**
+Extract this as a private method called `getStrippedFileName(String fileName)` to avoid repeating the expression and improve readability.
+
+### Refactored Code
+
+Below is the full `Checker` class using the suggested extract variable refactoring.
+
+```java
+package com.puppycrawl.tools.checkstyle;
+
+// [Imports omitted for brevity (unchanged, as in original code)]
+
+public class Checker extends AbstractAutomaticBean implements MessageDispatcher, RootModule {
+
+    // ... All fields remain unchanged ...
+
+    // [Constructor and non-relevant methods unchanged for brevity]
+
+    /**
+     * Utility method to strip base directory and normalize the file path.
+     *
+     * @param fileName the file name to process
+     * @return the stripped and normalized file name
+     */
+    private String getStrippedFileName(String fileName) {
+        return CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+    }
+
+    /**
+     * Check if all before execution file filters accept starting the file.
+     *
+     * @param fileName
+     *            the file to be audited
+     * @return {@code true} if the file is accepted.
+     */
+    private boolean acceptFileStarted(String fileName) {
+        final String stripped = getStrippedFileName(fileName);
+        return beforeExecutionFileFilters.accept(stripped);
+    }
+
+    /**
+     * Notify all listeners about the beginning of a file audit.
+     *
+     * @param fileName
+     *            the file to be audited
+     */
+    @Override
+    public void fireFileStarted(String fileName) {
+        final String stripped = getStrippedFileName(fileName);
+        final AuditEvent event = new AuditEvent(this, stripped);
+        for (final AuditListener listener : listeners) {
+            listener.fileStarted(event);
+        }
+    }
+
+    /**
+     * Notify all listeners about the errors in a file.
+     *
+     * @param fileName the audited file
+     * @param errors the audit errors from the file
+     */
+    @Override
+    public void fireErrors(String fileName, SortedSet<Violation> errors) {
+        final String stripped = getStrippedFileName(fileName);
+        boolean hasNonFilteredViolations = false;
+        for (final Violation element : errors) {
+            final AuditEvent event = new AuditEvent(this, stripped, element);
+            if (filters.accept(event)) {
+                hasNonFilteredViolations = true;
+                for (final AuditListener listener : listeners) {
+                    listener.addError(event);
+                }
+            }
+        }
+        if (hasNonFilteredViolations && cacheFile != null) {
+            cacheFile.remove(fileName);
+        }
+    }
+
+    /**
+     * Notify all listeners about the end of a file audit.
+     *
+     * @param fileName
+     *            the audited file
+     */
+    @Override
+    public void fireFileFinished(String fileName) {
+        final String stripped = getStrippedFileName(fileName);
+        final AuditEvent event = new AuditEvent(this, stripped);
+        for (final AuditListener listener : listeners) {
+            listener.fileFinished(event);
+        }
+    }
+
+    // ... Rest of the methods unchanged ...
+
+}
+```
+
+### Summary of changes:
+- Added `private String getStrippedFileName(String fileName)`.
+- Replaced instances of:
+  ```java
+  final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+  ```
+  with:
+  ```java
+  final String stripped = getStrippedFileName(fileName);
+  ```
+
+**All other methods stay the same. No other repeated expressions in the provided code merit extract variable refactoring.**
+
+---
+
+**If you want the whole file with all lines, including unchanged ones, just let me know!**

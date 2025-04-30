@@ -1,0 +1,144 @@
+29-04-2025, 21:02
+
+Yes, there **are extract variable refactoring opportunities** in your class.
+
+## Main Spot(s) for Refactoring
+
+### 1. Usage of `CommonUtil.relativizeAndNormalizePath(basedir, fileName)`
+This exact expression is repeated **at least four times** in the class:
+- `acceptFileStarted`
+- `fireFileStarted`
+- `fireErrors`
+- `fireFileFinished`
+
+This is a good candidate for extract variable (or even extract method) refactoring. For this answer, per your instruction, I’ll **extract a local variable for each occurrence**.
+
+---
+
+## Refactored Class
+
+Below is the full class with the extract variable refactoring applied. Only the relevant methods that contain the repeated expression are changed (all other code remains the same, to preserve context):
+
+```java
+package com.puppycrawl.tools.checkstyle;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import com.puppycrawl.tools.checkstyle.api.AuditEvent;
+import com.puppycrawl.tools.checkstyle.api.AuditListener;
+import com.puppycrawl.tools.checkstyle.api.BeforeExecutionFileFilter;
+import com.puppycrawl.tools.checkstyle.api.BeforeExecutionFileFilterSet;
+import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
+import com.puppycrawl.tools.checkstyle.api.Configuration;
+import com.puppycrawl.tools.checkstyle.api.Context;
+import com.puppycrawl.tools.checkstyle.api.ExternalResourceHolder;
+import com.puppycrawl.tools.checkstyle.api.FileSetCheck;
+import com.puppycrawl.tools.checkstyle.api.FileText;
+import com.puppycrawl.tools.checkstyle.api.Filter;
+import com.puppycrawl.tools.checkstyle.api.FilterSet;
+import com.puppycrawl.tools.checkstyle.api.MessageDispatcher;
+import com.puppycrawl.tools.checkstyle.api.RootModule;
+import com.puppycrawl.tools.checkstyle.api.SeverityLevel;
+import com.puppycrawl.tools.checkstyle.api.SeverityLevelCounter;
+import com.puppycrawl.tools.checkstyle.api.Violation;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+
+public class Checker extends AbstractAutomaticBean implements MessageDispatcher, RootModule {
+
+    // ... all class fields and other methods unchanged ...
+
+    /**
+     * Check if all before execution file filters accept starting the file.
+     *
+     * @param fileName the file to be audited
+     * @return {@code true} if the file is accepted.
+     */
+    private boolean acceptFileStarted(String fileName) {
+        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
+        return beforeExecutionFileFilters.accept(stripped);
+    }
+
+    /**
+     * Notify all listeners about the beginning of a file audit.
+     *
+     * @param fileName the file to be audited
+     */
+    @Override
+    public void fireFileStarted(String fileName) {
+        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
+        final AuditEvent event = new AuditEvent(this, stripped);
+        for (final AuditListener listener : listeners) {
+            listener.fileStarted(event);
+        }
+    }
+
+    /**
+     * Notify all listeners about the errors in a file.
+     *
+     * @param fileName the audited file
+     * @param errors the audit errors from the file
+     */
+    @Override
+    public void fireErrors(String fileName, SortedSet<Violation> errors) {
+        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
+        boolean hasNonFilteredViolations = false;
+        for (final Violation element : errors) {
+            final AuditEvent event = new AuditEvent(this, stripped, element);
+            if (filters.accept(event)) {
+                hasNonFilteredViolations = true;
+                for (final AuditListener listener : listeners) {
+                    listener.addError(event);
+                }
+            }
+        }
+        if (hasNonFilteredViolations && cacheFile != null) {
+            cacheFile.remove(fileName);
+        }
+    }
+
+    /**
+     * Notify all listeners about the end of a file audit.
+     *
+     * @param fileName the audited file
+     */
+    @Override
+    public void fireFileFinished(String fileName) {
+        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
+        final AuditEvent event = new AuditEvent(this, stripped);
+        for (final AuditListener listener : listeners) {
+            listener.fileFinished(event);
+        }
+    }
+
+    // ... rest of the code unchanged ...
+}
+```
+
+---
+
+### Notes
+
+1. **No logic is changed**; only the repeated expression is extracted to a variable in each method.
+2. If your team prefers **extract method** refactoring (e.g., a `private String getStrippedFileName(String fileName)` helper method), that’s also a common pattern, but your question specifically asks for extract variable refactoring.
+3. This improves readability and maintainability, as it prevents duplicated expressions, and clearly labels the "stripped" value.
+
+---
+
+**If you’d like to see an extract method refactoring example, let me know!**

@@ -1,0 +1,326 @@
+29-04-2025, 21:46
+
+Certainly! I’ve reviewed the provided code for **Extract Variable** refactoring opportunities, especially looking for cases where complex or repetitive expressions could be extracted into well-named variables to improve readability.
+
+Below are notable examples where **Extract Variable** refactoring can be applied, such as:
+
+- Complex method calls as arguments
+- Multiple usages of the same method/property in close proximity
+- Expressions which, if named, clarify intent by context
+
+---
+
+## **Refactored Code**
+
+```java
+package org.hibernate.event.internal;
+
+import org.hibernate.HibernateException;
+import org.hibernate.LockMode;
+import org.hibernate.LockOptions;
+import org.hibernate.NonUniqueObjectException;
+import org.hibernate.TransientObjectException;
+import org.hibernate.UnresolvableObjectException;
+import org.hibernate.cache.spi.access.CollectionDataAccess;
+import org.hibernate.cache.spi.access.EntityDataAccess;
+import org.hibernate.cache.spi.access.SoftLock;
+import org.hibernate.engine.internal.Cascade;
+import org.hibernate.engine.internal.CascadePoint;
+import org.hibernate.engine.spi.ActionQueue;
+import org.hibernate.engine.spi.CascadingActions;
+import org.hibernate.engine.spi.EntityEntry;
+import org.hibernate.engine.spi.EntityKey;
+import org.hibernate.engine.spi.PersistenceContext;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.event.spi.EventSource;
+import org.hibernate.event.spi.RefreshContext;
+import org.hibernate.event.spi.RefreshEvent;
+import org.hibernate.event.spi.RefreshEventListener;
+import org.hibernate.internal.CoreLogging;
+import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.loader.ast.spi.CascadingFetchProfile;
+import org.hibernate.metamodel.spi.MappingMetamodelImplementor;
+import org.hibernate.persister.collection.CollectionPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.proxy.HibernateProxy;
+import org.hibernate.proxy.LazyInitializer;
+import org.hibernate.type.CollectionType;
+import org.hibernate.type.CompositeType;
+import org.hibernate.type.Type;
+
+import static org.hibernate.pretty.MessageHelper.infoString;
+
+public class DefaultRefreshEventListener implements RefreshEventListener {
+    private static final CoreMessageLogger LOG = CoreLogging.messageLogger( DefaultRefreshEventListener.class );
+
+    public void onRefresh(RefreshEvent event) throws HibernateException {
+        onRefresh( event, RefreshContext.create() );
+    }
+
+    public void onRefresh(RefreshEvent event, RefreshContext refreshedAlready) {
+        final EventSource source = event.getSession();
+        final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
+        final Object object = event.getObject();
+        if ( persistenceContext.reassociateIfUninitializedProxy( object ) ) {
+
+            final LazyInitializer lazyInitializer = HibernateProxy.extractLazyInitializer( object );
+            final String entityName = lazyInitializer.getEntityName();
+            final EntityPersister persister = source.getEntityPersister( entityName, object );
+            final Object identifier = persister.getIdentifier( object, event.getSession() );
+            refresh(
+                    event,
+                    null,
+                    source,
+                    persister,
+                    lazyInitializer,
+                    null,
+                    identifier,
+                    persistenceContext
+            );
+
+            if ( isTransient( event, source, object )  ) {
+                source.setReadOnly( object, source.isDefaultReadOnly() );
+            }
+        }
+        else {
+            final Object entity = persistenceContext.unproxyAndReassociate( object );
+            if ( refreshedAlready.add( entity) ) {
+                refresh( event, refreshedAlready, entity );
+            }
+            else {
+                LOG.trace( "Already refreshed" );
+            }
+        }
+    }
+
+    private static boolean isTransient(RefreshEvent event, EventSource source, Object object) {
+        final String entityName = event.getEntityName();
+        return entityName != null ? !source.contains( entityName, object) : !source.contains(object);
+    }
+
+    private static void refresh(RefreshEvent event, RefreshContext refreshedAlready, Object object) {
+        final EventSource source = event.getSession();
+        final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
+        final EntityEntry entry = persistenceContext.getEntry( object );
+
+        final EntityPersister persister;
+        final Object id;
+        if ( entry == null ) {
+            persister = source.getEntityPersister( event.getEntityName(), object );
+            id = persister.getIdentifier( object, event.getSession() );
+            if ( id == null ) {
+                throw new TransientObjectException( "transient instance passed to refresh");
+            }
+            if ( LOG.isTraceEnabled() ) {
+                final String info = infoString( persister, id, source.getFactory() );
+                LOG.tracev(
+                        "Refreshing transient {0}",
+                        info
+                );
+            }
+
+            final EntityKey entityKey = source.generateEntityKey( id, persister );
+            if ( persistenceContext.getEntry( entityKey ) != null ) {
+                throw new NonUniqueObjectException( id, persister.getEntityName() );
+            }
+        }
+        else {
+            if ( LOG.isTraceEnabled() ) {
+                final String info = infoString( entry.getPersister(), entry.getId(), source.getFactory() );
+                LOG.tracev(
+                        "Refreshing ",
+                        info
+                );
+            }
+            if ( !entry.isExistsInDatabase() ) {
+                throw new UnresolvableObjectException(
+                        entry.getId(),
+                        "this instance does not yet exist as a row in the database"
+                );
+            }
+            persister = entry.getPersister();
+            id = entry.getId();
+        }
+
+        // cascade the refresh prior to refreshing this entity
+        Cascade.cascade(
+                CascadingActions.REFRESH,
+                CascadePoint.BEFORE_REFRESH,
+                source,
+                persister,
+                object,
+                refreshedAlready
+        );
+
+        if ( entry != null ) {
+            final EntityKey key = source.generateEntityKey( id, persister );
+            persistenceContext.removeEntity( key );
+            if ( persister.hasCollections() ) {
+                new EvictVisitor( source, object ).process( object, persister );
+            }
+        }
+
+        evictEntity( object, persister, id, source );
+        evictCachedCollections( persister, id, source );
+
+        refresh( event, object, source, persister, null, entry, id, persistenceContext );
+    }
+
+    private static void refresh(
+            RefreshEvent event,
+            Object object,
+            EventSource source,
+            EntityPersister persister,
+            LazyInitializer lazyInitializer,
+            EntityEntry entry,
+            Object id,
+            PersistenceContext persistenceContext) {
+
+        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
+                CascadingFetchProfile.REFRESH,
+                () -> doRefresh( event, source, object, entry, persister, lazyInitializer, id, persistenceContext )
+        );
+        final String entityName = persister.getEntityName();
+        UnresolvableObjectException.throwIfNull( result, id, entityName );
+    }
+
+    private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
+        if ( persister.canWriteToCache() ) {
+            Object previousVersion = null;
+            if ( persister.isVersionPropertyGenerated() ) {
+                previousVersion = persister.getVersion( object );
+            }
+            final EntityDataAccess cache = persister.getCacheAccessStrategy();
+            final String tenantIdentifier = source.getTenantIdentifier();
+            final SessionFactoryImplementor factory = source.getFactory();
+            final Object ck = cache.generateCacheKey(
+                    id,
+                    persister,
+                    factory,
+                    tenantIdentifier
+            );
+            final SoftLock lock = cache.lockItem( source, ck, previousVersion );
+            cache.remove( source, ck );
+            source.getActionQueue().registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+        }
+    }
+
+    private static Object doRefresh(
+            RefreshEvent event,
+            EventSource source,
+            Object object,
+            EntityEntry entry,
+            EntityPersister persister,
+            LazyInitializer lazyInitializer,
+            Object id,
+            PersistenceContext persistenceContext) {
+        LockOptions lockOptionsToUse = event.getLockOptions();
+        final LockMode requestedLockMode = lockOptionsToUse.getLockMode();
+        final LockMode postRefreshLockMode;
+        if ( entry != null ) {
+            final LockMode currentLockMode = entry.getLockMode();
+            final boolean isExclusiveLock = currentLockMode == LockMode.WRITE
+                    || currentLockMode == LockMode.PESSIMISTIC_WRITE
+                    || currentLockMode == LockMode.PESSIMISTIC_READ;
+            if ( currentLockMode.greaterThan( requestedLockMode ) ) {
+                lockOptionsToUse = event.getLockOptions().makeCopy();
+                if ( isExclusiveLock ) {
+                    lockOptionsToUse.setLockMode( LockMode.READ );
+                    postRefreshLockMode = currentLockMode;
+                }
+                else {
+                    lockOptionsToUse.setLockMode( currentLockMode );
+                    postRefreshLockMode = null;
+                }
+            }
+            else {
+                postRefreshLockMode = null;
+            }
+        }
+        else {
+            postRefreshLockMode = null;
+        }
+
+        final Object result = persister.load( id, object, lockOptionsToUse, source );
+        if ( result != null ) {
+            if ( postRefreshLockMode != null ) {
+                final EntityEntry refreshedEntry = persistenceContext.getEntry( result );
+                refreshedEntry.setLockMode( postRefreshLockMode );
+            }
+
+            source.setReadOnly( result, isReadOnly( entry, persister, lazyInitializer, source ) );
+        }
+        return result;
+    }
+
+    private static boolean isReadOnly(
+            EntityEntry entry,
+            EntityPersister persister,
+            LazyInitializer lazyInitializer,
+            EventSource source) {
+        if ( !persister.isMutable() ) {
+            return true;
+        }
+        else if ( entry != null ) {
+            return entry.isReadOnly();
+        }
+        else if ( lazyInitializer != null ) {
+            return lazyInitializer.isReadOnly();
+        }
+        else {
+            return source.isDefaultReadOnly();
+        }
+    }
+
+    private static void evictCachedCollections(EntityPersister persister, Object id, EventSource source) {
+        final Type[] propertyTypes = persister.getPropertyTypes();
+        evictCachedCollections( propertyTypes, id, source );
+    }
+
+    private static void evictCachedCollections(Type[] types, Object id, EventSource source)
+            throws HibernateException {
+        final ActionQueue actionQueue = source.getActionQueue();
+        final SessionFactoryImplementor factory = source.getFactory();
+        final String tenantIdentifier = source.getTenantIdentifier();
+        final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
+        for ( Type type : types ) {
+            if ( type.isCollectionType() ) {
+                final String role = ((CollectionType) type).getRole();
+                final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor( role );
+                if ( collectionPersister.hasCache() ) {
+                    final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+                    final Object ck = cache.generateCacheKey(
+                            id,
+                            collectionPersister,
+                            factory,
+                            tenantIdentifier
+                    );
+                    final SoftLock lock = cache.lockItem( source, ck, null );
+                    cache.remove( source, ck );
+                    actionQueue.registerProcess( (success, session) -> cache.unlockItem( session, ck, lock ) );
+                }
+            }
+            else if ( type.isComponentType() ) {
+                final CompositeType compositeType = (CompositeType) type;
+                final Type[] subtypes = compositeType.getSubtypes();
+                evictCachedCollections( subtypes, id, source );
+            }
+        }
+    }
+}
+```
+
+---
+
+## **Summary of Changes (Key Extracted Variables)**
+
+- **Repeated complex method calls** (e.g., `source.getFactory()`, `source.getTenantIdentifier()`, `infoString(...)`, `persister.getIdentifier(...)`, etc.) are placed in variables with clear names before use.
+- **Arguments with logic or chained method calls** are first assigned to well-named variables before being passed into further methods, improving both performance (avoiding recomputation) and readability (intent is more obvious).
+- **Composite statements** in `doRefresh`, `refresh`, and the evict methods are broken down into individually-named expressions.
+
+---
+
+**Conclusion:**
+The refactored version is easier to read and maintain, with complex expressions or repeated method calls clarified with meaningful variable names. This aligns with "Extract Variable" refactoring best practices.
+
+*Let me know if you'd like further explanation of any specific extraction or part of the refactor!*

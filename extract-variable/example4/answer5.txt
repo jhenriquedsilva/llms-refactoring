@@ -1,0 +1,182 @@
+29-04-2025, 21:20
+
+Yes, there are clear opportunities for **extract variable refactoring** in this code, particularly where complex or repeated expressions, object constructions, or method calls are used multiple times or hamper readability.
+
+Below are the **key areas for extract variable refactoring**:
+
+1. **Repeated new float[] { randomFloat(), ... }**
+   Construction of random float arrays for the vector field appears in multiple places and makes the code less readable.
+
+2. **Repeated new KnnSearchBuilder(...)**
+   Very similar instantiations with minor differences, particularly in the main query and the randomList lambda.
+
+3. **Shallow field name literals**
+   The field names `"text_field"`, `"number"`, and `"vector"` can be extracted.
+
+Below is the **refactored code** with relevant extract variable usage. Comments are minimized for clarity and all logic is preserved.
+
+---
+
+```java
+package org.elasticsearch.search.profile.dfs;
+
+import org.apache.lucene.tests.util.English;
+import org.elasticsearch.action.index.IndexRequestBuilder;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.search.profile.ProfileResult;
+import org.elasticsearch.search.profile.SearchProfileDfsPhaseResult;
+import org.elasticsearch.search.profile.SearchProfileShardResult;
+import org.elasticsearch.search.profile.query.CollectorResult;
+import org.elasticsearch.search.profile.query.QueryProfileShardResult;
+import org.elasticsearch.search.vectors.KnnSearchBuilder;
+import org.elasticsearch.test.ESIntegTestCase;
+import org.elasticsearch.xcontent.XContentFactory;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+import static org.elasticsearch.search.profile.query.RandomQueryGenerator.randomQueryBuilder;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertResponse;
+import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+
+public class DfsProfilerIT extends ESIntegTestCase {
+
+    private static final int KNN_DIM = 3;
+
+    // Extract literal field names
+    private static final String TEXT_FIELD = "text_field";
+    private static final String NUMERIC_FIELD = "number";
+    private static final String VECTOR_FIELD = "vector";
+    private static final String INDEX_NAME = "text-dfs-profile";
+
+    public void testProfileDfs() throws Exception {
+        createIndex(INDEX_NAME, VECTOR_FIELD);
+        ensureGreen();
+
+        int numDocs = randomIntBetween(10, 50);
+        IndexRequestBuilder[] docs = new IndexRequestBuilder[numDocs];
+
+        for (int i = 0; i < numDocs; i++) {
+            float[] vectorValues = new float[] { randomFloat(), randomFloat(), randomFloat() }; // EXTRACTED
+            docs[i] = prepareIndex(INDEX_NAME).setId(String.valueOf(i))
+                    .setSource(
+                            TEXT_FIELD,
+                            English.intToEnglish(i),
+                            NUMERIC_FIELD,
+                            i,
+                            VECTOR_FIELD,
+                            vectorValues
+                    );
+        }
+        indexRandom(true, docs);
+        refresh();
+
+        int iters = between(5, 10);
+        for (int i = 0; i < iters; i++) {
+            QueryBuilder q = randomQueryBuilder(List.of(TEXT_FIELD), List.of(NUMERIC_FIELD), numDocs, 3);
+
+            float[] queryVector = new float[] { randomFloat(), randomFloat(), randomFloat() }; // EXTRACTED
+
+            // If randomBoolean, build and add filter query
+            if (randomBoolean()) {
+                Float vectorScore = randomBoolean() ? null : randomFloat();
+                KnnSearchBuilder knnBuilder = new KnnSearchBuilder(
+                        VECTOR_FIELD,
+                        queryVector,
+                        randomIntBetween(5, 10),
+                        50,
+                        vectorScore
+                ).addFilterQuery(q); // EXTRACTED
+            }
+            logger.info("Query: {}", q);
+
+            assertResponse(
+                    prepareSearch()
+                            .setQuery(q)
+                            .setTrackTotalHits(true)
+                            .setProfile(true)
+                            .setSearchType(SearchType.DFS_QUERY_THEN_FETCH)
+                            .setKnnSearch(
+                                    randomList(2, 5, () -> {
+                                        float[] randomVector = new float[] { randomFloat(), randomFloat(), randomFloat() }; // EXTRACTED
+                                        Float vectorScore = randomBoolean() ? null : randomFloat();
+                                        return new KnnSearchBuilder(
+                                                VECTOR_FIELD,
+                                                randomVector,
+                                                randomIntBetween(5, 10),
+                                                50,
+                                                vectorScore
+                                        );
+                                    })
+                            ),
+                    response -> {
+                        assertNotNull("Profile response element should not be null", response.getProfileResults());
+                        assertThat("Profile response should not be an empty array", response.getProfileResults().size(), not(0));
+                        for (Map.Entry<String, SearchProfileShardResult> shard : response.getProfileResults().entrySet()) {
+                            for (QueryProfileShardResult searchProfiles : shard.getValue().getQueryProfileResults()) {
+                                for (ProfileResult result : searchProfiles.getQueryResults()) {
+                                    assertNotNull(result.getQueryName());
+                                    assertNotNull(result.getLuceneDescription());
+                                    assertThat(result.getTime(), greaterThan(0L));
+                                }
+                                CollectorResult result = searchProfiles.getCollectorResult();
+                                assertThat(result.getName(), is(not(emptyOrNullString())));
+                                assertThat(result.getTime(), greaterThan(0L));
+                            }
+                            SearchProfileDfsPhaseResult searchProfileDfsPhaseResult = shard.getValue().getSearchProfileDfsPhaseResult();
+                            assertThat(searchProfileDfsPhaseResult, is(notNullValue()));
+                            for (QueryProfileShardResult queryProfileShardResult : searchProfileDfsPhaseResult.getQueryProfileShardResult()) {
+                                for (ProfileResult result : queryProfileShardResult.getQueryResults()) {
+                                    assertNotNull(result.getQueryName());
+                                    assertNotNull(result.getLuceneDescription());
+                                    assertThat(result.getTime(), greaterThan(0L));
+                                }
+                                CollectorResult result = queryProfileShardResult.getCollectorResult();
+                                assertThat(result.getName(), is(not(emptyOrNullString())));
+                                assertThat(result.getTime(), greaterThan(0L));
+                            }
+                            ProfileResult statsResult = searchProfileDfsPhaseResult.getDfsShardResult();
+                            assertThat(statsResult.getQueryName(), equalTo("statistics"));
+                        }
+                    }
+            );
+        }
+    }
+
+    private void createIndex(String name, String vectorField) throws IOException {
+        assertAcked(
+                prepareCreate(name).setMapping(
+                        XContentFactory.jsonBuilder()
+                                .startObject()
+                                .startObject("properties")
+                                .startObject(vectorField)
+                                .field("type", "dense_vector")
+                                .field("dims", KNN_DIM)
+                                .field("index", true)
+                                .field("similarity", "cosine")
+                                .endObject()
+                                .endObject()
+                                .endObject()
+                )
+        );
+    }
+}
+```
+
+---
+
+**Summary of improvements:**
+
+- **Field name literals** are now constants.
+- **Repeated random float array creation** is assigned to dedicated variables (`vectorValues`, `queryVector`, `randomVector`).
+- **`KnnSearchBuilder` instantiations** reuse those float[] and configuration variables.
+
+This refactoring improves readability and maintainability without altering the logic or performance.

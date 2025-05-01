@@ -1,0 +1,219 @@
+01-05-2025, 15:58
+
+### Review for Rename Parameter Refactoring
+
+After analyzing the code snippet, the parameters in the public and private methods generally use names that are **descriptive** for their purpose (e.g., `bridgeMethod`, `candidateMethod`, `targetClass`).
+
+However, some parameters could be improved for clarity. Here are a few opportunities:
+
+1. In methods like `searchCandidates(List<Method> candidateMethods, Method bridgeMethod, Class<?> targetClass)`
+    - `candidateMethods` is fine, but `bridgeMethod` could be more specific (e.g., `bridge`).
+    - `candidateMethod` is a very generic term. Could be improved to `possibleBridgedMethod` or `potentialMethod`.
+2. The method `isResolvedTypeMatch(Method genericMethod, Method candidateMethod, Class<?> targetClass)` can have its parameters made clearer as to which is the bridge and which is the candidate.
+3. `searchForMatch(Class<?> type, Method bridgeMethod)` — `type` could be `clazz` for consistency.
+4. Use of `method` as a local variable is mostly clear, but naming the main variables unambiguously may aid comprehension for new readers.
+
+## Refactored Code
+
+Here is the class with the proposed rename parameter refactorings for more meaningful and consistent parameter names:
+
+```java
+package org.springframework.core;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.lang.Nullable;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.ConcurrentReferenceHashMap;
+import org.springframework.util.ReflectionUtils;
+import org.springframework.util.ReflectionUtils.MethodFilter;
+
+/**
+ * Helper for resolving synthetic {@link Method#isBridge bridge Methods} to the
+ * {@link Method} being bridged.
+ *
+ * <p>Given a synthetic {@link Method#isBridge bridge Method} returns the {@link Method}
+ * being bridged. A bridge method may be created by the compiler when extending a
+ * parameterized type whose methods have parameterized arguments. During runtime
+ * invocation the bridge {@link Method} may be invoked and/or used via reflection.
+ * When attempting to locate annotations on {@link Method Methods}, it is wise to check
+ * for bridge {@link Method Methods} as appropriate and find the bridged {@link Method}.
+ *
+ * <p>See <a href="https://java.sun.com/docs/books/jls/third_edition/html/expressions.html#15.12.4.5">
+ * The Java Language Specification</a> for more details on the use of bridge methods.
+ *
+ * @author Rob Harrop
+ * @author Juergen Hoeller
+ * @author Phillip Webb
+ * @since 2.0
+ */
+public final class BridgeMethodResolver {
+
+    private static final Map<Object, Method> cache = new ConcurrentReferenceHashMap<>();
+
+    private BridgeMethodResolver() {
+    }
+
+    public static Method findBridgedMethod(Method bridge) {
+        return resolveBridgeMethod(bridge, bridge.getDeclaringClass());
+    }
+
+    public static Method getMostSpecificMethod(Method bridge, @Nullable Class<?> targetType) {
+        Method specificMethod = ClassUtils.getMostSpecificMethod(bridge, targetType);
+        return resolveBridgeMethod(specificMethod, (targetType != null ? targetType : specificMethod.getDeclaringClass()));
+    }
+
+    private static Method resolveBridgeMethod(Method bridge, Class<?> targetType) {
+        boolean isLocalBridge = (targetType == bridge.getDeclaringClass());
+        if (!bridge.isBridge() && isLocalBridge) {
+            return bridge;
+        }
+
+        Object cacheKey = (isLocalBridge ? bridge : new MethodClassKey(bridge, targetType));
+        Method bridgedMethod = cache.get(cacheKey);
+        if (bridgedMethod == null) {
+            // Gather all methods with matching name and parameter size.
+            List<Method> possibleBridgedMethods = new ArrayList<>();
+            MethodFilter filter = (method -> isBridgedCandidateFor(method, bridge));
+            ReflectionUtils.doWithMethods(targetType, possibleBridgedMethods::add, filter);
+            if (!possibleBridgedMethods.isEmpty()) {
+                bridgedMethod = (possibleBridgedMethods.size() == 1 ? possibleBridgedMethods.get(0) :
+                        searchCandidates(possibleBridgedMethods, bridge, targetType));
+            }
+            if (bridgedMethod == null) {
+                // A bridge method was passed in but we couldn't find the bridged method.
+                // Let's proceed with the passed-in method and hope for the best...
+                bridgedMethod = bridge;
+            }
+            cache.put(cacheKey, bridgedMethod);
+        }
+        return bridgedMethod;
+    }
+
+    private static boolean isBridgedCandidateFor(Method possibleBridgedMethod, Method bridge) {
+        return (!possibleBridgedMethod.isBridge() &&
+                possibleBridgedMethod.getName().equals(bridge.getName()) &&
+                possibleBridgedMethod.getParameterCount() == bridge.getParameterCount());
+    }
+
+    @Nullable
+    private static Method searchCandidates(List<Method> possibleBridgedMethods, Method bridge, Class<?> targetType) {
+        if (possibleBridgedMethods.isEmpty()) {
+            return null;
+        }
+        Method previous = null;
+        boolean allSameSignature = true;
+        for (Method possibleBridged : possibleBridgedMethods) {
+            if (isBridgeMethodFor(bridge, possibleBridged, targetType)) {
+                return possibleBridged;
+            } else if (previous != null) {
+                allSameSignature = allSameSignature &&
+                        Arrays.equals(possibleBridged.getGenericParameterTypes(), previous.getGenericParameterTypes());
+            }
+            previous = possibleBridged;
+        }
+        return (allSameSignature ? possibleBridgedMethods.get(0) : null);
+    }
+
+    static boolean isBridgeMethodFor(Method bridge, Method possibleBridgedMethod, Class<?> declaringType) {
+        if (isResolvedTypeMatch(possibleBridgedMethod, bridge, declaringType)) {
+            return true;
+        }
+        Method genericDeclaration = findGenericDeclaration(bridge);
+        return (genericDeclaration != null && isResolvedTypeMatch(genericDeclaration, possibleBridgedMethod, declaringType));
+    }
+
+    private static boolean isResolvedTypeMatch(Method genericMethod, Method candidate, Class<?> targetType) {
+        Type[] genericParameters = genericMethod.getGenericParameterTypes();
+        if (genericParameters.length != candidate.getParameterCount()) {
+            return false;
+        }
+        Class<?>[] candidateParameters = candidate.getParameterTypes();
+        for (int i = 0; i < candidateParameters.length; i++) {
+            ResolvableType genericParameter = ResolvableType.forMethodParameter(genericMethod, i, targetType);
+            Class<?> candidateParameter = candidateParameters[i];
+            if (candidateParameter.isArray()) {
+                if (!candidateParameter.componentType().equals(genericParameter.getComponentType().toClass())) {
+                    return false;
+                }
+            }
+            if (!ClassUtils.resolvePrimitiveIfNecessary(candidateParameter).equals(
+                    ClassUtils.resolvePrimitiveIfNecessary(genericParameter.toClass()))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Nullable
+    private static Method findGenericDeclaration(Method bridge) {
+        if (!bridge.isBridge()) {
+            return bridge;
+        }
+
+        // Search superclasses for method that has same signature as bridge.
+        Class<?> superclass = bridge.getDeclaringClass().getSuperclass();
+        while (superclass != null && Object.class != superclass) {
+            Method match = searchForMatch(superclass, bridge);
+            if (match != null && !match.isBridge()) {
+                return match;
+            }
+            superclass = superclass.getSuperclass();
+        }
+
+        Class<?>[] allInterfaces = ClassUtils.getAllInterfacesForClass(bridge.getDeclaringClass());
+        return searchInterfaces(allInterfaces, bridge);
+    }
+
+    @Nullable
+    private static Method searchInterfaces(Class<?>[] interfaces, Method bridge) {
+        for (Class<?> iface : interfaces) {
+            Method match = searchForMatch(iface, bridge);
+            if (match != null && !match.isBridge()) {
+                return match;
+            } else {
+                match = searchInterfaces(iface.getInterfaces(), bridge);
+                if (match != null) {
+                    return match;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Method searchForMatch(Class<?> clazz, Method bridge) {
+        try {
+            return clazz.getDeclaredMethod(bridge.getName(), bridge.getParameterTypes());
+        } catch (NoSuchMethodException ex) {
+            return null;
+        }
+    }
+
+    public static boolean isVisibilityBridgeMethodPair(Method bridge, Method bridged) {
+        if (bridge == bridged) {
+            return true;
+        }
+        return (bridge.getReturnType().equals(bridged.getReturnType()) &&
+                bridge.getParameterCount() == bridged.getParameterCount() &&
+                Arrays.equals(bridge.getParameterTypes(), bridged.getParameterTypes()));
+    }
+
+}
+```
+
+**Summary of changes**:
+- Renamed variables such as `bridgeMethod` → `bridge`,
+- `candidateMethod` → `possibleBridgedMethod` or `candidate`,
+- `method` → `match` where matching in interface/superclass searching,
+- `type` → `clazz` in `searchForMatch`.
+- Parameter naming is now more precise and consistent across methods, which improves code readability and maintainability.
+
+---
+
+**If you have further naming conventions or preferences based on your team's standards, let me know!**

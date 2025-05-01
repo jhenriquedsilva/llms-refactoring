@@ -1,0 +1,562 @@
+01-05-2025, 15:10
+
+There **are definite opportunities** for _rename parameter_ refactoring to improve readability and clarity in this class. Specifically, names like `terms`, `query`, `boost`, `spanQuery`, which are okay but very generic, could be enhanced for clarification. However, the **most ambiguous** and easy-to-improve parameter names are:
+
+- `terms` → `weightedTermsMap` or `weightedSpanTermMap`
+- `query` (when ambiguous or used together with other Query-like objects) → context-specific names, e.g., `originalQuery`, `rewrittenQuery`, `wrappedQuery`, etc.
+- `fieldName` (member variable is shadowed by parameter) → consider `targetFieldName` for the parameter
+- Usage of single-letter or contextually overloaded variables (`sp`, `w`, `mpq`, etc.) could be made more descriptive.
+
+Below is the **refactored code** with attention to the most relevant parameters. In cases where the code was already quite clear (like `tokenStream` or `reader`), names are left as is. The main focus is on the `terms` map, changing it to `weightedSpanTermMap` throughout, and making other ambiguous parameters more descriptive.
+
+---
+
+```java
+package org.apache.lucene.search.highlight;
+
+// ... [imports unchanged] ...
+
+public class WeightedSpanTermExtractor {
+
+    private String fieldName;
+    private TokenStream tokenStream; // set after getWeightedSpanTerms* methods
+    private final String defaultField;
+    private boolean expandMultiTermQuery;
+    private boolean cachedTokenStream;
+    private boolean wrapToCaching = true;
+    private int maxDocCharsToAnalyze;
+    private boolean usePayloads = false;
+    private LeafReader internalReader = null;
+
+    public WeightedSpanTermExtractor() {
+        this(null);
+    }
+
+    public WeightedSpanTermExtractor(String defaultField) {
+        this.defaultField = defaultField;
+    }
+
+    /**
+     * Fills a Map with WeightedSpanTerms using the terms from the supplied Query.
+     *
+     * @param originalQuery Query to extract Terms from
+     * @param boost Query boost
+     * @param weightedSpanTermMap Map to place created WeightedSpanTerms in
+     * @throws IOException If there is a low-level I/O error
+     */
+    protected void extract(Query originalQuery, float boost, Map<String, WeightedSpanTerm> weightedSpanTermMap)
+            throws IOException {
+        if (originalQuery instanceof BoostQuery) {
+            BoostQuery boostQuery = (BoostQuery) originalQuery;
+            extract(boostQuery.getQuery(), boost * boostQuery.getBoost(), weightedSpanTermMap);
+        } else if (originalQuery instanceof BooleanQuery) {
+            for (BooleanClause clause : (BooleanQuery) originalQuery) {
+                if (!clause.isProhibited()) {
+                    extract(clause.getQuery(), boost, weightedSpanTermMap);
+                }
+            }
+        } else if (originalQuery instanceof PhraseQuery) {
+            PhraseQuery phraseQuery = ((PhraseQuery) originalQuery);
+            Term[] phraseQueryTerms = phraseQuery.getTerms();
+            if (phraseQueryTerms.length == 1) {
+                extractWeightedSpanTerms(weightedSpanTermMap, new SpanTermQuery(phraseQueryTerms[0]), boost);
+            } else {
+                SpanQuery[] spanClauses = new SpanQuery[phraseQueryTerms.length];
+                for (int i = 0; i < phraseQueryTerms.length; i++) {
+                    spanClauses[i] = new SpanTermQuery(phraseQueryTerms[i]);
+                }
+                int positionGaps = 0;
+                int[] positions = phraseQuery.getPositions();
+                if (positions.length >= 2) {
+                    positionGaps =
+                            Math.max(0, positions[positions.length - 1] - positions[0] - positions.length + 1);
+                }
+                boolean inOrder = (phraseQuery.getSlop() == 0);
+                SpanNearQuery spanNearQuery =
+                        new SpanNearQuery(spanClauses, phraseQuery.getSlop() + positionGaps, inOrder);
+                extractWeightedSpanTerms(weightedSpanTermMap, spanNearQuery, boost);
+            }
+        } else if (originalQuery instanceof TermQuery || originalQuery instanceof SynonymQuery) {
+            extractWeightedTerms(weightedSpanTermMap, originalQuery, boost);
+        } else if (originalQuery instanceof SpanQuery) {
+            extractWeightedSpanTerms(weightedSpanTermMap, (SpanQuery) originalQuery, boost);
+        } else if (originalQuery instanceof ConstantScoreQuery) {
+            final Query wrapped = ((ConstantScoreQuery) originalQuery).getQuery();
+            if (wrapped != null) {
+                extract(wrapped, boost, weightedSpanTermMap);
+            }
+        } else if (originalQuery instanceof CommonTermsQuery) {
+            extractWeightedTerms(weightedSpanTermMap, originalQuery, boost);
+        } else if (originalQuery instanceof DisjunctionMaxQuery) {
+            for (Query clause : ((DisjunctionMaxQuery) originalQuery)) {
+                extract(clause, boost, weightedSpanTermMap);
+            }
+        } else if (originalQuery instanceof MultiPhraseQuery) {
+            final MultiPhraseQuery multiPhraseQuery = (MultiPhraseQuery) originalQuery;
+            final Term[][] termArrays = multiPhraseQuery.getTermArrays();
+            final int[] positions = multiPhraseQuery.getPositions();
+            if (positions.length > 0) {
+                int maxPosition = positions[positions.length - 1];
+                for (int i = 0; i < positions.length - 1; ++i) {
+                    if (positions[i] > maxPosition) {
+                        maxPosition = positions[i];
+                    }
+                }
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                final List<SpanQuery>[] disjunctLists = new List[maxPosition + 1];
+                int distinctPositions = 0;
+                for (int i = 0; i < termArrays.length; ++i) {
+                    final Term[] termArray = termArrays[i];
+                    List<SpanQuery> disjuncts = disjunctLists[positions[i]];
+                    if (disjuncts == null) {
+                        disjuncts = (disjunctLists[positions[i]] = new ArrayList<>(termArray.length));
+                        ++distinctPositions;
+                    }
+                    for (Term termInArray : termArray) {
+                        disjuncts.add(new SpanTermQuery(termInArray));
+                    }
+                }
+                int positionGaps = 0;
+                int position = 0;
+                final SpanQuery[] spanClauses = new SpanQuery[distinctPositions];
+                for (List<SpanQuery> disjuncts : disjunctLists) {
+                    if (disjuncts != null) {
+                        spanClauses[position++] =
+                                new SpanOrQuery(disjuncts.toArray(new SpanQuery[disjuncts.size()]));
+                    } else {
+                        ++positionGaps;
+                    }
+                }
+                if (spanClauses.length == 1) {
+                    extractWeightedSpanTerms(weightedSpanTermMap, spanClauses[0], boost);
+                } else {
+                    final int slop = multiPhraseQuery.getSlop();
+                    final boolean inOrder = (slop == 0);
+                    SpanNearQuery spanNearQuery = new SpanNearQuery(spanClauses, slop + positionGaps, inOrder);
+                    extractWeightedSpanTerms(weightedSpanTermMap, spanNearQuery, boost);
+                }
+            }
+        } else if (originalQuery instanceof MatchAllDocsQuery) {
+            // nothing
+        } else if (originalQuery instanceof FieldExistsQuery) {
+            // nothing
+        } else if (originalQuery instanceof FunctionScoreQuery) {
+            extract(((FunctionScoreQuery) originalQuery).getWrappedQuery(), boost, weightedSpanTermMap);
+        } else if (isQueryUnsupported(originalQuery.getClass())) {
+            // nothing
+        } else {
+            if (originalQuery instanceof MultiTermQuery
+                    && (!expandMultiTermQuery || !fieldNameComparator(((MultiTermQuery) originalQuery).getField()))) {
+                return;
+            }
+            final IndexReader reader = getLeafContext().reader();
+            Query rewrittenQuery;
+            if (originalQuery instanceof MultiTermQuery) {
+                rewrittenQuery =
+                        MultiTermQuery.SCORING_BOOLEAN_REWRITE.rewrite(
+                                new IndexSearcher(reader), (MultiTermQuery) originalQuery);
+            } else {
+                rewrittenQuery = originalQuery.rewrite(new IndexSearcher(reader));
+            }
+            if (rewrittenQuery != originalQuery) {
+                extract(rewrittenQuery, boost, weightedSpanTermMap);
+            } else {
+                extractUnknownQuery(originalQuery, weightedSpanTermMap);
+            }
+        }
+    }
+
+    protected boolean isQueryUnsupported(Class<? extends Query> queryClass) {
+        if (queryClass.getName().startsWith("org.apache.lucene.spatial.")) {
+            return true;
+        }
+        if (queryClass.getName().startsWith("org.apache.lucene.spatial3d.")) {
+            return true;
+        }
+        return false;
+    }
+
+    protected void extractUnknownQuery(Query unknownQuery, Map<String, WeightedSpanTerm> weightedSpanTermMap)
+            throws IOException {
+        // for sub-classing to extract custom queries
+    }
+
+    /**
+     * Fills a Map with WeightedSpanTerms using the terms from the supplied SpanQuery.
+     *
+     * @param weightedSpanTermMap Map to place created WeightedSpanTerms in
+     * @param spanQuery SpanQuery to extract Terms from
+     * @param boost Query boost
+     * @throws IOException If there is a low-level I/O error
+     */
+    protected void extractWeightedSpanTerms(
+            Map<String, WeightedSpanTerm> weightedSpanTermMap, SpanQuery spanQuery, float boost) throws IOException {
+
+        Set<String> queryFieldNames = new HashSet<>();
+        collectSpanQueryFields(spanQuery, queryFieldNames);
+        if (fieldName != null
+                && queryFieldNames.contains(fieldName) == false
+                && (defaultField == null || queryFieldNames.contains(defaultField) == false)) {
+            return;
+        }
+
+        final boolean mustRewriteQuery = mustRewriteQuery(spanQuery);
+        final IndexSearcher searcher = new IndexSearcher(getLeafContext());
+        searcher.setQueryCache(null);
+        final SpanQuery queryToWeight = mustRewriteQuery ? (SpanQuery) searcher.rewrite(spanQuery) : spanQuery;
+
+        final Set<Term> nonWeightedTerms = new HashSet<>();
+        queryToWeight.visit(QueryVisitor.termCollector(nonWeightedTerms));
+        if (nonWeightedTerms.isEmpty()) {
+            return;
+        }
+
+        final List<PositionSpan> spanPositions = new ArrayList<>();
+
+        LeafReaderContext context = getLeafContext();
+        SpanWeight spanWeight =
+                (SpanWeight)
+                        searcher.createWeight(searcher.rewrite(queryToWeight), ScoreMode.COMPLETE_NO_SCORES, 1);
+        final Spans spans = spanWeight.getSpans(context, SpanWeight.Postings.POSITIONS);
+        if (spans == null) {
+            return;
+        }
+
+        final Bits acceptDocs = context.reader().getLiveDocs();
+        while (spans.nextDoc() != Spans.NO_MORE_DOCS) {
+            if (acceptDocs != null && acceptDocs.get(spans.docID()) == false) {
+                continue;
+            }
+            while (spans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {
+                spanPositions.add(new PositionSpan(spans.startPosition(), spans.endPosition() - 1));
+            }
+        }
+
+        if (spanPositions.isEmpty()) {
+            return;
+        }
+
+        for (final Term queryTerm : nonWeightedTerms) {
+            if (fieldNameComparator(queryTerm.field())) {
+                WeightedSpanTerm weightedSpanTerm = weightedSpanTermMap.get(queryTerm.text());
+                if (weightedSpanTerm == null) {
+                    weightedSpanTerm = new WeightedSpanTerm(boost, queryTerm.text());
+                    weightedSpanTerm.addPositionSpans(spanPositions);
+                    weightedSpanTerm.positionSensitive = true;
+                    weightedSpanTermMap.put(queryTerm.text(), weightedSpanTerm);
+                } else {
+                    if (spanPositions.size() > 0) {
+                        weightedSpanTerm.addPositionSpans(spanPositions);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Fills a Map with WeightedSpanTerms using the terms from the supplied Query.
+     *
+     * @param weightedSpanTermMap Map to place created WeightedSpanTerms in
+     * @param inputQuery Query to extract Terms from
+     * @throws IOException If there is a low-level I/O error
+     */
+    protected void extractWeightedTerms(Map<String, WeightedSpanTerm> weightedSpanTermMap, Query inputQuery, float boost)
+            throws IOException {
+        Set<Term> extractedTerms = new HashSet<>();
+        final IndexSearcher searcher = new IndexSearcher(getLeafContext());
+        searcher.rewrite(inputQuery).visit(QueryVisitor.termCollector(extractedTerms));
+        for (final Term queryTerm : extractedTerms) {
+            if (fieldNameComparator(queryTerm.field())) {
+                WeightedSpanTerm weightedSpanTerm = new WeightedSpanTerm(boost, queryTerm.text());
+                weightedSpanTermMap.put(queryTerm.text(), weightedSpanTerm);
+            }
+        }
+    }
+
+    /** Necessary to implement matches for queries against defaultField */
+    protected boolean fieldNameComparator(String fieldNameToCheck) {
+        return fieldName == null
+                || fieldName.equals(fieldNameToCheck)
+                || (defaultField != null && defaultField.equals(fieldNameToCheck));
+    }
+
+    protected LeafReaderContext getLeafContext() throws IOException {
+        if (internalReader == null) {
+            boolean cacheIt = wrapToCaching && !(tokenStream instanceof CachingTokenFilter);
+            if (tokenStream instanceof TokenStreamFromTermVector) {
+                cacheIt = false;
+                Terms termVectorTerms = ((TokenStreamFromTermVector) tokenStream).getTermVectorTerms();
+                if (termVectorTerms.hasPositions() && termVectorTerms.hasOffsets()) {
+                    internalReader =
+                            new TermVectorLeafReader(DelegatingLeafReader.FIELD_NAME, termVectorTerms);
+                }
+            }
+            if (internalReader == null) {
+                final MemoryIndex indexer = new MemoryIndex(true, usePayloads);
+                if (cacheIt) {
+                    assert !cachedTokenStream;
+                    tokenStream =
+                            new CachingTokenFilter(new OffsetLimitTokenFilter(tokenStream, maxDocCharsToAnalyze));
+                    cachedTokenStream = true;
+                    indexer.addField(DelegatingLeafReader.FIELD_NAME, tokenStream);
+                } else {
+                    indexer.addField(
+                            DelegatingLeafReader.FIELD_NAME,
+                            new OffsetLimitTokenFilter(tokenStream, maxDocCharsToAnalyze));
+                }
+                final IndexSearcher searcher = indexer.createSearcher();
+                internalReader = ((LeafReaderContext) searcher.getTopReaderContext()).reader();
+            }
+            this.internalReader = new DelegatingLeafReader(internalReader);
+        }
+        return internalReader.getContext();
+    }
+
+    static final class DelegatingLeafReader extends FilterLeafReader {
+        private static final String FIELD_NAME = "shadowed_field";
+
+        DelegatingLeafReader(LeafReader in) {
+            super(in);
+        }
+
+        @Override
+        public FieldInfos getFieldInfos() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Terms terms(String field) throws IOException {
+            return super.terms(DelegatingLeafReader.FIELD_NAME);
+        }
+
+        @Override
+        public NumericDocValues getNumericDocValues(String field) throws IOException {
+            return super.getNumericDocValues(FIELD_NAME);
+        }
+
+        @Override
+        public BinaryDocValues getBinaryDocValues(String field) throws IOException {
+            return super.getBinaryDocValues(FIELD_NAME);
+        }
+
+        @Override
+        public SortedDocValues getSortedDocValues(String field) throws IOException {
+            return super.getSortedDocValues(FIELD_NAME);
+        }
+
+        @Override
+        public NumericDocValues getNormValues(String field) throws IOException {
+            return super.getNormValues(FIELD_NAME);
+        }
+
+        @Override
+        public CacheHelper getCoreCacheHelper() {
+            return null;
+        }
+
+        @Override
+        public CacheHelper getReaderCacheHelper() {
+            return null;
+        }
+    }
+
+    /**
+     * Creates a Map of WeightedSpanTerms from the given Query and TokenStream.
+     *
+     * @param query that caused hit
+     * @param boost boost value
+     * @param tokenStream of text to be highlighted
+     * @return Map containing WeightedSpanTerms
+     * @throws IOException If there is a low-level I/O error
+     */
+    public Map<String, WeightedSpanTerm> getWeightedSpanTerms(
+            Query query, float boost, TokenStream tokenStream) throws IOException {
+        return getWeightedSpanTerms(query, boost, tokenStream, null);
+    }
+
+    /**
+     * Creates a Map of WeightedSpanTerms from the given Query and TokenStream.
+     *
+     * @param query that caused hit
+     * @param boost boost value
+     * @param tokenStream of text to be highlighted
+     * @param targetFieldName restricts Term's used based on field name
+     * @return Map containing WeightedSpanTerms
+     * @throws IOException If there is a low-level I/O error
+     */
+    public Map<String, WeightedSpanTerm> getWeightedSpanTerms(
+            Query query, float boost, TokenStream tokenStream, String targetFieldName) throws IOException {
+        this.fieldName = targetFieldName;
+
+        Map<String, WeightedSpanTerm> weightedSpanTermMap = new PositionCheckingMap<>();
+        this.tokenStream = tokenStream;
+        try {
+            extract(query, boost, weightedSpanTermMap);
+        } finally {
+            IOUtils.close(internalReader);
+        }
+
+        return weightedSpanTermMap;
+    }
+
+    /**
+     * Creates a Map of WeightedSpanTerms from the given Query and TokenStream. Uses a supplied IndexReader to properly weight terms (for gradient highlighting).
+     *
+     * @param query that caused hit
+     * @param boost boost value
+     * @param tokenStream of text to be highlighted
+     * @param targetFieldName restricts Term's used based on field name
+     * @param reader to use for scoring
+     * @return Map of WeightedSpanTerms with quasi tf/idf scores
+     * @throws IOException If there is a low-level I/O error
+     */
+    public Map<String, WeightedSpanTerm> getWeightedSpanTermsWithScores(
+            Query query, float boost, TokenStream tokenStream, String targetFieldName, IndexReader reader)
+            throws IOException {
+        this.fieldName = targetFieldName;
+        this.tokenStream = tokenStream;
+
+        Map<String, WeightedSpanTerm> weightedSpanTermMap = new PositionCheckingMap<>();
+        extract(query, boost, weightedSpanTermMap);
+
+        int totalNumDocs = reader.maxDoc();
+        Set<String> weightedTerms = weightedSpanTermMap.keySet();
+        Iterator<String> it = weightedTerms.iterator();
+
+        try {
+            while (it.hasNext()) {
+                WeightedSpanTerm weightedSpanTerm = weightedSpanTermMap.get(it.next());
+                int docFreq = reader.docFreq(new Term(targetFieldName, weightedSpanTerm.term));
+                float idf = (float) (Math.log(totalNumDocs / (double) (docFreq + 1)) + 1.0);
+                weightedSpanTerm.weight *= idf;
+            }
+        } finally {
+            IOUtils.close(internalReader);
+        }
+
+        return weightedSpanTermMap;
+    }
+
+    protected void collectSpanQueryFields(SpanQuery spanQuery, Set<String> fieldNames) {
+        if (spanQuery instanceof FieldMaskingSpanQuery) {
+            collectSpanQueryFields(((FieldMaskingSpanQuery) spanQuery).getMaskedQuery(), fieldNames);
+        } else if (spanQuery instanceof SpanFirstQuery) {
+            collectSpanQueryFields(((SpanFirstQuery) spanQuery).getMatch(), fieldNames);
+        } else if (spanQuery instanceof SpanNearQuery) {
+            for (final SpanQuery clause : ((SpanNearQuery) spanQuery).getClauses()) {
+                collectSpanQueryFields(clause, fieldNames);
+            }
+        } else if (spanQuery instanceof SpanNotQuery) {
+            collectSpanQueryFields(((SpanNotQuery) spanQuery).getInclude(), fieldNames);
+        } else if (spanQuery instanceof SpanOrQuery) {
+            for (final SpanQuery clause : ((SpanOrQuery) spanQuery).getClauses()) {
+                collectSpanQueryFields(clause, fieldNames);
+            }
+        } else {
+            fieldNames.add(spanQuery.getField());
+        }
+    }
+
+    protected boolean mustRewriteQuery(SpanQuery spanQuery) {
+        if (!expandMultiTermQuery) {
+            return false;
+        } else if (spanQuery instanceof FieldMaskingSpanQuery) {
+            return mustRewriteQuery(((FieldMaskingSpanQuery) spanQuery).getMaskedQuery());
+        } else if (spanQuery instanceof SpanFirstQuery) {
+            return mustRewriteQuery(((SpanFirstQuery) spanQuery).getMatch());
+        } else if (spanQuery instanceof SpanNearQuery) {
+            for (final SpanQuery clause : ((SpanNearQuery) spanQuery).getClauses()) {
+                if (mustRewriteQuery(clause)) {
+                    return true;
+                }
+            }
+            return false;
+        } else if (spanQuery instanceof SpanNotQuery) {
+            SpanNotQuery spanNotQuery = (SpanNotQuery) spanQuery;
+            return mustRewriteQuery(spanNotQuery.getInclude())
+                    || mustRewriteQuery(spanNotQuery.getExclude());
+        } else if (spanQuery instanceof SpanOrQuery) {
+            for (final SpanQuery clause : ((SpanOrQuery) spanQuery).getClauses()) {
+                if (mustRewriteQuery(clause)) {
+                    return true;
+                }
+            }
+            return false;
+        } else if (spanQuery instanceof SpanTermQuery) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /**
+     * This class makes sure that if both position sensitive and insensitive versions of the same term
+     * are added, the position insensitive one wins.
+     */
+    protected static class PositionCheckingMap<K> extends HashMap<K, WeightedSpanTerm> {
+
+        @Override
+        public void putAll(Map<? extends K, ? extends WeightedSpanTerm> m) {
+            for (Map.Entry<? extends K, ? extends WeightedSpanTerm> entry : m.entrySet())
+                this.put(entry.getKey(), entry.getValue());
+        }
+
+        @Override
+        public WeightedSpanTerm put(K key, WeightedSpanTerm value) {
+            WeightedSpanTerm prevTerm = super.put(key, value);
+            if (prevTerm != null && prevTerm.positionSensitive == false) {
+                value.positionSensitive = false;
+            }
+            return prevTerm;
+        }
+    }
+
+    public boolean getExpandMultiTermQuery() {
+        return expandMultiTermQuery;
+    }
+
+    public void setExpandMultiTermQuery(boolean expandMultiTermQuery) {
+        this.expandMultiTermQuery = expandMultiTermQuery;
+    }
+
+    public boolean isUsePayloads() {
+        return usePayloads;
+    }
+
+    public void setUsePayloads(boolean usePayloads) {
+        this.usePayloads = usePayloads;
+    }
+
+    public boolean isCachedTokenStream() {
+        return cachedTokenStream;
+    }
+
+    public TokenStream getTokenStream() {
+        assert tokenStream != null;
+        return tokenStream;
+    }
+
+    public void setWrapIfNotCachingTokenFilter(boolean wrap) {
+        this.wrapToCaching = wrap;
+    }
+
+    protected final void setMaxDocCharsToAnalyze(int maxDocCharsToAnalyze) {
+        this.maxDocCharsToAnalyze = maxDocCharsToAnalyze;
+    }
+}
+```
+
+---
+
+**Summary of Main Refactorings:**
+
+- `terms` → `weightedSpanTermMap` everywhere (the most important and widespread change).
+- `query` parameter clarified contextually where necessary: e.g., `originalQuery`, `inputQuery`, `rewrittenQuery`, etc.
+- In public methods, `fieldName` parameter → `targetFieldName` to avoid shadowing/confusion with the member variable.
+- Minor internal variables such as `sp`, `w`, `mpq` improved to more readable names (`spanNearQuery`, `spanWeight`, `multiPhraseQuery`).
+- Javadocs updated to reflect new parameter names.
+
+**Note:**
+These improvements make the code easier to review, maintain, and use, especially for APIs or code that is not trivial. If you have a naming convention preferring shorter names, the above can be further shortened as needed.
+
+If you require explanations for any specific parameter renaming or further refinements, please let me know!

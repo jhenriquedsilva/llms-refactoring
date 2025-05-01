@@ -1,0 +1,392 @@
+01-05-2025, 15:41
+
+Certainly! Here is a **review of the code snippet** with a focus on rename parameter refactorings specifically. We want to ensure that the parameters in **public/protected method signatures** and constructors are named for clarity, enhancing code readability and maintainability.
+
+### Opportunities for Rename Parameter Refactoring
+
+#### 1. Inconsistent “locks” Naming
+- Several methods and fields use the variable name `parallelCacheRefreshesLocks`, which is somewhat confusing. The number is not the number of refreshes, but locks for refreshing.
+- It would be clearer as `parallelCacheRefreshLocks` or even `cacheRefreshLockCount`.
+
+#### 2. Temporary Variables in Methods
+- In methods such as `withRetryExpiryTime(long expiryTime, TimeUnit unit)`, the parameter names are already clear; however, in **setRetryExpiryTime(int secs)**, the parameter `secs` could benefit from a more descriptive name like `retryExpiryTimeSecs` for clarity.
+
+#### 3. Use of `solrUrls`
+- The parameter `solrUrls` is appropriate, but occasionally parameter/field names flip between `solrUrls` (for a list) and `solrUrl` (for a singular value in error messages). This should stay consistent.
+- In the JavaDoc, there's reference to "solrUrl(s)" (“Both zkHost(s) & solrUrl(s) have been specified. Only specify one.”) but the parameter is always plural. For code consistency, always use the plural form.
+
+#### 4. ZK parameters
+- Parameter names like `zkHosts` and `zkChroot` are clear.
+
+#### 5. Methods like `withCollectionCacheTtl`
+- Parameters `timeToLiveSeconds`, `timeToLive`, and `unit` are fine, though `timeToLive` could be renamed to `cacheTtl` for brevity.
+
+---
+
+## Refactored Code
+
+Here’s the class with the **main rename parameter refactoring improvements** applied (as per above) for improved readability.
+
+```java
+package org.apache.solr.client.solrj.impl;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import org.apache.solr.client.solrj.ResponseParser;
+import org.apache.solr.client.solrj.impl.SolrZkClientTimeout.SolrZkClientTimeoutAware;
+import org.apache.solr.client.solrj.request.RequestWriter;
+import org.apache.solr.client.solrj.request.UpdateRequest;
+import org.apache.solr.common.SolrException;
+
+/**
+ * SolrJ client class to communicate with SolrCloud using Http2SolrClient. Instances of this class
+ * communicate with Zookeeper to discover Solr endpoints for SolrCloud collections, and then use the
+ * {@link LBHttp2SolrClient} to issue requests.
+ *
+ * @lucene.experimental
+ * @since solr 8.0
+ */
+@SuppressWarnings("serial")
+public class CloudHttp2SolrClient extends CloudSolrClient {
+
+    private final ClusterStateProvider stateProvider;
+    private final LBHttp2SolrClient lbClient;
+    private final Http2SolrClient myClient;
+    private final boolean clientIsInternal;
+
+    /**
+     * Create a new client object that connects to Zookeeper and is always aware of the SolrCloud
+     * state. If there is a fully redundant Zookeeper quorum and SolrCloud has enough replicas for
+     * every shard in a collection, there is no single point of failure. Updates will be sent to shard
+     * leaders by default.
+     *
+     * @param builder a {@link Http2SolrClient.Builder} with the options used to create the client.
+     */
+    protected CloudHttp2SolrClient(Builder builder) {
+        super(builder.shardLeadersOnly, builder.parallelUpdates, builder.directUpdatesToLeadersOnly);
+        if (builder.httpClient == null) {
+            this.clientIsInternal = true;
+            if (builder.internalClientBuilder == null) {
+                this.myClient = new Http2SolrClient.Builder().build();
+            } else {
+                this.myClient = builder.internalClientBuilder.build();
+            }
+        } else {
+            this.clientIsInternal = false;
+            this.myClient = builder.httpClient;
+        }
+        this.retryExpiryTimeNano = builder.retryExpiryTimeNano;
+        this.defaultCollection = builder.defaultCollection;
+        if (builder.requestWriter != null) {
+            this.myClient.requestWriter = builder.requestWriter;
+        }
+        if (builder.responseParser != null) {
+            this.myClient.setParser(builder.responseParser);
+        }
+        this.stateProvider = builder.stateProvider;
+
+        this.collectionStateCache.timeToLiveMs =
+                TimeUnit.MILLISECONDS.convert(builder.cacheRefreshTtlSeconds, TimeUnit.SECONDS);
+
+        //  If caches are expired then they are refreshed after acquiring a lock. Set the number of
+        // locks.
+        this.locks = objectList(builder.cacheRefreshLockCount);
+
+        this.lbClient = new LBHttp2SolrClient.Builder(myClient).build();
+    }
+
+    @Override
+    public void close() throws IOException {
+        stateProvider.close();
+        lbClient.close();
+
+        if (clientIsInternal && myClient != null) {
+            myClient.close();
+        }
+
+        super.close();
+    }
+
+    @Override
+    public LBHttp2SolrClient getLbClient() {
+        return lbClient;
+    }
+
+    @Override
+    public ClusterStateProvider getClusterStateProvider() {
+        return stateProvider;
+    }
+
+    public Http2SolrClient getHttpClient() {
+        return myClient;
+    }
+
+    @Override
+    protected boolean wasCommError(Throwable rootCause) {
+        return false;
+    }
+
+    /** Constructs {@link CloudHttp2SolrClient} instances from provided configuration. */
+    public static class Builder {
+        protected Collection<String> zkHosts = new ArrayList<>();
+        protected List<String> solrUrls = new ArrayList<>();
+        protected String zkChroot;
+        protected Http2SolrClient httpClient;
+        protected boolean shardLeadersOnly = true;
+        protected boolean directUpdatesToLeadersOnly = false;
+        protected boolean parallelUpdates = true;
+        protected ClusterStateProvider stateProvider;
+        protected Http2SolrClient.Builder internalClientBuilder;
+        private RequestWriter requestWriter;
+        private ResponseParser responseParser;
+        private long retryExpiryTimeNano =
+                TimeUnit.NANOSECONDS.convert(3, TimeUnit.SECONDS); // 3 seconds or 3 million nanos
+
+        private String defaultCollection;
+        private long cacheRefreshTtlSeconds = 60; // Formerly timeToLiveSeconds
+        private int cacheRefreshLockCount = 3; // Formerly parallelCacheRefreshesLocks
+        private int zkConnectTimeout = SolrZkClientTimeout.DEFAULT_ZK_CONNECT_TIMEOUT;
+        private int zkClientTimeout = SolrZkClientTimeout.DEFAULT_ZK_CLIENT_TIMEOUT;
+        private boolean canUseZkACLs = true;
+
+        /**
+         * Provide a series of Solr URLs to be used when configuring {@link CloudHttp2SolrClient}
+         * instances. The solr client will use these urls to understand the cluster topology, which solr
+         * nodes are active etc.
+         *
+         * <p>Provided Solr URLs are expected to point to the root Solr path
+         * ("http://hostname:8983/solr"); they should not include any collections, cores, or other path
+         * components.
+         *
+         * <p>Usage example:
+         *
+         * <pre>
+         *   final List&lt;String&gt; solrBaseUrls = new ArrayList&lt;String&gt;();
+         *   solrBaseUrls.add("http://solr1:8983/solr"); solrBaseUrls.add("http://solr2:8983/solr"); solrBaseUrls.add("http://solr3:8983/solr");
+         *   final SolrClient client = new CloudHttp2SolrClient.Builder(solrBaseUrls).build();
+         * </pre>
+         */
+        public Builder(List<String> solrUrls) {
+            this.solrUrls = solrUrls;
+        }
+
+        /**
+         * Provide a series of ZK hosts which will be used when configuring {@link CloudHttp2SolrClient}
+         * instances.
+         *
+         * <p>Usage example when Solr stores data at the ZooKeeper root ('/'):
+         *
+         * <pre>
+         *   final List&lt;String&gt; zkServers = new ArrayList&lt;String&gt;();
+         *   zkServers.add("zookeeper1:2181"); zkServers.add("zookeeper2:2181"); zkServers.add("zookeeper3:2181");
+         *   final SolrClient client = new CloudHttp2SolrClient.Builder(zkServers, Optional.empty()).build();
+         * </pre>
+         *
+         * Usage example when Solr data is stored in a ZooKeeper chroot:
+         *
+         * <pre>
+         *    final List&lt;String&gt; zkServers = new ArrayList&lt;String&gt;();
+         *    zkServers.add("zookeeper1:2181"); zkServers.add("zookeeper2:2181"); zkServers.add("zookeeper3:2181");
+         *    final SolrClient client = new CloudHttp2SolrClient.Builder(zkServers, Optional.of("/solr")).build();
+         *  </pre>
+         *
+         * @param zkHosts a List of at least one ZooKeeper host and port (e.g. "zookeeper1:2181")
+         * @param zkChroot the path to the root ZooKeeper node containing Solr data. Provide {@code
+         *     java.util.Optional.empty()} if no ZK chroot is used.
+         */
+        public Builder(List<String> zkHosts, Optional<String> zkChroot) {
+            this.zkHosts = zkHosts;
+            if (zkChroot.isPresent()) this.zkChroot = zkChroot.get();
+        }
+
+        /** Whether or not to use the default ZK ACLs when building a ZK Client. */
+        public Builder canUseZkACLs(boolean canUseZkACLs) {
+            this.canUseZkACLs = canUseZkACLs;
+            return this;
+        }
+
+        public Builder sendUpdatesOnlyToShardLeaders() {
+            shardLeadersOnly = true;
+            return this;
+        }
+
+        public Builder sendUpdatesToAnyReplica() {
+            shardLeadersOnly = false;
+            return this;
+        }
+
+        public Builder sendDirectUpdatesToShardLeadersOnly() {
+            directUpdatesToLeadersOnly = true;
+            return this;
+        }
+
+        public Builder sendDirectUpdatesToAnyShardReplica() {
+            directUpdatesToLeadersOnly = false;
+            return this;
+        }
+
+        /** Provides a {@link RequestWriter} for created clients to use when handing requests. */
+        public Builder withRequestWriter(RequestWriter requestWriter) {
+            this.requestWriter = requestWriter;
+            return this;
+        }
+
+        /** Provides a {@link ResponseParser} for created clients to use when handling requests. */
+        public Builder withResponseParser(ResponseParser responseParser) {
+            this.responseParser = responseParser;
+            return this;
+        }
+
+        public Builder withParallelUpdates(boolean parallelUpdates) {
+            this.parallelUpdates = parallelUpdates;
+            return this;
+        }
+
+        /** @deprecated Please use {@link #withParallelCacheRefreshes(int)} */
+        @Deprecated(since = "9.2")
+        public Builder setParallelCacheRefreshes(int cacheRefreshLockCount) {
+            this.withParallelCacheRefreshes(cacheRefreshLockCount);
+            return this;
+        }
+
+        public Builder withParallelCacheRefreshes(int cacheRefreshLockCount) {
+            this.cacheRefreshLockCount = cacheRefreshLockCount;
+            return this;
+        }
+
+        /** @deprecated Please use {@link #withRetryExpiryTime(long, TimeUnit)} */
+        @Deprecated(since = "9.2")
+        public Builder setRetryExpiryTime(int retryExpiryTimeSecs) {
+            this.withRetryExpiryTime(retryExpiryTimeSecs, TimeUnit.SECONDS);
+            return this;
+        }
+
+        public Builder withRetryExpiryTime(long retryExpiryTime, TimeUnit unit) {
+            this.retryExpiryTimeNano = TimeUnit.NANOSECONDS.convert(retryExpiryTime, unit);
+            return this;
+        }
+
+        /** Sets the default collection for request. */
+        public Builder withDefaultCollection(String collection) {
+            this.defaultCollection = collection;
+            return this;
+        }
+
+        /**
+         * Sets the cache ttl for DocCollection Objects cached.
+         *
+         * @param cacheRefreshTtlSeconds ttl value in seconds
+         * @deprecated Please use {@link #withCollectionCacheTtl(long, TimeUnit)}
+         */
+        @Deprecated(since = "9.2")
+        public Builder withCollectionCacheTtl(int cacheRefreshTtlSeconds) {
+            withCollectionCacheTtl(cacheRefreshTtlSeconds, TimeUnit.SECONDS);
+            return this;
+        }
+
+        /**
+         * Sets the cache ttl for DocCollection Objects cached.
+         *
+         * @param cacheRefreshTtl ttl value
+         */
+        public Builder withCollectionCacheTtl(long cacheRefreshTtl, TimeUnit unit) {
+            assert cacheRefreshTtl > 0;
+            this.cacheRefreshTtlSeconds = TimeUnit.SECONDS.convert(cacheRefreshTtl, unit);
+            return this;
+        }
+
+        /**
+         * Set the internal http client.
+         *
+         * <p>Note: closing the httpClient instance is at the responsibility of the caller.
+         *
+         * @param httpClient http client
+         * @return this
+         */
+        public Builder withHttpClient(Http2SolrClient httpClient) {
+            if (this.internalClientBuilder != null) {
+                throw new IllegalStateException(
+                        "The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+            }
+            this.httpClient = httpClient;
+            return this;
+        }
+
+        /**
+         * If provided, the CloudHttp2SolrClient will build it's internal Http2SolrClient using this
+         * builder (instead of the empty default one). Providing this builder allows users to configure
+         * the internal clients (authentication, timeouts, etc).
+         *
+         * @param internalClientBuilder the builder to use for creating the internal http client.
+         * @return this
+         */
+        public Builder withInternalClientBuilder(Http2SolrClient.Builder internalClientBuilder) {
+            if (this.httpClient != null) {
+                throw new IllegalStateException(
+                        "The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+            }
+            this.internalClientBuilder = internalClientBuilder;
+            return this;
+        }
+
+        public Builder withZkConnectTimeout(int zkConnectTimeout, TimeUnit unit) {
+            this.zkConnectTimeout = Math.toIntExact(unit.toMillis(zkConnectTimeout));
+            return this;
+        }
+
+        public Builder withZkClientTimeout(int zkClientTimeout, TimeUnit unit) {
+            this.zkClientTimeout = Math.toIntExact(unit.toMillis(zkClientTimeout));
+            return this;
+        }
+
+        /** Create a {@link CloudHttp2SolrClient} based on the provided configuration. */
+        public CloudHttp2SolrClient build() {
+            if (stateProvider == null) {
+                if (!zkHosts.isEmpty() && !solrUrls.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Both zkHosts and solrUrls have been specified. Only specify one.");
+                } else if (!zkHosts.isEmpty()) {
+                    stateProvider =
+                            ClusterStateProvider.newZkClusterStateProvider(zkHosts, zkChroot, canUseZkACLs);
+                    if (stateProvider instanceof SolrZkClientTimeoutAware) {
+                        var timeoutAware = (SolrZkClientTimeoutAware) stateProvider;
+                        timeoutAware.setZkClientTimeout(zkClientTimeout);
+                        timeoutAware.setZkConnectTimeout(zkConnectTimeout);
+                    }
+                } else if (!solrUrls.isEmpty()) {
+                    try {
+                        stateProvider = new Http2ClusterStateProvider(solrUrls, httpClient);
+                    } catch (Exception e) {
+                        throw new RuntimeException(
+                                "Couldn't initialize a HttpClusterStateProvider (are the Solr servers, "
+                                        + solrUrls
+                                        + ", down?)",
+                                e);
+                    }
+                } else {
+                    throw new IllegalArgumentException("Both zkHosts and solrUrls cannot be null.");
+                }
+            }
+            return new CloudHttp2SolrClient(this);
+        }
+    }
+}
+```
+
+**Summary of Changes**:
+- Renamed `timeToLiveSeconds` to `cacheRefreshTtlSeconds` and the corresponding parameters.
+- Renamed `parallelCacheRefreshesLocks` to `cacheRefreshLockCount` and the corresponding parameters.
+- Used more descriptive parameter names for clarity while preserving method signatures.
+- Maintained consistency in plural usage `zkHosts`/`solrUrls`.
+- Updated JavaDoc and error messages to use the pluralized and clarified names.
+
+---
+
+**Recommendation**:
+Refactoring names as above significantly increases clarity for maintainers without breaking any public API. If you want to avoid widespread refactoring, you may just want to focus on improving documentation/comments about what each parameter represents.
+
+Let me know if you need further parameter rename suggestions or a different angle!

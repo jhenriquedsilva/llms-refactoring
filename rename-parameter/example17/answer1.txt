@@ -1,0 +1,123 @@
+01-05-2025, 15:35
+
+Let's review the variable (parameter and pattern variable) naming in your provided code for **rename parameter refactoring** opportunities. The goal is to improve readability by making names more descriptive and avoiding generic or single-letter identifiers, unless contextually reasonable.
+
+**Analysis of Parameter Names:**
+
+- **coverage(Object o), coverageStatement(Object o):**
+  The parameter name `o` is generic; a more descriptive name (like `object`) is clearer.
+
+- **testSealedExhaustive(S s), switchStatementExhaustive(S s):**
+  Similarly, `s` is generic. Using something like `sealedValue` or `sealedInstance` is preferable.
+
+- **Pattern variables in switch/case (e.g., `case String s`)**:
+  `s` for a String is reasonable, but `i` for Integer (could be confused with index), and single-letter binders like `a`, `b`, `c` aren't self-explanatory.
+  Suggest using `str`, `integerValue`, `instanceA`, `instanceB`, `recordC`, etc.
+
+- **testGenericSealedExhaustive(I<Integer> i):**
+  Again, `i` is non-descriptive. `sealedGeneric` or similar is better.
+
+### **Refactored Code:**
+
+```java
+/**
+ * @see <a href="https://openjdk.org/jeps/441">JEP 441: Pattern Matching for switch</a>
+ */
+public class ExhaustiveSwitch {
+
+    // As of Java 21
+    // Type coverage
+    static int coverage(Object object) {
+        return switch (object) {
+            case String str  -> str.length();
+            case Integer integerValue -> integerValue;
+            default -> 0;
+        };
+    }
+
+    static void coverageStatement(Object object) {
+        switch (object) {
+            case String str:
+                System.out.println(str);
+                break;
+            case Integer integerValue:
+                System.out.println("Integer");
+                break;
+            default:    // Now exhaustive!
+                break;
+        }
+    }
+
+    // As of Java 21
+    // Exhaustiveness and sealed classes
+    sealed interface S permits A, B, C {}
+    final static class A implements S {}
+    final static class B implements S {}
+    record C(int value) implements S {}    // Renamed 'i' to 'value' for clarity
+
+    static int testSealedExhaustive(S sealedInstance) {
+        return switch (sealedInstance) {
+            case A instanceA -> 1;
+            case B instanceB -> 2;
+            case C recordC -> 3;
+        };
+    }
+
+    static void switchStatementExhaustive(S sealedInstance) {
+        switch (sealedInstance) {
+            case A instanceA:
+                System.out.println("A");
+                break;
+            case C recordC:
+                System.out.println("C");
+                break;
+            default:
+                System.out.println("default case, should be B");
+                break;
+        }
+    }
+
+    // As of Java 21
+    // Exhaustiveness and sealed classes
+    sealed interface I<T> permits E, F {}
+    final static class E<X> implements I<String> {}
+    final static class F<Y> implements I<Y> {}
+
+    static int testGenericSealedExhaustive(I<Integer> sealedGeneric) {
+        return switch (sealedGeneric) {
+            // Exhaustive as no E case possible!
+            case F<Integer> instanceF -> 42;
+        };
+    }
+
+    public static void main(String[] args) {
+        System.out.println(coverage("a string"));
+        System.out.println(coverage(42));
+        System.out.println(coverage(new Object()));
+
+        coverageStatement("a string");
+        coverageStatement(21);
+        coverageStatement(new Object());
+
+        System.out.println("A:" + testSealedExhaustive(new A()));
+        System.out.println("B:" + testSealedExhaustive(new B()));
+        System.out.println("C:" + testSealedExhaustive(new C(1)));
+
+        switchStatementExhaustive(new A());
+        switchStatementExhaustive(new B());
+        switchStatementExhaustive(new C(2));
+
+        System.out.println("F:" + testGenericSealedExhaustive(new F<Integer>()));
+    }
+}
+```
+
+---
+
+## **Summary of Refactorings:**
+
+- Replaced generic single-letter parameter names with more descriptive names (`object`, `sealedInstance`, `integerValue`, etc.).
+- Updated pattern variable names to reflect their types and improve intent (`instanceA`, `instanceB`, `recordC`, etc.).
+- Renamed `C(int i)` record component to `C(int value)` for clarity.
+
+If you need further adjustments or stricter naming conventions, let me know!

@@ -1,0 +1,207 @@
+01-05-2025, 15:52
+
+**Analysis:**
+
+The code is requesting an analysis for "rename parameter" refactoring opportunities — specifically to spot low-quality or non-descriptive parameter names. In particular, this means looking for method arguments with generic names such as `properties`, `map`, or `params` where there may be room for improvement. However, it’s also important not to rename just for the sake of it: sometimes parameters map directly to fields/types with the same name, improving clarity.
+
+### Walkthrough of existing parameter names:
+
+- Most parameters names in this code reflect the class/type they represent. For example:
+  - `PulsarProperties properties` (standard pattern for configuration-typed fields/vars)
+  - `ClientBuilder clientBuilder`
+  - `PulsarConnectionDetails connectionDetails`
+  - `ProducerBuilder<T> producerBuilder`
+  - `ConsumerBuilder<T> consumerBuilder`
+  - `PulsarContainerProperties containerProperties`
+  - `PulsarProperties.Authentication properties` (note: can be ambiguous if another type named ‘properties’ is also used in nearby context.)
+  - `PulsarProperties.Consumer.Subscription properties` (also, general `properties`)
+  - `PropertyMapper map` (this could maybe be longer, but is a standard, widely-used name in Spring Boot’s mapping context)
+  - `Map<String, String> params` (these are the authentication params)
+
+**Problematic spots**:
+1. The repeated use of `properties` for different types (admin, client, consumer, producer, etc) inside different scopes.
+2. Similarly, the repeated `properties` for `PulsarProperties.Authentication` and `PulsarProperties.Consumer.Subscription`.
+3. The repeated short `map` for `PropertyMapper` in each method, although this is fairly standard in mapping code.
+4. `params` for the parameter map—this could be improved for clarity.
+
+**Best Practices Suggestion**:
+- Prefer using parameter names that clearly describe their role, especially when types can easily be confused or overloaded (e.g. `subscriptionProperties`, `clientProperties`, etc).
+- For `map`, it’s fine in context of `PropertyMapper` because it’s very idiomatic and local.
+- For `params`, maybe `authenticationParams` or `authParamsMap`.
+
+### **Refactored Code**
+
+Below is the class with improved parameter names wherever ambiguity or improvement is possible:
+
+```java
+package org.springframework.boot.autoconfigure.pulsar;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import org.apache.pulsar.client.admin.PulsarAdminBuilder;
+import org.apache.pulsar.client.api.ClientBuilder;
+import org.apache.pulsar.client.api.ConsumerBuilder;
+import org.apache.pulsar.client.api.ProducerBuilder;
+import org.apache.pulsar.client.api.PulsarClientException.UnsupportedAuthenticationException;
+import org.apache.pulsar.client.api.ReaderBuilder;
+import org.apache.pulsar.common.util.ObjectMapperFactory;
+
+import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.pulsar.listener.PulsarContainerProperties;
+import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
+import org.springframework.util.StringUtils;
+
+/**
+ * Helper class used to map {@link PulsarProperties} to various builder customizers.
+ *
+ * @author Chris Bono
+ * @author Phillip Webb
+ */
+final class PulsarPropertiesMapper {
+
+    private final PulsarProperties properties;
+
+    PulsarPropertiesMapper(PulsarProperties properties) {
+        this.properties = properties;
+    }
+
+    void customizeClientBuilder(ClientBuilder clientBuilder, PulsarConnectionDetails connectionDetails) {
+        PulsarProperties.Client clientProperties = this.properties.getClient();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(connectionDetails::getBrokerUrl).to(clientBuilder::serviceUrl);
+        propertyMapper.from(clientProperties::getConnectionTimeout).to(timeoutProperty(clientBuilder::connectionTimeout));
+        propertyMapper.from(clientProperties::getOperationTimeout).to(timeoutProperty(clientBuilder::operationTimeout));
+        propertyMapper.from(clientProperties::getLookupTimeout).to(timeoutProperty(clientBuilder::lookupTimeout));
+        customizeAuthentication(clientBuilder::authentication, clientProperties.getAuthentication());
+    }
+
+    void customizeAdminBuilder(PulsarAdminBuilder adminBuilder, PulsarConnectionDetails connectionDetails) {
+        PulsarProperties.Admin adminProperties = this.properties.getAdmin();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(connectionDetails::getAdminUrl).to(adminBuilder::serviceHttpUrl);
+        propertyMapper.from(adminProperties::getConnectionTimeout).to(timeoutProperty(adminBuilder::connectionTimeout));
+        propertyMapper.from(adminProperties::getReadTimeout).to(timeoutProperty(adminBuilder::readTimeout));
+        propertyMapper.from(adminProperties::getRequestTimeout).to(timeoutProperty(adminBuilder::requestTimeout));
+        customizeAuthentication(adminBuilder::authentication, adminProperties.getAuthentication());
+    }
+
+    private void customizeAuthentication(AuthenticationConsumer authentication,
+                                         PulsarProperties.Authentication authenticationProperties) {
+        if (!StringUtils.hasText(authenticationProperties.getPluginClassName())) {
+            return;
+        }
+        try {
+            // sort keys for testing and readability
+            Map<String, String> authParamsMap = new TreeMap<>(authenticationProperties.getParam());
+            String authParamString;
+            try {
+                authParamString = ObjectMapperFactory.create().writeValueAsString(authParamsMap);
+            }
+            catch (Exception ex) {
+                throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
+            }
+            authentication.accept(authenticationProperties.getPluginClassName(), authParamString);
+        }
+        catch (UnsupportedAuthenticationException ex) {
+            throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
+        }
+    }
+
+    <T> void customizeProducerBuilder(ProducerBuilder<T> producerBuilder) {
+        PulsarProperties.Producer producerProperties = this.properties.getProducer();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(producerProperties::getName).to(producerBuilder::producerName);
+        propertyMapper.from(producerProperties::getTopicName).to(producerBuilder::topic);
+        propertyMapper.from(producerProperties::getSendTimeout).to(timeoutProperty(producerBuilder::sendTimeout));
+        propertyMapper.from(producerProperties::getMessageRoutingMode).to(producerBuilder::messageRoutingMode);
+        propertyMapper.from(producerProperties::getHashingScheme).to(producerBuilder::hashingScheme);
+        propertyMapper.from(producerProperties::isBatchingEnabled).to(producerBuilder::enableBatching);
+        propertyMapper.from(producerProperties::isChunkingEnabled).to(producerBuilder::enableChunking);
+        propertyMapper.from(producerProperties::getCompressionType).to(producerBuilder::compressionType);
+        propertyMapper.from(producerProperties::getAccessMode).to(producerBuilder::accessMode);
+    }
+
+    <T> void customizeConsumerBuilder(ConsumerBuilder<T> consumerBuilder) {
+        PulsarProperties.Consumer consumerProperties = this.properties.getConsumer();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(consumerProperties::getName).to(consumerBuilder::consumerName);
+        propertyMapper.from(consumerProperties::getTopics).as(ArrayList::new).to(consumerBuilder::topics);
+        propertyMapper.from(consumerProperties::getTopicsPattern).to(consumerBuilder::topicsPattern);
+        propertyMapper.from(consumerProperties::getPriorityLevel).to(consumerBuilder::priorityLevel);
+        propertyMapper.from(consumerProperties::isReadCompacted).to(consumerBuilder::readCompacted);
+        propertyMapper.from(consumerProperties::getDeadLetterPolicy).as(DeadLetterPolicyMapper::map).to(consumerBuilder::deadLetterPolicy);
+        propertyMapper.from(consumerProperties::isRetryEnable).to(consumerBuilder::enableRetry);
+        customizeConsumerBuilderSubscription(consumerBuilder);
+    }
+
+    private void customizeConsumerBuilderSubscription(ConsumerBuilder<?> consumerBuilder) {
+        PulsarProperties.Consumer.Subscription subscriptionProperties = this.properties.getConsumer().getSubscription();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(subscriptionProperties::getName).to(consumerBuilder::subscriptionName);
+        propertyMapper.from(subscriptionProperties::getInitialPosition).to(consumerBuilder::subscriptionInitialPosition);
+        propertyMapper.from(subscriptionProperties::getMode).to(consumerBuilder::subscriptionMode);
+        propertyMapper.from(subscriptionProperties::getTopicsMode).to(consumerBuilder::subscriptionTopicsMode);
+        propertyMapper.from(subscriptionProperties::getType).to(consumerBuilder::subscriptionType);
+    }
+
+    void customizeContainerProperties(PulsarContainerProperties containerProperties) {
+        customizePulsarContainerConsumerSubscriptionProperties(containerProperties);
+        customizePulsarContainerListenerProperties(containerProperties);
+    }
+
+    private void customizePulsarContainerConsumerSubscriptionProperties(PulsarContainerProperties containerProperties) {
+        PulsarProperties.Consumer.Subscription subscriptionProperties = this.properties.getConsumer().getSubscription();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(subscriptionProperties::getType).to(containerProperties::setSubscriptionType);
+    }
+
+    private void customizePulsarContainerListenerProperties(PulsarContainerProperties containerProperties) {
+        PulsarProperties.Listener listenerProperties = this.properties.getListener();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(listenerProperties::getSchemaType).to(containerProperties::setSchemaType);
+        propertyMapper.from(listenerProperties::isObservationEnabled).to(containerProperties::setObservationEnabled);
+    }
+
+    <T> void customizeReaderBuilder(ReaderBuilder<T> readerBuilder) {
+        PulsarProperties.Reader readerProperties = this.properties.getReader();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(readerProperties::getName).to(readerBuilder::readerName);
+        propertyMapper.from(readerProperties::getTopics).to(readerBuilder::topics);
+        propertyMapper.from(readerProperties::getSubscriptionName).to(readerBuilder::subscriptionName);
+        propertyMapper.from(readerProperties::getSubscriptionRolePrefix).to(readerBuilder::subscriptionRolePrefix);
+        propertyMapper.from(readerProperties::isReadCompacted).to(readerBuilder::readCompacted);
+    }
+
+    void customizeReaderContainerProperties(PulsarReaderContainerProperties readerContainerProperties) {
+        PulsarProperties.Reader readerProperties = this.properties.getReader();
+        PropertyMapper propertyMapper = PropertyMapper.get().alwaysApplyingWhenNonNull();
+        propertyMapper.from(readerProperties::getTopics).to(readerContainerProperties::setTopics);
+    }
+
+    private Consumer<Duration> timeoutProperty(BiConsumer<Integer, TimeUnit> setter) {
+        return (duration) -> setter.accept((int) duration.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private interface AuthenticationConsumer {
+
+        void accept(String authPluginClassName, String authParams) throws UnsupportedAuthenticationException;
+
+    }
+
+}
+```
+
+**Summary of Changes:**
+- Renamed parameter and variable names for clarity:
+  - `properties` → `clientProperties`, `adminProperties`, `producerProperties`, `consumerProperties`, `subscriptionProperties`, `listenerProperties`, `readerProperties`, `authenticationProperties` as appropriate.
+  - `map` → `propertyMapper`
+  - `params` → `authParamsMap`
+
+**Conclusion:**
+There was opportunity for more expressive parameter names. The above code now more clearly distinguishes between different types of "properties" and between mappings, which both improves readability and reduces risk of confusion.

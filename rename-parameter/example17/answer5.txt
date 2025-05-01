@@ -1,0 +1,120 @@
+01-05-2025, 15:37
+
+**Review of Parameter Naming**
+
+The goal of "rename parameter refactoring" is to improve parameter names so they clearly represent their purpose, boosting readability and maintainability.
+
+Let’s evaluate the current parameter names:
+
+- Most parameters are named generically: `Object o`, `S s`, `I<Integer> i` (and similarly in pattern variables: `String s`, `Integer i`, etc.).
+- For methods processing an object, `o` could be renamed to something more descriptive, like `input` or `value`.
+- For sealed interfaces/classes, `s` and `i` are also not descriptive in context; they can be made clearer.
+- Pattern variables inside switch (`String s`, `Integer i`, etc.) match common convention and are generally fine, especially for pattern matching.
+- The generic class parameters (`X`, `Y`, `T`) are also standard Java practice and acceptable in this context.
+
+**Refactoring Opportunities**
+
+Let's rename:
+- `Object o` → `Object input`
+- `S s` → `S sealedValue`
+- `I<Integer> i` → `I<Integer> instance`
+
+Pattern variables (`s`, `i`) and single-letter variables for simple expressions are idiomatic in match constructs and don’t strictly need refactoring.
+
+**Refactored Code**
+
+```java
+/**
+ * @see <a href="https://openjdk.org/jeps/441">JEP 441: Pattern Matching for switch</a>
+ */
+public class ExhaustiveSwitch {
+
+    // As of Java 21
+    // Type coverage
+    static int coverage(Object input) {
+        return switch (input) {
+            case String s  -> s.length();
+            case Integer i -> i;
+            default -> 0;
+        };
+    }
+
+    static void coverageStatement(Object input) {
+        switch (input) {
+            case String s:
+                System.out.println(s);
+                break;
+            case Integer i:
+                System.out.println("Integer");
+                break;
+            default:    // Now exhaustive!
+                break;
+        }
+    }
+
+    // As of Java 21
+    // Exhaustiveness and sealed classes
+    sealed interface S permits A, B, C {}
+    final static class A implements S {}
+    final static class B implements S {}
+    record C(int i) implements S {}    // Implicitly final
+
+    static int testSealedExhaustive(S sealedValue) {
+        return switch (sealedValue) {
+            case A a -> 1;
+            case B b -> 2;
+            case C c -> 3;
+        };
+    }
+
+    static void switchStatementExhaustive(S sealedValue) {
+        switch (sealedValue) {
+            case A a :
+                System.out.println("A");
+                break;
+            case C c :
+                System.out.println("C");
+                break;
+            default:
+                System.out.println("default case, should be B");
+                break;
+        };
+    }
+
+    // As of Java 21
+    // Exhaustiveness and sealed classes
+    sealed interface I<T> permits E, F {}
+    final static class E<X> implements I<String> {}
+    final static class F<Y> implements I<Y> {}
+
+    static int testGenericSealedExhaustive(I<Integer> instance) {
+        return switch (instance) {
+            // Exhaustive as no E case possible!
+            case F<Integer> bi -> 42;
+        };
+    }
+
+    public static void main(String[] args) {
+        System.out.println(coverage("a string"));
+        System.out.println(coverage(42));
+        System.out.println(coverage(new Object()));
+
+        coverageStatement("a string");
+        coverageStatement(21);
+        coverageStatement(new Object());
+
+        System.out.println("A:" + testSealedExhaustive(new A()));
+        System.out.println("B:" + testSealedExhaustive(new B()));
+        System.out.println("C:" + testSealedExhaustive(new C(1)));
+
+        switchStatementExhaustive(new A());
+        switchStatementExhaustive(new B());
+        switchStatementExhaustive(new C(2));
+
+        System.out.println("F:" + testGenericSealedExhaustive(new F<Integer>()));
+    }
+}
+```
+
+**Summary:**
+Refactoring was applied to rename function parameters for clarity but not pattern variables or type parameters, as those are idiomatic and unambiguous in this context.

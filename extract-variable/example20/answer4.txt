@@ -1,0 +1,119 @@
+01-05-2025, 10:14
+
+Yes, there **are opportunities for extract variable refactoring** in your code.
+One common pattern is the repeated call to `uriBuilderFactory.uriString(uriTemplate)` within the `DefaultRequestBodyUriSpec` inner class.
+Let's take a closer look at these specific methods:
+
+```java
+@Override
+public RequestBodySpec uri(String uriTemplate, Object... uriVariables) {
+    UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+    return uri(uriBuilder.build(uriVariables));
+}
+
+@Override
+public RequestBodySpec uri(String uriTemplate, Map<String, ?> uriVariables) {
+    UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+    return uri(uriBuilder.build(uriVariables));
+}
+
+@Override
+public RequestBodySpec uri(String uriTemplate, Function<UriBuilder, URI> uriFunction) {
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilderFactory.uriString(uriTemplate).toUriString());
+    return uri(uriFunction.apply(uriBuilderFactory.uriString(uriTemplate)));
+}
+```
+
+In these methods, `uriBuilderFactory.uriString(uriTemplate)` is called multiple times with the same parameters, and `uriBuilderFactory.uriString(uriTemplate).toUriString()` is called in the third method for attribute setting, and again in `uriFunction.apply`.
+
+**Refactoring Opportunity:**
+Extracting `UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);` as a local variable in the third method to avoid redundant computation makes the code more readable and prevents re-evaluation, which is in-line with the extract variable refactoring.
+
+---
+
+Here is the **refactored code for the relevant part** (the rest of your file remains unchanged):
+
+```java
+@Override
+public RequestBodySpec uri(String uriTemplate, Object... uriVariables) {
+    UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+    return uri(uriBuilder.build(uriVariables));
+}
+
+@Override
+public RequestBodySpec uri(String uriTemplate, Map<String, ?> uriVariables) {
+    UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+    return uri(uriBuilder.build(uriVariables));
+}
+
+@Override
+public RequestBodySpec uri(String uriTemplate, Function<UriBuilder, URI> uriFunction) {
+    UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+    attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+    return uri(uriFunction.apply(uriBuilder));
+}
+```
+
+---
+
+### **Refactored `DefaultWebClient` class**
+
+Below is the **entire source with the improved variable extraction refactoring**.
+*(Only differences are in the three `uri` methods above!)*
+
+```java
+package org.springframework.web.reactive.function.client;
+
+// ... [All your imports remain unchanged] ...
+
+final class DefaultWebClient implements WebClient {
+
+    // ... [All fields and methods remain unchanged] ...
+
+    private class DefaultRequestBodyUriSpec implements RequestBodyUriSpec {
+
+        // ... [All fields and methods remain unchanged] ...
+
+        @Override
+        public RequestBodySpec uri(String uriTemplate, Object... uriVariables) {
+            UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+            attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+            return uri(uriBuilder.build(uriVariables));
+        }
+
+        @Override
+        public RequestBodySpec uri(String uriTemplate, Map<String, ?> uriVariables) {
+            UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+            attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+            return uri(uriBuilder.build(uriVariables));
+        }
+
+        @Override
+        public RequestBodySpec uri(String uriTemplate, Function<UriBuilder, URI> uriFunction) {
+            UriBuilder uriBuilder = uriBuilderFactory.uriString(uriTemplate);
+            attribute(URI_TEMPLATE_ATTRIBUTE, uriBuilder.toUriString());
+            return uri(uriFunction.apply(uriBuilder));
+        }
+
+        // ... [The remainder of the class is unchanged] ...
+    }
+
+    // ... [All remaining inner classes and methods remain as in your original code] ...
+}
+```
+
+---
+
+#### **Summary of Refactoring**
+
+- The calls to `uriBuilderFactory.uriString(uriTemplate)` are now always made once per method and assigned to a local variable (`uriBuilder`), increasing clarity and preventing redundant evaluations.
+- No semantic changes are made; only readability, efficiency, and maintainability are improved.
+
+---
+
+If you would like to extract other repeated expressions, such as repeated "magic strings" or repeated initializations elsewhere, feel free to specify!
+Otherwise, the above is the relevant extract variable refactoring for this code.

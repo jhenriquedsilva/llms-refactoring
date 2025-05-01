@@ -1,0 +1,120 @@
+01-05-2025, 10:07
+
+Certainly! Here’s a review for **extract variable refactoring** opportunities:
+
+### Analysis
+
+Focus on complex or repeated expressions, long parameter lists, or code that could benefit from increased readability by extracting variables.
+
+#### 1. `createHttpHandler` method:
+```java
+if (StringUtils.hasLength(this.contextPath)) {
+    handler = Handlers.path().addPrefixPath(this.contextPath, handler);
+}
+```
+This is okay, though you could extract `StringUtils.hasLength(this.contextPath)` into a variable for clarity, but it's not strictly necessary.
+
+#### 2. `getStartLogMessage` method:
+```java
+message.append(StringUtils.hasText(this.contextPath) ? this.contextPath : "/");
+```
+The ternary is a little dense. Extracting the result into a variable could enhance readability.
+
+#### 3. Constructor and `findManager` method:
+No complex expressions that merit extraction.
+
+### Conclusion
+
+**There is a small opportunity to increase readability in `getStartLogMessage` by extracting the ternary expression to a variable.**
+Other than that, the code is already very clean.
+
+---
+
+## Refactored Code
+
+Here is the class with the minor refactoring in `getStartLogMessage` applied:
+
+```java
+package org.springframework.boot.web.embedded.undertow;
+
+import io.undertow.Handlers;
+import io.undertow.Undertow.Builder;
+import io.undertow.server.HttpHandler;
+import io.undertow.servlet.api.DeploymentManager;
+
+import org.springframework.boot.web.server.WebServer;
+import org.springframework.util.StringUtils;
+
+/**
+ * {@link WebServer} that can be used to control an embedded Undertow server. Typically
+ * this class should be created using {@link UndertowServletWebServerFactory} and not
+ * directly.
+ *
+ * @author Ivan Sopov
+ * @author Andy Wilkinson
+ * @author Eddú Meléndez
+ * @author Christoph Dreis
+ * @author Kristine Jetzke
+ * @since 2.0.0
+ * @see UndertowServletWebServerFactory
+ */
+public class UndertowServletWebServer extends UndertowWebServer {
+
+    private final String contextPath;
+
+    private final DeploymentManager manager;
+
+    /**
+     * Create a new {@link UndertowServletWebServer} instance.
+     * @param builder the builder
+     * @param httpHandlerFactories the handler factories
+     * @param contextPath the root context path
+     * @param autoStart if the server should be started
+     * @since 2.3.0
+     */
+    public UndertowServletWebServer(Builder builder, Iterable<HttpHandlerFactory> httpHandlerFactories,
+                                    String contextPath, boolean autoStart) {
+        super(builder, httpHandlerFactories, autoStart);
+        this.contextPath = contextPath;
+        this.manager = findManager(httpHandlerFactories);
+    }
+
+    private DeploymentManager findManager(Iterable<HttpHandlerFactory> httpHandlerFactories) {
+        for (HttpHandlerFactory httpHandlerFactory : httpHandlerFactories) {
+            if (httpHandlerFactory instanceof DeploymentManagerHttpHandlerFactory deploymentManagerFactory) {
+                return deploymentManagerFactory.getDeploymentManager();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected HttpHandler createHttpHandler() {
+        HttpHandler handler = super.createHttpHandler();
+        if (StringUtils.hasLength(this.contextPath)) {
+            handler = Handlers.path().addPrefixPath(this.contextPath, handler);
+        }
+        return handler;
+    }
+
+    @Override
+    protected String getStartLogMessage() {
+        StringBuilder message = new StringBuilder(super.getStartLogMessage());
+        message.append(" with context path '");
+        String contextPathLog = StringUtils.hasText(this.contextPath) ? this.contextPath : "/";
+        message.append(contextPathLog);
+        message.append("'");
+        return message.toString();
+    }
+
+    public DeploymentManager getDeploymentManager() {
+        return this.manager;
+    }
+
+}
+```
+
+---
+
+**Summary:**
+Only one small extract variable refactoring was suitable for `getStartLogMessage` to clarify the context path string being logged. All other code was already clear and did not require refactoring for readability.

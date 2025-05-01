@@ -1,0 +1,38 @@
+01-05-2025, 09:46
+
+### Analysis
+
+This code contains several *repeated expressions*, especially in the methods:
+
+- `hasAll`, `hasAllExplicitly`, `hasAny`, and `hasAnyExplicitly`
+
+where the following expressions are *repeated*:
+- `Arrays.asList(mods)`
+- `getEffectiveModifiers()` and `getExplicitModifiers()`
+- `actual.contains(mod1)`
+- logic for "all of ... ", "any of ..."
+
+**Extract Variable** refactoring would make sense if an expression is used multiple times in a method and extracting it improves readability without loss of clarity.
+
+Looking through your code, typical candidates for this are repeated calls to `getEffectiveModifiers()` and `getExplicitModifiers()` at the start of respective methods, and their assignment to a local `Set<JModifier> actual` variable. This has already been done, so no gain in extracting further.
+
+However, for the logic parts:
+```java
+return actual.contains(mod1) && (mods.length == 0 || actual.containsAll(Arrays.asList(mods)));
+```
+and
+```java
+return actual.contains(mod1) || Arrays.stream(mods).anyMatch(actual::contains);
+```
+the expression `Arrays.asList(mods)` appears twice in the class in similar `hasAll` style methods, and `Arrays.stream(mods)` appears twice. Extracting these to a variable would improve readability only slightly (since they're only used once per method), but might help in code consistency.
+
+#### Micro-optimization
+
+- In methods receiving varargs `JModifier... mods`, it's efficient and idiomatic to assign `Arrays.asList(mods)` or `Arrays.stream(mods)` to a variable if used more than once—or for clarity.
+- But here it's *only* used once per method, *and* the method is tiny: extracting to a variable might be overkill.
+
+#### Conclusion
+
+**There are no strong extract variable refactoring opportunities** in this class according to the extract-variable principle (removal of repeated expressions for improved readability and maintainability).
+
+**Therefore, no refactoring is necessary.**

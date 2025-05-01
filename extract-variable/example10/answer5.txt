@@ -1,0 +1,100 @@
+30-04-2025, 20:47
+
+**Analysis for Extract Variable Refactoring:**
+
+Looking at the provided code, the main method of interest is:
+
+```java
+default ResolvedType useThisTypeParametersOnTheGivenType(ResolvedType type) {
+    // ... code ...
+}
+```
+
+The most notable repeated or complex expression is:
+
+```java
+typeParam.get()
+type.asWildcard()
+type.asReferenceType()
+```
+
+However, the call to `typeParam.get()` is used three times, sometimes as a whole (`typeParam.get()`), and sometimes for subsequent method calls, for example: `typeParam.get().isWildcard()` and `typeParam.get().asWildcard()`.
+Likewise, `type.asWildcard()` and `type.asReferenceType()` are called multiple times, but only after checking (`type.isWildcard()`, `type.isReferenceType()`), which ensures it is safe.
+
+**Opportunity for Extract Variable Refactoring:**
+
+The best candidate for extraction is `typeParam.get()`, which appears three times within a block guarded by `typeParam.isPresent()`.
+Extracting this to a variable increases readability and improves maintainability.
+
+**Refactored Code:**
+
+Below is the interface with the refactored code:
+
+```java
+package com.github.javaparser.resolution.types.parametrization;
+
+import com.github.javaparser.resolution.declarations.ResolvedTypeParameterDeclaration;
+import com.github.javaparser.resolution.types.ResolvedType;
+import com.github.javaparser.resolution.types.ResolvedWildcard;
+
+import java.util.Optional;
+
+/**
+ * @author Federico Tomassetti
+ */
+public interface ResolvedTypeParameterValueProvider {
+
+    /**
+     * Calculate the value for the given type parameter.
+     * It could be inherited.
+     */
+    Optional<ResolvedType> typeParamValue(ResolvedTypeParameterDeclaration typeParameterDeclaration);
+
+    /**
+     * Replace the type typeParametersValues present in the given type with the ones for which this type
+     * has a value.
+     */
+    default ResolvedType useThisTypeParametersOnTheGivenType(ResolvedType type) {
+        if (type.isTypeVariable()) {
+            ResolvedTypeParameterDeclaration typeParameter = type.asTypeParameter();
+            if (typeParameter.declaredOnType()) {
+                Optional<ResolvedType> typeParam = typeParamValue(typeParameter);
+                if (typeParam.isPresent()) {
+                    ResolvedType resolvedTypeParam = typeParam.get();
+                    // Try to avoid an infinite loop when the type is a wildcard type bounded by a type variable like "? super T"
+                    if (resolvedTypeParam.isWildcard() &&
+                            ( !resolvedTypeParam.asWildcard().equals(ResolvedWildcard.UNBOUNDED)
+                                    && type.equals(resolvedTypeParam.asWildcard().getBoundedType()))) {
+                        return type;
+                    }
+                    type = resolvedTypeParam;
+                }
+            }
+        }
+        if (type.isWildcard() && type.asWildcard().isBounded()) {
+            if (type.asWildcard().isExtends()) {
+                return ResolvedWildcard.extendsBound(
+                        useThisTypeParametersOnTheGivenType(type.asWildcard().getBoundedType()));
+            }
+            return ResolvedWildcard.superBound(
+                    useThisTypeParametersOnTheGivenType(type.asWildcard().getBoundedType()));
+        }
+        if (type.isReferenceType()) {
+            type = type.asReferenceType().transformTypeParameters(this::useThisTypeParametersOnTheGivenType);
+        }
+        return type;
+    }
+
+    Optional<ResolvedType> getGenericParameterByName(String name);
+}
+```
+
+---
+
+**Summary of Changes:**
+
+- Extracted `typeParam.get()` to a variable `resolvedTypeParam` to improve readability and reduce duplication.
+
+---
+
+If you're interested in further refactoring for clarity (such as caching multiple uses of `type.asWildcard()` in deep branches), it could be done, but this is the most canonical extract variable refactoring based on your request.

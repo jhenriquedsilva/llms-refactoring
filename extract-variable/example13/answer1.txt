@@ -1,0 +1,45 @@
+30-04-2025, 21:03
+
+There **are** meaningful extract variable refactoring opportunities in this code! In particular, the following pattern is repeated many times:
+
+```java
+Events tests = executeTestsForClass(SomeClass.class).testEvents();
+```
+
+as well as
+
+```java
+String msg = String.format(..., testClass.getCanonicalName());
+Events tests = executeTestsForClass(testClass).testEvents();
+assertFailingWithMessage(tests, msg);
+```
+
+We can refactor repeated calls to `executeTestsForClass(X).testEvents()` by extracting the "test events" value into a variable more aggressively if not already done. Similarly, in several methods (`blankCloseMethodName`, `primitiveTypeCannotBeClosed`, `arrayCannotBeClosed`, etc.), the block
+
+```java
+Class<?> testClass = ...;
+String msg = String.format(..., testClass.getCanonicalName());
+Events tests = executeTestsForClass(testClass).testEvents();
+assertFailingWithMessage(tests, msg);
+```
+
+can be replaced by a call to a helper or by extracting the repeated expressions. However, **the code already does this well** for `assertMissingCloseMethod` and similar. That means **most low-hanging extract variable refactoring is already well applied.**
+
+There are a few other cases with repeated strings, such as `"FailingFieldsTestCase.field1.close()"` and similar, but they have a reason (different semantics/ordering).
+
+Additionally, the string
+
+```java
+String expected[] = { ..."xxx.close()", ... }
+```
+
+is only used twice, and it's already extracted as a variable.
+
+**TL;DR: This code is already well-factored and applies extract variable refactorings where beneficial. No further extract variable refactoring is necessary.**
+
+---
+
+**Final Statement:**
+
+> No extract variable refactoring is necessary; the code is already well-factored in that regard.
+

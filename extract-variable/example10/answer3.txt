@@ -1,0 +1,75 @@
+30-04-2025, 20:47
+
+This code snippet does present **opportunities for extract variable refactoring**, primarily in repeated expressions inside the `useThisTypeParametersOnTheGivenType` method. The main candidates are:
+
+- `type.asWildcard()`, which is called multiple times.
+- `typeParam.get()`, also invoked several times.
+
+Extracting these expressions to variables aids readability, prevents repeated computation, and makes the code easier to maintain.
+
+Here is the **refactored interface** with appropriate extract variable refactorings applied:
+
+```java
+package com.github.javaparser.resolution.types.parametrization;
+
+import com.github.javaparser.resolution.declarations.ResolvedTypeParameterDeclaration;
+import com.github.javaparser.resolution.types.ResolvedType;
+import com.github.javaparser.resolution.types.ResolvedWildcard;
+
+import java.util.Optional;
+
+/**
+ * @author Federico Tomassetti
+ */
+public interface ResolvedTypeParameterValueProvider {
+
+    /**
+     * Calculate the value for the given type parameter.
+     * It could be inherited.
+     */
+    Optional<ResolvedType> typeParamValue(ResolvedTypeParameterDeclaration typeParameterDeclaration);
+
+    /**
+     * Replace the type typeParametersValues present in the given type with the ones for which this type
+     * has a value.
+     */
+    default ResolvedType useThisTypeParametersOnTheGivenType(ResolvedType type) {
+        if (type.isTypeVariable()) {
+            ResolvedTypeParameterDeclaration typeParameter = type.asTypeParameter();
+            if (typeParameter.declaredOnType()) {
+                Optional<ResolvedType> typeParam = typeParamValue(typeParameter);
+                if (typeParam.isPresent()) {
+                    ResolvedType typeParamValue = typeParam.get();
+                    if (typeParamValue.isWildcard()) {
+                        ResolvedWildcard wildcard = typeParamValue.asWildcard();
+                        // Try to avoid an infinite loop when the type is a wildcard type bounded by a type variable like "? super T"
+                        if (!wildcard.equals(ResolvedWildcard.UNBOUNDED) && type.equals(wildcard.getBoundedType())) {
+                            return type;
+                        }
+                    }
+                    type = typeParamValue;
+                }
+            }
+        }
+        if (type.isWildcard() && type.asWildcard().isBounded()) {
+            ResolvedWildcard wildcard = type.asWildcard();
+            if (wildcard.isExtends()) {
+                return ResolvedWildcard.extendsBound(useThisTypeParametersOnTheGivenType(wildcard.getBoundedType()));
+            }
+            return ResolvedWildcard.superBound(useThisTypeParametersOnTheGivenType(wildcard.getBoundedType()));
+        }
+        if (type.isReferenceType()) {
+            type = type.asReferenceType().transformTypeParameters(this::useThisTypeParametersOnTheGivenType);
+        }
+        return type;
+    }
+
+    Optional<ResolvedType> getGenericParameterByName(String name);
+}
+```
+
+### **Summary of Changes**
+- Extracted `type.asWildcard()` into a `wildcard` variable where needed.
+- Extracted `typeParam.get()` into a `typeParamValue` variable after the `isPresent()` check.
+
+**These changes do not alter the logic, and enable easier maintenance and readability.**

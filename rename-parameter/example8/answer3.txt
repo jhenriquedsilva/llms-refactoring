@@ -1,0 +1,74 @@
+01-05-2025, 11:28
+
+Based on the provided code snippet, let's review the parameter names for **rename parameter refactoring** opportunities:
+
+- `numHits`: Describes its purpose (number of hits to track in sort). ✅
+- `field`: The field to sort on. ✅
+- `missingValue`: Value for missing entries. ✅
+- `reversed`: Whether sorting is in reverse order. ✅
+- `enableSkipping`: Controls pruning/skipping optimization during sort. This name is **a bit ambiguous.** A common alternative would be `pruning` or `pruningEnabled`.
+- `source`: Explicit and clear. ✅
+- Method and parameter names in inner classes are good (except for the repeat "context" parameters, but that's standard).
+
+**Recommendation:**
+The only noticeably improvable parameter in terms of naming is `enableSkipping`:
+
+- **Current:** `Pruning enableSkipping`
+- **Recommend:** `Pruning pruning`
+
+This fits the type, reduces the chance of confusion around boolean-ness, and matches the field's purpose better.
+
+---
+
+## **Refactored Code**
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.comparator.impl;
+
+import java.io.IOException;
+
+import org.hibernate.search.backend.lucene.lowlevel.docvalues.impl.DoubleMultiValuesToSingleValuesSource;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Pruning;
+import org.apache.lucene.search.comparators.DoubleComparator;
+
+public class DoubleValuesSourceComparator extends DoubleComparator {
+
+    private final DoubleMultiValuesToSingleValuesSource source;
+
+    public DoubleValuesSourceComparator(int numHits, String field, Double missingValue, boolean reversed,
+                                        Pruning pruning, DoubleMultiValuesToSingleValuesSource source) {
+        super( numHits, field, missingValue, reversed, pruning );
+        this.source = source;
+    }
+
+    @Override
+    public LeafFieldComparator getLeafComparator(LeafReaderContext context) throws IOException {
+        return new DoubleValuesSourceLeafComparator( context );
+    }
+
+    private class DoubleValuesSourceLeafComparator extends DoubleLeafComparator {
+        DoubleValuesSourceLeafComparator(LeafReaderContext context) throws IOException {
+            super( context );
+        }
+
+        @Override
+        protected NumericDocValues getNumericDocValues(LeafReaderContext context, String field) throws IOException {
+            return source.getValues( context, null ).getRawDoubleValues();
+        }
+    }
+
+}
+```
+
+---
+
+### **Summary**
+- The only significant rename opportunity was `enableSkipping` ➔ `pruning` (to match Java naming conventions and clarify meaning).
+- All other parameter names are clear and follow best practices.
+- **If your team prefers Boolean-style prefixes, you could use `pruningEnabled` instead.**
+
+**Let me know if you need other naming suggestions or code improvements!**

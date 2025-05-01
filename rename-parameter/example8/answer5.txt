@@ -1,0 +1,71 @@
+01-05-2025, 11:28
+
+Let's review the parameters for possible rename opportunities, focusing on clarity and intent-revealing names:
+
+- `numHits` – Good, clear.
+- `field` – Good (but in some codebases, a more specific name like `fieldPath` could be used, but "field" is fine here since it matches Lucene semantics).
+- `missingValue` – Good.
+- `reversed` – Good.
+- `enableSkipping` – This is likely a flag or a configuration for pruning/skipping; `pruning` would be a better, more general name if that matches the domain.
+- `source` – Generic. Since the type is `DoubleMultiValuesToSingleValuesSource` and it is the heart of this comparator, `multiValueSource` or `valuesSource` is much more descriptive and avoids shadowing/confusion with other definitions of "source".
+
+Similarly, the parameter names in `getLeafComparator` and in the private inner class look fine as they are, matching typical Lucene conventions.
+
+**Summary of suggested renames:**
+- `enableSkipping` → `pruning`
+- `source` → `multiValueSource` throughout the file.
+
+Here is the refactored class:
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.comparator.impl;
+
+import java.io.IOException;
+
+import org.hibernate.search.backend.lucene.lowlevel.docvalues.impl.DoubleMultiValuesToSingleValuesSource;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Pruning;
+import org.apache.lucene.search.comparators.DoubleComparator;
+
+public class DoubleValuesSourceComparator extends DoubleComparator {
+
+    private final DoubleMultiValuesToSingleValuesSource multiValueSource;
+
+    public DoubleValuesSourceComparator(
+            int numHits,
+            String field,
+            Double missingValue,
+            boolean reversed,
+            Pruning pruning,
+            DoubleMultiValuesToSingleValuesSource multiValueSource) {
+        super(numHits, field, missingValue, reversed, pruning);
+        this.multiValueSource = multiValueSource;
+    }
+
+    @Override
+    public LeafFieldComparator getLeafComparator(LeafReaderContext context) throws IOException {
+        return new DoubleValuesSourceLeafComparator(context);
+    }
+
+    private class DoubleValuesSourceLeafComparator extends DoubleLeafComparator {
+        DoubleValuesSourceLeafComparator(LeafReaderContext context) throws IOException {
+            super(context);
+        }
+
+        @Override
+        protected NumericDocValues getNumericDocValues(LeafReaderContext context, String field) throws IOException {
+            return multiValueSource.getValues(context, null).getRawDoubleValues();
+        }
+    }
+}
+```
+
+**Highlights of changes:**
+- Parameter and field `source` renamed to `multiValueSource` for clarity.
+- Parameter `enableSkipping` renamed to `pruning`, matching the type and likely domain naming.
+
+**Rationale:**
+These changes enhance clarity and make the code more intent-revealing and maintainable.

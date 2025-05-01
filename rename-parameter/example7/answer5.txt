@@ -1,0 +1,210 @@
+01-05-2025, 11:24
+
+Yes, there **are** opportunities for rename parameter refactoring that can improve the readability and clarity of this class. Some parameter names are overly generic or do not accurately describe their purpose, for example:
+
+- The `jdbcMutations` parameter is often called just that, but "operations" would improve clarity.
+- The `mutationTarget` parameter is, in one context, actually a `GeneratedValuesMutationDelegate`, making the name misleading.
+- `name` can be improved to `tableName` in `locateTableMapping` for consistency.
+- Some inconsistent naming between parameters and fields makes the code harder to follow.
+
+Below is the **refactored class** with improved parameter names:
+
+```java
+package org.hibernate.engine.jdbc.mutation.internal;
+
+import java.sql.PreparedStatement;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementDetails;
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementGroup;
+import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
+import org.hibernate.engine.jdbc.spi.MutationStatementPreparer;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.values.GeneratedValuesMutationDelegate;
+import org.hibernate.sql.model.MutationTarget;
+import org.hibernate.sql.model.MutationType;
+import org.hibernate.sql.model.PreparableMutationOperation;
+import org.hibernate.sql.model.TableMapping;
+
+/**
+ * A group of {@link PreparedStatementDetails} references related to multi-table
+ * entity mappings.  The statements are keyed by each table-name.
+ *
+ * @author Steve Ebersole
+ */
+public class PreparedStatementGroupStandard implements PreparedStatementGroup {
+    private final MutationType mutationType;
+    private final MutationTarget<?> mutationTarget;
+    private final List<PreparableMutationOperation> jdbcMutationOperations;
+    private final SharedSessionContractImplementor session;
+
+    private final SortedMap<String, PreparedStatementDetails> statementMap;
+
+    public PreparedStatementGroupStandard(
+            MutationType mutationType,
+            MutationTarget<?> mutationTarget,
+            GeneratedValuesMutationDelegate generatedValuesDelegate,
+            List<PreparableMutationOperation> jdbcMutationOperations,
+            SharedSessionContractImplementor session) {
+        this.mutationType = mutationType;
+        this.mutationTarget = mutationTarget;
+        this.jdbcMutationOperations = jdbcMutationOperations;
+        this.session = session;
+        this.statementMap = createStatementDetailsMap(jdbcMutationOperations, mutationType, generatedValuesDelegate, session);
+    }
+
+    @Override
+    public int getNumberOfStatements() {
+        return jdbcMutationOperations.size();
+    }
+
+    @Override
+    public int getNumberOfActiveStatements() {
+        int count = 0;
+        for (Map.Entry<String, PreparedStatementDetails> entry : statementMap.entrySet()) {
+            if (entry.getValue().getStatement() != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public PreparedStatementDetails getSingleStatementDetails() {
+        throw new IllegalStateException(
+                String.format(
+                        Locale.ROOT,
+                        "Statement group contained more than one statement - %s : %s",
+                        mutationType.name(),
+                        mutationTarget.getNavigableRole().getFullPath()
+                )
+        );
+    }
+
+    @Override
+    public void forEachStatement(BiConsumer<String, PreparedStatementDetails> action) {
+        statementMap.forEach(action);
+    }
+
+    @Override
+    public PreparedStatementDetails getPreparedStatementDetails(String tableName) {
+        return statementMap.get(tableName);
+    }
+
+    @Override
+    public PreparedStatementDetails resolvePreparedStatementDetails(String tableName) {
+        return statementMap.get(tableName);
+    }
+
+    @Override
+    public boolean hasMatching(Predicate<PreparedStatementDetails> filter) {
+        for (Map.Entry<String, PreparedStatementDetails> entry : statementMap.entrySet()) {
+            if (filter.test(entry.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static PreparedStatementDetails createPreparedStatementDetails(
+            PreparableMutationOperation mutationOperation,
+            GeneratedValuesMutationDelegate generatedValuesDelegate,
+            SharedSessionContractImplementor session) {
+        final JdbcCoordinator jdbcCoordinator = session.getJdbcCoordinator();
+        final MutationStatementPreparer statementPreparer = jdbcCoordinator.getMutationStatementPreparer();
+
+        final TableMapping tableDetails = mutationOperation.getTableDetails();
+
+        final Supplier<PreparedStatement> jdbcStatementCreator;
+        if (tableDetails.isIdentifierTable() && generatedValuesDelegate != null) {
+            jdbcStatementCreator = () -> generatedValuesDelegate.prepareStatement(
+                    mutationOperation.getSqlString(),
+                    session
+            );
+        } else {
+            jdbcStatementCreator = () -> statementPreparer.prepareStatement(
+                    mutationOperation.getSqlString(),
+                    mutationOperation.isCallable()
+            );
+        }
+
+        return new PreparedStatementDetailsStandard(
+                mutationOperation,
+                mutationOperation.getSqlString(),
+                jdbcStatementCreator,
+                mutationOperation.getExpectation(),
+                session.getJdbcServices()
+        );
+    }
+
+    @Override
+    public void release() {
+        statementMap.forEach((tableName, statementDetails) -> statementDetails.releaseStatement(session));
+    }
+
+    private static SortedMap<String, PreparedStatementDetails> createStatementDetailsMap(
+            List<PreparableMutationOperation> mutationOperations,
+            MutationType mutationType,
+            GeneratedValuesMutationDelegate generatedValuesDelegate,
+            SharedSessionContractImplementor session) {
+        final Comparator<String> comparator;
+
+        if (mutationType == MutationType.DELETE) {
+            // reverse order
+            comparator = Comparator.comparingInt((tableName) -> {
+                final TableMapping tableMapping = locateTableMapping(mutationOperations, tableName);
+                if (tableMapping == null) {
+                    return -1;
+                }
+                return mutationOperations.size() - tableMapping.getRelativePosition();
+            });
+        } else {
+            comparator = Comparator.comparingInt((tableName) -> {
+                final TableMapping tableMapping = locateTableMapping(mutationOperations, tableName);
+                if (tableMapping == null) {
+                    return -1;
+                }
+                return tableMapping.getRelativePosition();
+            });
+        }
+
+        final TreeMap<String, PreparedStatementDetails> map = new TreeMap<>(comparator);
+
+        for (final PreparableMutationOperation mutationOperation : mutationOperations) {
+            map.put(
+                    mutationOperation.getTableDetails().getTableName(),
+                    createPreparedStatementDetails(mutationOperation, generatedValuesDelegate, session)
+            );
+        }
+
+        return map;
+    }
+
+    private static TableMapping locateTableMapping(List<PreparableMutationOperation> mutationOperations, String tableName) {
+        for (final PreparableMutationOperation mutationOperation : mutationOperations) {
+            final TableMapping tableMapping = mutationOperation.getTableDetails();
+            if (tableMapping.getTableName().equals(tableName)) {
+                return tableMapping;
+            }
+        }
+        return null;
+    }
+}
+```
+
+**Summary of Changes:**
+
+- Renamed `jdbcMutations` → `jdbcMutationOperations` or `mutationOperations` depending on context.
+- True intent highlighted: `mutationTarget` as `GeneratedValuesMutationDelegate` in `createStatementDetailsMap` → renamed to `generatedValuesDelegate`.
+- Renamed parameter `name` in `locateTableMapping` → `tableName`.
+- Similar consistency changes within variable naming across methods for clarity.
+
+These changes increase the clarity and maintainability of the code.

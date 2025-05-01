@@ -1,0 +1,167 @@
+01-05-2025, 11:38
+
+Below is a review with a focus on parameter names only, as per “rename parameter refactoring.” Let's seek parameters that are **low quality** (e.g., too terse, vague, or misleading) and could be renamed for clarity. We'll *ignore* locals except for method parameters, as per convention.
+
+### Parameter Names in the Code
+
+#### 1. `getDocument(String xml)`
+- **xml**: Clear, refers to XML content (as String). Acceptable.
+
+#### 2. `getXML(Document document)`
+- **document**: Acceptable.
+
+#### 3. `assertXMLEquals(String xml1, String actual)`
+- **xml1**: *Not clear*. Is this expected? Could be better as **expectedXml**.
+- **actual**: Actually the actual XML string. Could be **actualXml** for symmetry.
+
+#### 4. Tests:
+- Most parameter names are either standard (like `expression`, `output`) or no parameters.
+
+## Refactorings
+
+**Main issue:**
+- `xml1` and `actual` in `assertXMLEquals` can be vague.
+- Suggest: `expectedXml` and `actualXml`.
+
+**Impact:** These argument names need to change for both method declaration and all usages (test methods).
+
+---
+
+## Refactored Code
+
+```java
+package com.github.javaparser.printer;
+
+import com.github.javaparser.ast.expr.Expression;
+import org.junit.jupiter.api.Test;
+
+import static com.github.javaparser.StaticJavaParser.parseExpression;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringWriter;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.BeforeAll;
+import org.w3c.dom.Document;
+import org.xml.sax.SAXException;
+
+class XmlPrinterTest {
+
+    // Used for building XML documents
+    private static DocumentBuilderFactory documentBuilderFactory;
+    private static DocumentBuilder documentBuilder;
+
+    @BeforeAll
+    public static void setupDocumentBuilder() {
+        try {
+            documentBuilderFactory = DocumentBuilderFactory.newInstance();
+            documentBuilderFactory.setNamespaceAware(true);
+            documentBuilderFactory.setCoalescing(true);
+            documentBuilderFactory.setIgnoringElementContentWhitespace(true);
+            documentBuilderFactory.setIgnoringComments(true);
+            documentBuilder = documentBuilderFactory.newDocumentBuilder();
+        } catch (ParserConfigurationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    // Used for serializing XML documents (Necessary only when doing error reporting)
+    private static TransformerFactory transformerFactory;
+    private static Transformer transformer;
+
+    @BeforeAll
+    public static void setupTransformerFactory() {
+        try {
+            transformerFactory = TransformerFactory.newInstance();
+            transformer = transformerFactory.newTransformer();
+            transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+        } catch (TransformerConfigurationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    public Document getDocument(String xml) throws SAXException, IOException {
+        InputStream inputStream = new ByteArrayInputStream(xml.getBytes());
+        Document result = documentBuilder.parse(inputStream);
+        result.normalizeDocument();
+        return result;
+    }
+
+    public String getXML(Document document) throws TransformerException {
+        StringWriter result = new StringWriter(); // Closing a StringWriter is not needed
+        transformer.transform(new DOMSource(document), new StreamResult(result));
+        return result.toString();
+    }
+
+    public void assertXMLEquals(String expectedXml, String actualXml) throws SAXException, IOException {
+        final Document expectedDocument = getDocument(expectedXml);
+        final Document actualDocument = getDocument(actualXml);
+
+        if (!expectedDocument.isEqualNode(actualDocument)) {
+            try {
+                fail(String.format("-- expected:
+%s-- actual:
+%s",
+                        getXML(expectedDocument), getXML(actualDocument)));
+            } catch(TransformerException ex) {
+                fail(String.format(""
+                                + "expected: <%s>, but it was <%s>
+"
+                                + "Additionally, a TransformerException was raised when trying to report XML document contents",
+                        expectedXml, actualXml), ex);
+            }
+        }
+    }
+
+    @Test
+    void testWithType() throws SAXException, IOException {
+        Expression expression = parseExpression("1+1");
+        XmlPrinter xmlOutput = new XmlPrinter(true);
+
+        String output = xmlOutput.output(expression);
+
+        assertXMLEquals("<root type='BinaryExpr' operator='PLUS'><left type='IntegerLiteralExpr' value='1'></left><right type='IntegerLiteralExpr' value='1'></right></root>", output);
+    }
+
+    @Test
+    void testWithoutType() throws SAXException, IOException {
+        Expression expression = parseExpression("1+1");
+
+        XmlPrinter xmlOutput = new XmlPrinter(false);
+
+        String output = xmlOutput.output(expression);
+
+        assertXMLEquals("<root operator='PLUS'><left value='1'></left><right value='1'></right></root>", output);
+    }
+
+    @Test
+    void testList() throws SAXException, IOException {
+        Expression expression = parseExpression("a(1,2)");
+
+        XmlPrinter xmlOutput = new XmlPrinter(true);
+
+        String output = xmlOutput.output(expression);
+
+        assertXMLEquals("<root type='MethodCallExpr'><name type='SimpleName' identifier='a'></name><arguments><argument type='IntegerLiteralExpr' value='1'></argument><argument type='IntegerLiteralExpr' value='2'></argument></arguments></root>", output);
+    }
+}
+```
+
+---
+
+### Summary
+
+- **Refactored `assertXMLEquals(String xml1, String actual)`** to **`assertXMLEquals(String expectedXml, String actualXml)`** and updated usages.
+- All other parameters are descriptive and do not require improvement.
+
+**End of refactoring.**

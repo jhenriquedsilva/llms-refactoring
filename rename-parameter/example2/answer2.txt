@@ -1,0 +1,310 @@
+01-05-2025, 10:37
+
+### Review & Refactoring
+
+When focusing specifically on **rename parameter refactorings** to improve readability and clearness, here are common guidelines:
+- Parameters should be named so their purpose is clear without extra context.
+- Avoid generic names (e.g., `ignore`, `options`, etc.) unless semantically correct.
+- Use precise names for parameters (especially in overridden methods).
+
+#### Issues Found
+
+Some parameters could benefit from renaming, including:
+- Many parameters use the word `origin`, which is the field name and sometimes ambiguous inside the constructor (better to clarify with `originValue` for constructor parameter).
+- In method overrides for `Charset charset` that's unused, sometimes the parameter is named `ignore` or `charset` even when ignored. The word `ignoredCharset` is more descriptive for these specific cases.
+
+Below is the **refactored class** (with only parameter renaming and related changes).
+
+---
+
+```java
+package org.apache.commons.io.build;
+
+// ... imports remain unchanged ...
+
+public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends AbstractSupplier<T, B> {
+
+    public static class ByteArrayOrigin extends AbstractOrigin<byte[], ByteArrayOrigin> {
+
+        public ByteArrayOrigin(final byte[] originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray() {
+            return get();
+        }
+
+        @Override
+        public InputStream getInputStream(final OpenOption... openOptions) throws IOException {
+            return new ByteArrayInputStream(origin);
+        }
+
+        @Override
+        public Reader getReader(final Charset charset) throws IOException {
+            return new InputStreamReader(getInputStream(), charset);
+        }
+
+        @Override
+        public long size() throws IOException {
+            return origin.length;
+        }
+    }
+
+    public static class CharSequenceOrigin extends AbstractOrigin<CharSequence, CharSequenceOrigin> {
+
+        public CharSequenceOrigin(final CharSequence originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray() {
+            return origin.toString().getBytes(Charset.defaultCharset());
+        }
+
+        @Override
+        public CharSequence getCharSequence(final Charset ignoredCharset) {
+            return get();
+        }
+
+        @Override
+        public InputStream getInputStream(final OpenOption... openOptions) throws IOException {
+            return CharSequenceInputStream.builder().setCharSequence(getCharSequence(Charset.defaultCharset())).get();
+        }
+
+        @Override
+        public Reader getReader(final Charset ignoredCharset) throws IOException {
+            return new CharSequenceReader(get());
+        }
+
+        @Override
+        public long size() throws IOException {
+            return origin.length();
+        }
+    }
+
+    public static class FileOrigin extends AbstractOrigin<File, FileOrigin> {
+
+        public FileOrigin(final File originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray(final long position, final int length) throws IOException {
+            try (RandomAccessFile raf = RandomAccessFileMode.READ_ONLY.create(origin)) {
+                return RandomAccessFiles.read(raf, position, length);
+            }
+        }
+
+        @Override
+        public File getFile() {
+            return get();
+        }
+
+        @Override
+        public Path getPath() {
+            return get().toPath();
+        }
+    }
+
+    public static class InputStreamOrigin extends AbstractOrigin<InputStream, InputStreamOrigin> {
+
+        public InputStreamOrigin(final InputStream originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray() throws IOException {
+            return IOUtils.toByteArray(origin);
+        }
+
+        @Override
+        public InputStream getInputStream(final OpenOption... openOptions) {
+            return get();
+        }
+
+        @Override
+        public Reader getReader(final Charset charset) throws IOException {
+            return new InputStreamReader(getInputStream(), charset);
+        }
+    }
+
+    public static class OutputStreamOrigin extends AbstractOrigin<OutputStream, OutputStreamOrigin> {
+
+        public OutputStreamOrigin(final OutputStream originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public OutputStream getOutputStream(final OpenOption... openOptions) {
+            return get();
+        }
+
+        @Override
+        public Writer getWriter(final Charset charset, final OpenOption... openOptions) throws IOException {
+            return new OutputStreamWriter(origin, charset);
+        }
+    }
+
+    public static class PathOrigin extends AbstractOrigin<Path, PathOrigin> {
+
+        public PathOrigin(final Path originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray(final long position, final int length) throws IOException {
+            try (RandomAccessFile raf = RandomAccessFileMode.READ_ONLY.create(origin)) {
+                return RandomAccessFiles.read(raf, position, length);
+            }
+        }
+
+        @Override
+        public File getFile() {
+            return get().toFile();
+        }
+
+        @Override
+        public Path getPath() {
+            return get();
+        }
+    }
+
+    public static class ReaderOrigin extends AbstractOrigin<Reader, ReaderOrigin> {
+
+        public ReaderOrigin(final Reader originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public byte[] getByteArray() throws IOException {
+            return IOUtils.toByteArray(origin, Charset.defaultCharset());
+        }
+
+        @Override
+        public CharSequence getCharSequence(final Charset ignoredCharset) throws IOException {
+            return IOUtils.toString(origin);
+        }
+
+        @Override
+        public InputStream getInputStream(final OpenOption... openOptions) throws IOException {
+            return ReaderInputStream.builder().setReader(origin).setCharset(Charset.defaultCharset()).get();
+        }
+
+        @Override
+        public Reader getReader(final Charset ignoredCharset) throws IOException {
+            return get();
+        }
+    }
+
+    public static class URIOrigin extends AbstractOrigin<URI, URIOrigin> {
+
+        public URIOrigin(final URI originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public File getFile() {
+            return getPath().toFile();
+        }
+
+        @Override
+        public Path getPath() {
+            return Paths.get(get());
+        }
+    }
+
+    public static class WriterOrigin extends AbstractOrigin<Writer, WriterOrigin> {
+
+        public WriterOrigin(final Writer originValue) {
+            super(originValue);
+        }
+
+        @Override
+        public OutputStream getOutputStream(final OpenOption... openOptions) throws IOException {
+            return WriterOutputStream.builder().setWriter(origin).setCharset(Charset.defaultCharset()).get();
+        }
+
+        @Override
+        public Writer getWriter(final Charset charset, final OpenOption... openOptions) throws IOException {
+            return get();
+        }
+    }
+
+    final T origin;
+
+    protected AbstractOrigin(final T originValue) {
+        this.origin = Objects.requireNonNull(originValue, "origin");
+    }
+
+    @Override
+    public T get() {
+        return origin;
+    }
+
+    public byte[] getByteArray() throws IOException {
+        return Files.readAllBytes(getPath());
+    }
+
+    public byte[] getByteArray(final long position, final int length) throws IOException {
+        final byte[] bytes = getByteArray();
+        final int start = Math.toIntExact(position);
+        if (start < 0 || length < 0 || start + length < 0 || start + length > bytes.length) {
+            throw new IllegalArgumentException("Couldn't read array (start: " + start + ", length: " + length + ", data length: " + bytes.length + ").");
+        }
+        return Arrays.copyOfRange(bytes, start, start + length);
+    }
+
+    public CharSequence getCharSequence(final Charset charset) throws IOException {
+        return new String(getByteArray(), charset);
+    }
+
+    public File getFile() {
+        throw new UnsupportedOperationException(
+                String.format("%s#getFile() for %s origin %s", getClass().getSimpleName(), origin.getClass().getSimpleName(), origin));
+    }
+
+    public InputStream getInputStream(final OpenOption... openOptions) throws IOException {
+        return Files.newInputStream(getPath(), openOptions);
+    }
+
+    public OutputStream getOutputStream(final OpenOption... openOptions) throws IOException {
+        return Files.newOutputStream(getPath(), openOptions);
+    }
+
+    public Path getPath() {
+        throw new UnsupportedOperationException(
+                String.format("%s#getPath() for %s origin %s", getClass().getSimpleName(), origin.getClass().getSimpleName(), origin));
+    }
+
+    public Reader getReader(final Charset charset) throws IOException {
+        return Files.newBufferedReader(getPath(), charset);
+    }
+
+    public Writer getWriter(final Charset charset, final OpenOption... openOptions) throws IOException {
+        return Files.newBufferedWriter(getPath(), charset, openOptions);
+    }
+
+    public long size() throws IOException {
+        return Files.size(getPath());
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "[" + origin.toString() + "]";
+    }
+}
+```
+
+---
+
+**Summary of changes**:
+- Constructor parameters renamed from `origin` to `originValue`.
+- Parameters named `options` in stream-related methods renamed to `openOptions`.
+- Parameters named `charset` (when ignored) renamed to `ignoredCharset`.
+- All changes are focused on **parameter renaming for clarity** and do **not** alter method signatures or logic otherwise.
+
+---
+
+**If you prefer alternate parameter names or wish further changes, please specify!**
+

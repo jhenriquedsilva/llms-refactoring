@@ -1,0 +1,284 @@
+01-05-2025, 11:43
+
+### Analysis
+
+Upon code review, the main opportunity for **rename parameter refactoring** lies in the use of generic or unclear parameter names such as:
+
+- `format`: Sometimes acceptable, but a more descriptive alternative might be `formatPattern`.
+- `l`: Locale should be named `locale` for clarity.
+- `tz`: Should be `timeZone` or at least `zoneIdString` when a string is expected.
+- `inDate`: This is vague in the context; if it's a long, better call it `epochMillis` or `milliseconds` or `timestamp`. If it's a `Date`, keep it as `date`.
+- `now`: When representing the current time in milliseconds, `epochMillis` is clearer.
+
+### Suggested Rename Parameter Refactorings
+
+- `String format` → `String formatPattern`
+- `Locale l` → `Locale locale`
+- `String tz` → `String timeZoneId`
+- `TimeZone tz` → `TimeZone timeZone`
+- `long inDate` (where it is a timestamp) → `long epochMillis`
+- `Date inDate` (if still a Date) → unchanged
+- `long now` (in formatTick etc.) → `long epochMillis`
+- `doFormat(long inDate, ...)` → `doFormat(long epochMillis, ...)`
+
+---
+
+## Refactored Class
+
+```java
+package org.eclipse.jetty.util;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+/**
+ * Computes String representations of Dates then caches the results so
+ * that subsequent requests within the same second will be fast.
+ * <p>
+ * If consecutive calls are frequently very different, then this
+ * may be a little slower than a normal DateFormat.
+ * <p>
+ * @see DateTimeFormatter for date formatting patterns.
+ */
+public class DateCache
+{
+    public static final String DEFAULT_FORMAT = "EEE MMM dd HH:mm:ss zzz yyyy";
+
+    private final String _formatString;
+    private final DateTimeFormatter _tzFormat1;
+    private final DateTimeFormatter _tzFormat2;
+    private final ZoneId _zoneId;
+
+    private volatile TickHolder _tickHolder;
+
+    private static class TickHolder
+    {
+        public TickHolder(Tick t1, Tick t2)
+        {
+            tick1 = t1;
+            tick2 = t2;
+        }
+
+        final Tick tick1;
+        final Tick tick2;
+    }
+
+    public static class Tick
+    {
+        private final long _seconds;
+        private final String _prefix;
+        private final String _suffix;
+
+        public Tick(long seconds, String prefix, String suffix)
+        {
+            _seconds = seconds;
+            _prefix = prefix;
+            _suffix = suffix;
+        }
+
+        public long getSeconds()
+        {
+            return _seconds;
+        }
+
+        public String format(long epochMillis)
+        {
+            if (_suffix == null)
+                return _prefix;
+
+            long ms = epochMillis % 1000;
+            StringBuilder sb = new StringBuilder();
+            sb.append(_prefix);
+            if (ms < 10)
+                sb.append("00").append(ms);
+            else if (ms < 100)
+                sb.append('0').append(ms);
+            else
+                sb.append(ms);
+            sb.append(_suffix);
+            return sb.toString();
+        }
+    }
+
+    /**
+     * Make a DateCache that will use a default format.
+     * The default format generates the same results as Date.toString().
+     */
+    public DateCache()
+    {
+        this(DEFAULT_FORMAT);
+    }
+
+    /**
+     * Make a DateCache that will use the given format.
+     *
+     * @param formatPattern the format to use
+     */
+    public DateCache(String formatPattern)
+    {
+        this(formatPattern, null, TimeZone.getDefault());
+    }
+
+    public DateCache(String formatPattern, Locale locale)
+    {
+        this(formatPattern, locale, TimeZone.getDefault());
+    }
+
+    public DateCache(String formatPattern, Locale locale, String timeZoneId)
+    {
+        this(formatPattern, locale, TimeZone.getTimeZone(timeZoneId));
+    }
+
+    public DateCache(String formatPattern, Locale locale, TimeZone timeZone)
+    {
+        this(formatPattern, locale, timeZone, true);
+    }
+
+    public DateCache(String formatPattern, Locale locale, TimeZone timeZone, boolean subSecondPrecision)
+    {
+        formatPattern = formatPattern.replaceFirst("S+", "SSS");
+        _formatString = formatPattern;
+        _zoneId = timeZone.toZoneId();
+
+        String pattern1 = formatPattern;
+        String pattern2 = null;
+        boolean subSecond;
+        if (subSecondPrecision)
+        {
+            int msIndex = formatPattern.indexOf("SSS");
+            subSecond = (msIndex >= 0);
+            if (subSecond)
+            {
+                pattern1 = formatPattern.substring(0, msIndex);
+                pattern2 = formatPattern.substring(msIndex + 3);
+            }
+        }
+        else
+        {
+            subSecond = false;
+            pattern1 = formatPattern.replace("SSS", "000");
+        }
+
+        _tzFormat1 = createFormatter(pattern1, locale, _zoneId);
+        _tzFormat2 = subSecond ? createFormatter(pattern2, locale, _zoneId) : null;
+    }
+
+    private DateTimeFormatter createFormatter(String formatPattern, Locale locale, ZoneId zoneId)
+    {
+        if (locale == null)
+            return DateTimeFormatter.ofPattern(formatPattern).withZone(zoneId);
+        else
+            return DateTimeFormatter.ofPattern(formatPattern, locale).withZone(zoneId);
+    }
+
+    public TimeZone getTimeZone()
+    {
+        return TimeZone.getTimeZone(_zoneId);
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * If it happens to be in the same second as the last
+     * formatNow call, then the format is reused.
+     *
+     * @param date the Date.
+     * @return Formatted date.
+     */
+    public String format(Date date)
+    {
+        return format(date.getTime());
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * If it happens to be in the same second as the last
+     * formatNow call, then the format is reused.
+     *
+     * @param epochMillis the date in milliseconds since unix epoch.
+     * @return Formatted date.
+     */
+    public String format(long epochMillis)
+    {
+        return formatTick(epochMillis).format(epochMillis);
+    }
+
+    /**
+     * Format a date according to supplied formatter.
+     *
+     * @param epochMillis the date in milliseconds since unix epoch.
+     * @return Formatted date.
+     */
+    protected String doFormat(long epochMillis, DateTimeFormatter formatter)
+    {
+        if (formatter == null)
+            return null;
+        return formatter.format(Instant.ofEpochMilli(epochMillis));
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * The passed time is expected to be close to the current time, so it is
+     * compared to the last value passed and if it is within the same second,
+     * the format is reused. Otherwise, a new cached format is created.
+     *
+     * @param epochMillis the milliseconds since unix epoch
+     * @return Formatted date
+     * @deprecated use {@link #format(long)}
+     */
+    @Deprecated
+    public String formatNow(long epochMillis)
+    {
+        return format(epochMillis);
+    }
+
+    @Deprecated
+    public String now()
+    {
+        return formatNow(System.currentTimeMillis());
+    }
+
+    @Deprecated
+    public Tick tick()
+    {
+        return formatTick(System.currentTimeMillis());
+    }
+
+    protected Tick formatTick(long epochMillis)
+    {
+        long seconds = epochMillis / 1000;
+
+        // Two Ticks are cached so that for monotonically increasing times to not see any jitter from multiple cores.
+        // The ticks are kept in a volatile field, so there a small risk of inconsequential multiple recalculations
+        TickHolder holder = _tickHolder;
+        if (holder != null)
+        {
+            if (holder.tick1 != null && holder.tick1.getSeconds() == seconds)
+                return holder.tick1;
+            if (holder.tick2 != null && holder.tick2.getSeconds() == seconds)
+                return holder.tick2;
+        }
+
+        String prefix = doFormat(epochMillis, _tzFormat1);
+        String suffix = doFormat(epochMillis, _tzFormat2);
+        Tick tick = new Tick(seconds, prefix, suffix);
+        _tickHolder = new TickHolder(tick, (holder == null) ? null : holder.tick1);
+        return tick;
+    }
+
+    public String getFormatString()
+    {
+        return _formatString;
+    }
+}
+```
+
+### Summary of Changes
+- Improved parameter names for clarity and self-documentation.
+- No logic or method signature changes except for parameters.
+- Javadoc and usages updated for renamed parameters.
+
+**This enhances code readability, and maintainability, and reduces ambiguity!**

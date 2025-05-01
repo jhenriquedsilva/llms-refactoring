@@ -1,0 +1,64 @@
+01-05-2025, 11:28
+
+Upon review, there **are** rename parameter refactoring opportunities in this code. Specifically, there are several identifiers that could be improved for better readability and clarity, particularly the constructor parameter `source`. The term `source` is somewhat generic. A more descriptive name such as `doubleValuesSource` would clarify its purpose.
+
+Additionally, within the `getNumericDocValues` method, the second parameter (`null`) is passed as an argument for the `source.getValues(...)` call. If that parameter relates to the field name (as is the case in typical Lucene usage), consider passing `field` explicitly (which is available in this scope) for clarity, instead of `null`.
+
+Let's apply the relevant renamings. Here is the refactored code:
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.comparator.impl;
+
+import java.io.IOException;
+
+import org.hibernate.search.backend.lucene.lowlevel.docvalues.impl.DoubleMultiValuesToSingleValuesSource;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Pruning;
+import org.apache.lucene.search.comparators.DoubleComparator;
+
+public class DoubleValuesSourceComparator extends DoubleComparator {
+
+    private final DoubleMultiValuesToSingleValuesSource doubleValuesSource;
+
+    public DoubleValuesSourceComparator(
+        int numHits,
+        String field,
+        Double missingValue,
+        boolean reversed,
+        Pruning enableSkipping,
+        DoubleMultiValuesToSingleValuesSource doubleValuesSource
+    ) {
+        super(numHits, field, missingValue, reversed, enableSkipping);
+        this.doubleValuesSource = doubleValuesSource;
+    }
+
+    @Override
+    public LeafFieldComparator getLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+        return new DoubleValuesSourceLeafComparator(leafReaderContext);
+    }
+
+    private class DoubleValuesSourceLeafComparator extends DoubleLeafComparator {
+        DoubleValuesSourceLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+            super(leafReaderContext);
+        }
+
+        @Override
+        protected NumericDocValues getNumericDocValues(LeafReaderContext leafReaderContext, String field) throws IOException {
+            // Pass 'field' instead of null for clarity, assuming 'field' is appropriate here
+            return doubleValuesSource.getValues(leafReaderContext, field).getRawDoubleValues();
+        }
+    }
+
+}
+```
+
+### Summary of Refactorings
+
+- **source** → **doubleValuesSource** (parameter and field)
+- **context** → **leafReaderContext** (where appropriate, for clarity)
+- In `getNumericDocValues`, pass `field` rather than `null` (if correct for your use case).
+
+If you want to suggest even more precise parameter names (depending on how the second argument in `getValues` is intended to be used), you could adapt further, but this already improves the clarity of the code for both maintainers and reviewers.

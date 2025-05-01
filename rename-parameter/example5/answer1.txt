@@ -1,0 +1,209 @@
+01-05-2025, 10:58
+
+Yes, there are several rename parameter refactoring opportunities to improve the readability of this code. Here are some notable ones:
+
+### Issues & Refactoring Suggestions
+
+1. **`biRel`** – this is used to represent both join and correlate nodes, but the name `biRel` is cryptic. Use `biRelNode` or `joinOrCorrelateNode` for added clarity.
+2. **`hints`** – it's fine, but replacing with `relHints` makes it clear we're referring to a list of hints from a rel node.
+3. **`outerQueryHint`** – this is iterated in a loop but could be more descriptive, such as `queryHintToRemove`.
+4. **`ClearOuterQueryHintShuttle` constructor parameter `joinHintNeedRemove`** – should match naming in class, such as `queryHintToRemove`.
+5. **`currentInheritPath`** – this matches the RelHint's terminology, but `currentInheritPathStack` may make it clear it's a stack (deque).
+6. **Method parameters in `isMatchInvalidInheritPath`:** `invalidInheritPath` and `checkedInheritPath` are a bit awkward. Consider `expectedInheritPath` and `actualInheritPath`.
+
+Implementing these refactorings, here's the improved class:
+
+---
+
+```java
+package org.apache.flink.table.planner.hint;
+
+import org.apache.calcite.rel.BiRel;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.hint.Hintable;
+import org.apache.calcite.rel.hint.RelHint;
+import org.apache.calcite.rel.logical.LogicalCorrelate;
+import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql2rel.SqlToRelConverter;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Due to Calcite will expand the whole SQL RelNode tree that contains query block, query hints
+ * (including join hints and state ttl hints) will be propagated from root to leaves in the whole
+ * RelNode tree. This shuttle is used to clear the query hints that are propagated into the query
+ * block incorrectly.
+ *
+ * <p>See more at {@link
+ * org.apache.calcite.sql2rel.SqlToRelConverter#convertFrom(SqlToRelConverter.Blackboard, SqlNode,
+ * List)}.
+ */
+public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelShuttle {
+
+    @Override
+    protected RelNode visitBiRel(BiRel biRelNode) {
+        List<RelHint> relHints = ((Hintable) biRelNode).getHints();
+
+        Set<String> allHintNames =
+                relHints.stream().map(hint -> hint.hintName).collect(Collectors.toSet());
+
+        // there are no query hints on this Join/Correlate node
+        if (allHintNames.stream().noneMatch(FlinkHints::isQueryHint)) {
+            return super.visit(biRelNode);
+        }
+
+        Optional<RelHint> firstAliasHint =
+                relHints.stream()
+                        .filter(hint -> FlinkHints.HINT_ALIAS.equals(hint.hintName))
+                        .findFirst();
+
+        // there are no alias hints on this Join/Correlate node
+        if (!firstAliasHint.isPresent()) {
+            return super.visit(biRelNode);
+        }
+
+        List<RelHint> queryHintsFromOuterQueryBlock =
+                relHints.stream()
+                        .filter(
+                                hint ->
+                                        FlinkHints.isQueryHint(hint.hintName)
+                                                // if the size of inheritPath is bigger than 0, it
+                                                // means that this query hint is propagated from its
+                                                // parent
+                                                && hint.inheritPath.size()
+                                                > firstAliasHint.get().inheritPath.size())
+                        .collect(Collectors.toList());
+
+        if (queryHintsFromOuterQueryBlock.isEmpty()) {
+            return super.visit(biRelNode);
+        }
+
+        RelNode updatedRelNode = biRelNode;
+        ClearOuterQueryHintShuttle clearOuterQueryHintShuttle;
+
+        for (RelHint queryHintToRemove : queryHintsFromOuterQueryBlock) {
+            clearOuterQueryHintShuttle = new ClearOuterQueryHintShuttle(queryHintToRemove);
+            updatedRelNode = updatedRelNode.accept(clearOuterQueryHintShuttle);
+        }
+
+        return super.visit(updatedRelNode);
+    }
+
+    /**
+     * A shuttle to clean the query hints which are in outer query block and should not affect the
+     * query-block inside.
+     *
+     * <p>Only the nodes that query hints could attach may be cleared. See more at {@link
+     * FlinkHintStrategies}.
+     */
+    private static class ClearOuterQueryHintShuttle extends RelShuttleImpl {
+        // the current inheritPath about the query hint that need be removed
+        private final Deque<Integer> currentInheritPathStack;
+
+        // the query hint that need be removed
+        private final RelHint queryHintToRemove;
+
+        public ClearOuterQueryHintShuttle(RelHint queryHintToRemove) {
+            this.queryHintToRemove = queryHintToRemove;
+            this.currentInheritPathStack = new ArrayDeque<>();
+            this.currentInheritPathStack.addAll(queryHintToRemove.inheritPath);
+        }
+
+        @Override
+        protected RelNode visitChild(RelNode parent, int childIndex, RelNode child) {
+            currentInheritPathStack.addLast(childIndex);
+            RelNode newNode = super.visitChild(parent, childIndex, child);
+            currentInheritPathStack.removeLast();
+            return newNode;
+        }
+
+        @Override
+        public RelNode visit(LogicalCorrelate correlate) {
+            return visitBiRelNode(correlate);
+        }
+
+        @Override
+        public RelNode visit(LogicalJoin join) {
+            return visitBiRelNode(join);
+        }
+
+        private RelNode visitBiRelNode(BiRel biRelNode) {
+            Hintable hintableBiRelNode = (Hintable) biRelNode;
+            List<RelHint> relHints = new ArrayList<>(hintableBiRelNode.getHints());
+            Optional<RelHint> invalidQueryHint = getInvalidQueryHint(relHints);
+
+            // if this node contains the query hint that needs to be removed
+            if (invalidQueryHint.isPresent()) {
+                relHints.remove(invalidQueryHint.get());
+                return super.visit(hintableBiRelNode.withHints(relHints));
+            }
+
+            return super.visit(biRelNode);
+        }
+
+        /**
+         * Get the invalid query hint in this node.
+         *
+         * <p>The invalid node meets the following requirement:
+         *
+         * <p>1. This hint name is same with the query hint that needs to be removed
+         *
+         * <p>2.The length of this hint should be same with the length of propagating this removed
+         * query hint.
+         *
+         * <p>3. The inherited path of this hint should match the inherited path of this removed
+         * query hint.
+         *
+         * @param relHints all hints
+         * @return return the invalid query hint if exists, else return empty
+         */
+        private Optional<RelHint> getInvalidQueryHint(List<RelHint> relHints) {
+            for (RelHint hint : relHints) {
+                if (hint.hintName.equals(queryHintToRemove.hintName)
+                        && isMatchInvalidInheritPath(
+                        new ArrayList<>(currentInheritPathStack), hint.inheritPath)) {
+                    return Optional.of(hint);
+                }
+            }
+            return Optional.empty();
+        }
+
+        private boolean isMatchInvalidInheritPath(
+                List<Integer> expectedInheritPath, List<Integer> actualInheritPath) {
+            if (expectedInheritPath.size() != actualInheritPath.size()) {
+                return false;
+            }
+
+            for (int i = 0; i < expectedInheritPath.size(); i++) {
+                if (!Objects.equals(expectedInheritPath.get(i), actualInheritPath.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+}
+```
+
+---
+
+**Summary of changes:**
+
+- `biRel` → `biRelNode`
+- `hints` → `relHints`
+- `outerQueryHint` → `queryHintToRemove`
+- `joinHintNeedRemove` → `queryHintToRemove`
+- `currentInheritPath` → `currentInheritPathStack`
+- `invalidInheritPath`/`checkedInheritPath` → `expectedInheritPath`/`actualInheritPath`
+- Parameter names in `visitChild`, `visitBiRel` also improved for clarity
+
+This refactoring makes the code substantially more readable and self-explanatory.

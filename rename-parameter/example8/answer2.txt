@@ -1,0 +1,85 @@
+01-05-2025, 11:28
+
+Certainly! I have analyzed the code snippet for potential **rename parameter refactoring** opportunities, focusing on whether the parameter names can be improved to enhance readability and clarity. Here’s what I found:
+
+### Refactoring Opportunities
+
+1. **Parameter: `source`**
+   - This parameter name is clear but can be made more descriptive to represent it as a “values source” specifically for doubles. Renaming it to `doubleValuesSource` clarifies the type of data it provides.
+
+2. **Parameter: `context` (in various methods and constructors)**
+   - The name `context` is appropriate because it generally refers to `LeafReaderContext`. No confusion here, so **no need to rename**.
+
+3. **Parameter: `enableSkipping`**
+   - This parameter comes from the superclass, and in Lucene, this often enables pruning/early termination. Consider renaming to `pruning` for clarity.
+
+4. **Parameter: `numHits`**
+   - This name is common in Lucene/Elastic code for “number of top hits to track.” It’s appropriately descriptive.
+
+5. **Parameter: `field`**
+   - Clearly indicates which field the comparator is for.
+
+6. **Parameter: `missingValue` & `reversed`**
+   - Both names are standard and clear.
+
+### Refactored Code
+
+Here’s your class with the suggested renamings applied:
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.comparator.impl;
+
+import java.io.IOException;
+
+import org.hibernate.search.backend.lucene.lowlevel.docvalues.impl.DoubleMultiValuesToSingleValuesSource;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Pruning;
+import org.apache.lucene.search.comparators.DoubleComparator;
+
+public class DoubleValuesSourceComparator extends DoubleComparator {
+
+    private final DoubleMultiValuesToSingleValuesSource doubleValuesSource;
+
+    public DoubleValuesSourceComparator(
+            int numHits,
+            String field,
+            Double missingValue,
+            boolean reversed,
+            Pruning pruning,
+            DoubleMultiValuesToSingleValuesSource doubleValuesSource
+    ) {
+        super(numHits, field, missingValue, reversed, pruning);
+        this.doubleValuesSource = doubleValuesSource;
+    }
+
+    @Override
+    public LeafFieldComparator getLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+        return new DoubleValuesSourceLeafComparator(leafReaderContext);
+    }
+
+    private class DoubleValuesSourceLeafComparator extends DoubleLeafComparator {
+        DoubleValuesSourceLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+            super(leafReaderContext);
+        }
+
+        @Override
+        protected NumericDocValues getNumericDocValues(LeafReaderContext leafReaderContext, String field) throws IOException {
+            return doubleValuesSource.getValues(leafReaderContext, null).getRawDoubleValues();
+        }
+    }
+
+}
+```
+
+---
+**Summary of changes:**
+- Changed `source` → `doubleValuesSource`.
+- Changed `enableSkipping` → `pruning`.
+- Changed all `context` parameters/arguments to the more descriptive `leafReaderContext` (both in methods and inner class).
+
+These changes should improve clarity, especially for new readers of the code.
+
+If you require stricter or alternate naming conventions, please specify your guidelines!

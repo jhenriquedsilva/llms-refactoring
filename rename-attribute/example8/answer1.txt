@@ -1,0 +1,110 @@
+28-04-2025, 09:27
+
+### Review and Analysis
+
+In the provided code, you are specifically asked to look for **rename attribute refactoring** opportunities for improving identifier readability.
+
+Upon careful examination:
+
+- The field `maxConn` uses an abbreviation, while the constructor parameter and the `toString` method use `maxConnection` and `maxConn`, respectively.
+- For consistency, clarity, and readability, it would be beneficial to **rename** `maxConn` to `maxConnections` (or at least `maxConnection`) throughout the class, including in the `equals`, `hashCode`, and `toString` methods.
+- The constant `DEFAULT_MAX_CONN` comes from a static import, and should remain as per the external library.
+- `beamWidth` is already self-explanatory and consistent.
+
+### Refactored Code
+
+Here is the **fully refactored class** with improved attribute naming:
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.codec.impl;
+
+import static org.apache.lucene.util.hnsw.HnswGraphBuilder.DEFAULT_BEAM_WIDTH;
+import static org.apache.lucene.util.hnsw.HnswGraphBuilder.DEFAULT_MAX_CONN;
+
+import java.io.IOException;
+import java.util.Objects;
+
+import org.apache.lucene.codecs.KnnVectorsFormat;
+import org.apache.lucene.codecs.KnnVectorsReader;
+import org.apache.lucene.codecs.KnnVectorsWriter;
+import org.apache.lucene.codecs.lucene95.Lucene95HnswVectorsFormat;
+import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.index.SegmentWriteState;
+
+public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
+    public static final int DEFAULT_MAX_DIMENSIONS = KnnVectorsFormat.DEFAULT_MAX_DIMENSIONS;
+    private static final KnnVectorsFormat DEFAULT_KNN_VECTORS_FORMAT = new HibernateSearchKnnVectorsFormat();
+
+    public static KnnVectorsFormat defaultFormat() {
+        return DEFAULT_KNN_VECTORS_FORMAT;
+    }
+
+    private final KnnVectorsFormat delegate;
+    private final int maxConnections;
+    private final int beamWidth;
+
+    public HibernateSearchKnnVectorsFormat() {
+        this(DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH);
+    }
+
+    public HibernateSearchKnnVectorsFormat(int maxConnections, int beamWidth) {
+        super(HibernateSearchKnnVectorsFormat.class.getSimpleName());
+        this.delegate = new Lucene95HnswVectorsFormat(maxConnections, beamWidth);
+        this.maxConnections = maxConnections;
+        this.beamWidth = beamWidth;
+    }
+
+    @Override
+    public KnnVectorsWriter fieldsWriter(SegmentWriteState state) throws IOException {
+        return delegate.fieldsWriter(state);
+    }
+
+    @Override
+    public KnnVectorsReader fieldsReader(SegmentReadState state) throws IOException {
+        return delegate.fieldsReader(state);
+    }
+
+    @Override
+    public int getMaxDimensions(String fieldName) {
+        // TODO : vector : we can make this configurable, apparently there are models that produce larger vectors than this default allows.
+        return DEFAULT_MAX_DIMENSIONS;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        HibernateSearchKnnVectorsFormat that = (HibernateSearchKnnVectorsFormat) o;
+        return maxConnections == that.maxConnections && beamWidth == that.beamWidth;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(maxConnections, beamWidth);
+    }
+
+    @Override
+    public String toString() {
+        return "HibernateSearchKnnVectorsFormat{" +
+                "maxConnections=" + maxConnections +
+                ", beamWidth=" + beamWidth +
+                '}';
+    }
+}
+```
+
+---
+
+**Summary of changes:**
+- Renamed the field `maxConn` to `maxConnections`.
+- Updated constructors, `equals`, `hashCode`, and `toString` methods accordingly.
+- All other names remain unchanged for consistency/compliance with external libraries and clarity.
+
+---
+
+**Conclusion:**
+There **were** rename attribute refactoring opportunities regarding `maxConn`. The refactored version above addresses these for improved readability, clarity, and maintainability.

@@ -1,0 +1,272 @@
+28-04-2025, 08:54
+
+**Refactoring Opportunities**
+
+Yes, there are clear rename attribute refactoring opportunities in the class, most notably:
+
+- The names `lhs` and `rhs` (left hand side, right hand side) for object/class fields and method parameters are not as expressive as they could be. Renaming these to `left` and `right` would improve clarity/readability.
+- Similarly, in the inner class `SDiff`, the attribute names `leftS` and `rightS` are not very clear. They can be clearly renamed to `leftSupplier` and `rightSupplier`.
+- The field `objectsEquals` could be more clearly named as `objectsAreEqual` to make it more representative of a boolean predicate.
+
+**Applying these changes throughout the codebase gives:**
+
+---
+
+```java
+package org.apache.commons.lang3.builder;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ObjectUtils;
+
+public class DiffBuilder<T> implements Builder<DiffResult<T>> {
+
+    private static final class SDiff<T> extends Diff<T> {
+
+        private static final long serialVersionUID = 1L;
+        private final transient Supplier<T> leftSupplier;
+        private final transient Supplier<T> rightSupplier;
+
+        private SDiff(final String fieldName, final Supplier<T> leftSupplier, final Supplier<T> rightSupplier, final Class<T> type) {
+            super(fieldName, type);
+            this.leftSupplier = leftSupplier;
+            this.rightSupplier = rightSupplier;
+        }
+
+        @Override
+        public T getLeft() {
+            return leftSupplier.get();
+        }
+
+        @Override
+        public T getRight() {
+            return rightSupplier.get();
+        }
+
+    }
+
+    static final String TO_STRING_FORMAT = "%s differs from %s";
+
+    private final List<Diff<?>> diffs;
+    private final boolean objectsAreEqual;
+    private final T left;
+    private final T right;
+    private final ToStringStyle style;
+    private final String toStringFormat;
+
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * <p>
+     * If {@code left == right} or {@code left.equals(right)} then the builder will
+     * not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * </p>
+     *
+     * <p>
+     * This delegates to {@link #DiffBuilder(Object, Object, ToStringStyle, boolean)}
+     * with the testTriviallyEqual flag enabled.
+     * </p>
+     *
+     * @param left
+     *            {@code this} object
+     * @param right
+     *            the object to diff against
+     * @param style
+     *            the style will use when outputting the objects, {@code null}
+     *            uses the default
+     * @throws NullPointerException
+     *             if {@code left} or {@code right} is {@code null}
+     */
+    public DiffBuilder(final T left, final T right, final ToStringStyle style) {
+        this(left, right, style, true);
+    }
+
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * <p>
+     * If {@code left == right} or {@code left.equals(right)} then the builder will
+     * not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * </p>
+     *
+     * @param left
+     *            {@code this} object
+     * @param right
+     *            the object to diff against
+     * @param style
+     *            the style will use when outputting the objects, {@code null}
+     *            uses the default
+     * @param testObjectsAreEqual
+     *            If true, this will test if left and right are the same or equal.
+     *            All of the append(fieldName, left, right) methods will abort
+     *            without creating a field {@link Diff} if the trivially equal
+     *            test is enabled and returns true.  The result of this test
+     *            is never changed throughout the life of this {@link DiffBuilder}.
+     * @throws NullPointerException
+     *             if {@code left} or {@code right} is {@code null}
+     * @since 3.4
+     */
+    public DiffBuilder(final T left, final T right, final ToStringStyle style, final boolean testObjectsAreEqual) {
+        this.left = Objects.requireNonNull(left, "left");
+        this.right = Objects.requireNonNull(right, "right");
+        this.diffs = new ArrayList<>();
+        this.toStringFormat = DiffBuilder.TO_STRING_FORMAT;
+        this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;
+        // Don't compare any fields if objects are equal
+        this.objectsAreEqual = testObjectsAreEqual && Objects.equals(left, right);
+    }
+
+    private <F> DiffBuilder<T> add(final String fieldName, final Supplier<F> left, final Supplier<F> right, final Class<F> type) {
+        diffs.add(new SDiff<>(Objects.requireNonNull(fieldName, "fieldName"), left, right, type));
+        return this;
+    }
+
+    // All append methods:
+    public DiffBuilder<T> append(final String fieldName, final boolean left, final boolean right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Boolean.valueOf(left), () -> Boolean.valueOf(right), Boolean.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final boolean[] left, final boolean[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Boolean[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final byte left, final byte right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Byte.valueOf(left), () -> Byte.valueOf(right), Byte.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final byte[] left, final byte[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Byte[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final char left, final char right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Character.valueOf(left), () -> Character.valueOf(right), Character.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final char[] left, final char[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Character[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final DiffResult<T> diffResult) {
+        Objects.requireNonNull(diffResult, "diffResult");
+        if (objectsAreEqual) {
+            return this;
+        }
+        diffResult.getDiffs().forEach(diff -> append(fieldName + "." + diff.getFieldName(), diff.getLeft(), diff.getRight()));
+        return this;
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final double left, final double right) {
+        return objectsAreEqual || Double.doubleToLongBits(left) == Double.doubleToLongBits(right) ? this
+                : add(fieldName, () -> Double.valueOf(left), () -> Double.valueOf(right), Double.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final double[] left, final double[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Double[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final float left, final float right) {
+        return objectsAreEqual || Float.floatToIntBits(left) == Float.floatToIntBits(right) ? this
+                : add(fieldName, () -> Float.valueOf(left), () -> Float.valueOf(right), Float.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final float[] left, final float[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Float[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final int left, final int right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Integer.valueOf(left), () -> Integer.valueOf(right), Integer.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final int[] left, final int[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Integer[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final long left, final long right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Long.valueOf(left), () -> Long.valueOf(right), Long.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final long[] left, final long[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Long[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final Object left, final Object right) {
+        if (objectsAreEqual || left == right) {
+            return this;
+        }
+        // right cannot be null, as left != right
+        final Object objectToTest = left != null ? left : right;
+        if (ObjectUtils.isArray(objectToTest)) {
+            if (objectToTest instanceof boolean[]) {
+                return append(fieldName, (boolean[]) left, (boolean[]) right);
+            }
+            if (objectToTest instanceof byte[]) {
+                return append(fieldName, (byte[]) left, (byte[]) right);
+            }
+            if (objectToTest instanceof char[]) {
+                return append(fieldName, (char[]) left, (char[]) right);
+            }
+            if (objectToTest instanceof double[]) {
+                return append(fieldName, (double[]) left, (double[]) right);
+            }
+            if (objectToTest instanceof float[]) {
+                return append(fieldName, (float[]) left, (float[]) right);
+            }
+            if (objectToTest instanceof int[]) {
+                return append(fieldName, (int[]) left, (int[]) right);
+            }
+            if (objectToTest instanceof long[]) {
+                return append(fieldName, (long[]) left, (long[]) right);
+            }
+            if (objectToTest instanceof short[]) {
+                return append(fieldName, (short[]) left, (short[]) right);
+            }
+            return append(fieldName, (Object[]) left, (Object[]) right);
+        }
+        // Not array type
+        if (Objects.equals(left, right)) {
+            return this;
+        }
+        add(fieldName, () -> left, () -> right, Object.class);
+        return this;
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final Object[] left, final Object[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> left, () -> right, Object[].class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final short left, final short right) {
+        return objectsAreEqual || left == right ? this : add(fieldName, () -> Short.valueOf(left), () -> Short.valueOf(right), Short.class);
+    }
+
+    public DiffBuilder<T> append(final String fieldName, final short[] left, final short[] right) {
+        return objectsAreEqual || Arrays.equals(left, right) ? this : add(fieldName, () -> ArrayUtils.toObject(left), () -> ArrayUtils.toObject(right), Short[].class);
+    }
+
+    @Override
+    public DiffResult<T> build() {
+        return new DiffResult<>(left, right, diffs, style, toStringFormat);
+    }
+}
+```
+
+---
+
+**Main refactoring points:**
+
+- All *field* and *parameter* usages of `lhs`/`rhs` are changed to `left`/`right`.
+- Parameter documentation (`@param`) is updated accordingly.
+- `leftS`/`rightS` → `leftSupplier`/`rightSupplier`.
+- `objectsEquals` → `objectsAreEqual`.
+
+This makes the code more readable and idiomatic, especially for teams and new maintainers.
+
+---
+
+**If you need more aggressive refactoring (such as for method names or logic), let me know!**

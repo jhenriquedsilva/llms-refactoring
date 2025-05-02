@@ -1,0 +1,131 @@
+28-04-2025, 09:18
+
+This class does present some opportunities for **Rename Attribute Refactoring** to enhance clarity, especially for people new to the codebase. Let me justify the proposed changes and provide reasoning:
+
+**Refactoring Candidates:**
+
+1. **uniqueKeyPropertyNames**
+   - Current name: `uniqueKeyPropertyNames`
+   - More idiomatic and concise: `uniqueKeyProperties`
+   - Rationale: The type is `String[]`, and "properties" already implies names. Shortening improves readability in method signatures and variable usage.
+
+2. **uniqueKeyTypes**
+   - Current name: `uniqueKeyTypes`
+   - More concise/precise: `uniqueKeyPropertyTypes`
+   - Rationale: Though slightly longer, it explicitly ties these types to the properties. However, if you prefer conciseness and pattern matching with "uniqueKeyProperties," `uniqueKeyTypes` can stay. In the Hibernate codebase, "types" alone generally refer to property types in context, so it's also fine as is.
+
+3. **idSelectString**
+   - Current name: `idSelectString`
+   - More descriptive: `selectByUniqueKeySql` or `selectByUniqueKeyQuery`
+   - Rationale: The current name doesn't make it clear this SQL queries for a row by unique key.
+
+I will apply the following changes:
+- `uniqueKeyPropertyNames → uniqueKeyProperties`
+- `uniqueKeyTypes → uniqueKeyPropertyTypes`
+- `idSelectString → selectByUniqueKeySql`
+
+Here’s the **refactored class** with improved attribute names:
+
+```java
+package org.hibernate.id.insert;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.hibernate.dialect.Dialect;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.EventType;
+import org.hibernate.generator.values.GeneratedValueBasicResultBuilder;
+import org.hibernate.id.PostInsertIdentityPersister;
+import org.hibernate.jdbc.Expectation;
+import org.hibernate.metamodel.mapping.EntityRowIdMapping;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.sql.model.ast.builder.TableInsertBuilderStandard;
+import org.hibernate.sql.model.ast.builder.TableMutationBuilder;
+import org.hibernate.type.Type;
+
+import static org.hibernate.generator.values.internal.GeneratedValuesHelper.getActualGeneratedModelPart;
+
+/**
+ * Uses a unique key of the inserted entity to locate the newly inserted row.
+ *
+ * @author Gavin King
+ */
+public class UniqueKeySelectingDelegate extends AbstractSelectingDelegate {
+    private final String[] uniqueKeyProperties;
+    private final Type[] uniqueKeyPropertyTypes;
+
+    private final String selectByUniqueKeySql;
+
+    /**
+     * @deprecated Use {@link #UniqueKeySelectingDelegate(EntityPersister, String[], EventType)} instead.
+     */
+    @Deprecated( forRemoval = true, since = "6.5" )
+    public UniqueKeySelectingDelegate(PostInsertIdentityPersister persister, Dialect dialect, String[] uniqueKeyProperties) {
+        this( persister, uniqueKeyProperties, EventType.INSERT );
+    }
+
+    public UniqueKeySelectingDelegate(
+            EntityPersister persister,
+            String[] uniqueKeyProperties,
+            EventType timing) {
+        super( persister, timing, true, true );
+
+        this.uniqueKeyProperties = uniqueKeyProperties;
+
+        uniqueKeyPropertyTypes = new Type[ uniqueKeyProperties.length ];
+        for ( int i = 0; i < uniqueKeyProperties.length; i++ ) {
+            uniqueKeyPropertyTypes[i] = persister.getPropertyType( uniqueKeyProperties[i] );
+        }
+
+        final EntityRowIdMapping rowIdMapping = persister.getRowIdMapping();
+        if ( !persister.isIdentifierAssignedByInsert()
+                || persister.getInsertGeneratedProperties().size() > 1
+                || rowIdMapping != null ) {
+            final List<GeneratedValueBasicResultBuilder> resultBuilders = jdbcValuesMappingProducer.getResultBuilders();
+            final List<String> columnNames = new ArrayList<>( resultBuilders.size() );
+            for ( GeneratedValueBasicResultBuilder resultBuilder : resultBuilders ) {
+                columnNames.add( getActualGeneratedModelPart( resultBuilder.getModelPart() ).getSelectionExpression() );
+            }
+            selectByUniqueKeySql = persister.getSelectByUniqueKeyString(
+                    uniqueKeyProperties,
+                    columnNames.toArray( new String[0] )
+            );
+        }
+        else {
+            selectByUniqueKeySql = persister.getSelectByUniqueKeyString( uniqueKeyProperties );
+        }
+    }
+
+    protected String getSelectSQL() {
+        return selectByUniqueKeySql;
+    }
+
+    @Override
+    public TableMutationBuilder<?> createTableMutationBuilder(
+            Expectation expectation,
+            SessionFactoryImplementor factory) {
+        return new TableInsertBuilderStandard( persister, persister.getIdentifierTableMapping(), factory );
+    }
+
+    protected void bindParameters(Object entity, PreparedStatement ps, SharedSessionContractImplementor session)
+            throws SQLException {
+        int index = 1;
+        for ( int i = 0; i < uniqueKeyProperties.length; i++ ) {
+            uniqueKeyPropertyTypes[i].nullSafeSet( ps, persister.getPropertyValue( entity, uniqueKeyProperties[i] ), index, session );
+            index += uniqueKeyPropertyTypes[i].getColumnSpan( session.getFactory() );
+        }
+    }
+}
+```
+
+**Summary of changes**:
+- Attributes renamed for clarity and improved code readability.
+- All usages and constructor parameters updated accordingly.
+
+If you prefer "uniqueKeyTypes" for brevity, that's reasonable too, but "uniqueKeyPropertyTypes" is more explicit for review/audit.
+Let me know if you want to discuss further or need other parts of the code updated!
+

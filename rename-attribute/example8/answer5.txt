@@ -1,0 +1,114 @@
+28-04-2025, 09:27
+
+### Refactoring Analysis
+
+You asked about **rename attribute refactorings** to improve readability, focusing on attribute (field/parameter) identifiers.
+Upon review, I see a classic inconsistency:
+
+- The parameter name `maxConnection` (in the constructor) is singular.
+- The field name is `maxConn` (abbreviated), but in the `toString()` method, it's displayed as **maxConnection**, which is confusing.
+- Sometimes it's referred to as `maxConn` (field), sometimes as `maxConnection` (parameter), and in `toString()` as `maxConnection`.
+
+This can cause inconsistency, confusion, and potentially bugs (especially in copy-paste or further extension/modification).
+
+**Recommendation:**
+Rename all instances of `maxConn` and `maxConnection` to a consistently clear name. Suggest **`maxConnections`** (plural), which matches terminology (e.g., Lucene's `maxConnections`).
+
+The beamWidth is well-named and consistently used.
+
+---
+
+## Refactored Code
+
+Here is the class with the renamed attribute (`maxConn` → `maxConnections`, and the parameter similarly):
+
+```java
+package org.hibernate.search.backend.lucene.lowlevel.codec.impl;
+
+import static org.apache.lucene.util.hnsw.HnswGraphBuilder.DEFAULT_BEAM_WIDTH;
+import static org.apache.lucene.util.hnsw.HnswGraphBuilder.DEFAULT_MAX_CONN;
+
+import java.io.IOException;
+import java.util.Objects;
+
+import org.apache.lucene.codecs.KnnVectorsFormat;
+import org.apache.lucene.codecs.KnnVectorsReader;
+import org.apache.lucene.codecs.KnnVectorsWriter;
+import org.apache.lucene.codecs.lucene95.Lucene95HnswVectorsFormat;
+import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.index.SegmentWriteState;
+
+public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
+    public static final int DEFAULT_MAX_DIMENSIONS = KnnVectorsFormat.DEFAULT_MAX_DIMENSIONS;
+    private static final KnnVectorsFormat DEFAULT_KNN_VECTORS_FORMAT = new HibernateSearchKnnVectorsFormat();
+
+    public static KnnVectorsFormat defaultFormat() {
+        return DEFAULT_KNN_VECTORS_FORMAT;
+    }
+
+    private final KnnVectorsFormat delegate;
+    private final int maxConnections;
+    private final int beamWidth;
+
+    public HibernateSearchKnnVectorsFormat() {
+        this(DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH);
+    }
+
+    public HibernateSearchKnnVectorsFormat(int maxConnections, int beamWidth) {
+        super(HibernateSearchKnnVectorsFormat.class.getSimpleName());
+        this.delegate = new Lucene95HnswVectorsFormat(maxConnections, beamWidth);
+        this.maxConnections = maxConnections;
+        this.beamWidth = beamWidth;
+    }
+
+    @Override
+    public KnnVectorsWriter fieldsWriter(SegmentWriteState state) throws IOException {
+        return delegate.fieldsWriter(state);
+    }
+
+    @Override
+    public KnnVectorsReader fieldsReader(SegmentReadState state) throws IOException {
+        return delegate.fieldsReader(state);
+    }
+
+    @Override
+    public int getMaxDimensions(String fieldName) {
+        // TODO : vector : we can make this configurable, apparently there are models that produce larger vectors than this default allows.
+        return DEFAULT_MAX_DIMENSIONS;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        HibernateSearchKnnVectorsFormat that = (HibernateSearchKnnVectorsFormat) o;
+        return maxConnections == that.maxConnections && beamWidth == that.beamWidth;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(maxConnections, beamWidth);
+    }
+
+    @Override
+    public String toString() {
+        return "HibernateSearchKnnVectorsFormat{" +
+                "maxConnections=" + maxConnections +
+                ", beamWidth=" + beamWidth +
+                '}';
+    }
+}
+```
+
+**Summary of Changes:**
+- Replaced all instances of `maxConn` and `maxConnection` with `maxConnections`.
+- Updated constructor parameters, field, and `toString()` output for consistency.
+- No other changes needed.
+
+---
+
+**This refactoring improves clarity, naming consistency, and maintainability of the class.**

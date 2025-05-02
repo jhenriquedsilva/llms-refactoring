@@ -1,0 +1,358 @@
+28-04-2025, 09:13
+
+There **are** several opportunities for **rename attribute refactoring** in this code to improve clarity. Here are the most significant ones:
+
+### Major Attribute Rename Refactoring Opportunities
+
+1. **`clientIdMsb` / `clientIdLsb`**:
+   - **Old:** `clientIdMsb`, `clientIdLsb`
+   - **New:** `clientIdMostSignificantBits`, `clientIdLeastSignificantBits`
+   - **Rationale:** More expressive and matches UUID's terminology.
+
+2. **`set`** (the cache container):
+   - **Old:** `set`
+   - **New:** `cacheEntries`
+   - **Rationale:** `set` is too generic; `cacheEntries` or `cacheSet` is more descriptive.
+
+3. **`lock`** (the ReentrantLock):
+   - **Old:** `lock`
+   - **New:** `cacheLock`
+   - **Rationale:** To distinguish from possible other locks and clarify intent.
+
+4. **`expirationTime`** (in both contexts):
+   - **Old:** `expirationTime`
+   - **New:** `entryExpirationTime` (for field in outer class), `cacheEntryExpirationTime` (for parameter/context distinction).
+   - **Rationale:** To clarify its meaning with respect to entry, not class-level expiration.
+
+5. **`state`** (in CacheEntry):
+   - Could be renamed to `processingState` for clarity, but since it's already paired with constants, it's reasonable as is.
+
+6. **`payload`** (in CacheEntryWithPayload):
+   - `payload` is fine given its context.
+
+Given these changes, here's the **refactored class**:
+
+---
+
+```java
+package org.apache.hadoop.ipc;
+
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.ipc.metrics.RetryCacheMetrics;
+import org.apache.hadoop.util.LightWeightCache;
+import org.apache.hadoop.util.LightWeightGSet;
+import org.apache.hadoop.util.LightWeightGSet.LinkedElement;
+import org.apache.hadoop.classification.VisibleForTesting;
+import org.apache.hadoop.util.Preconditions;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@InterfaceAudience.Private
+public class RetryCache {
+    public static final Logger LOG = LoggerFactory.getLogger(RetryCache.class);
+    private final RetryCacheMetrics retryCacheMetrics;
+    private static final int MAX_CAPACITY = 16;
+
+    /**
+     * CacheEntry is tracked using unique client ID and callId of the RPC request.
+     */
+    public static class CacheEntry implements LightWeightCache.Entry {
+        private static final byte INPROGRESS = 0;
+        private static final byte SUCCESS = 1;
+        private static final byte FAILED = 2;
+
+        private byte state = INPROGRESS;
+
+        // Store uuid as two long for better memory utilization
+        private final long clientIdMostSignificantBits; // Most significant bits
+        private final long clientIdLeastSignificantBits; // Least significant bits
+
+        private final int callId;
+        private final long cacheEntryExpirationTime;
+        private LightWeightGSet.LinkedElement next;
+
+        CacheEntry(byte[] clientId, int callId, long cacheEntryExpirationTime) {
+            Preconditions.checkArgument(clientId.length == ClientId.BYTE_LENGTH,
+                    "Invalid clientId - length is " + clientId.length
+                            + " expected length " + ClientId.BYTE_LENGTH);
+            clientIdMostSignificantBits = ClientId.getMsb(clientId);
+            clientIdLeastSignificantBits = ClientId.getLsb(clientId);
+            this.callId = callId;
+            this.cacheEntryExpirationTime = cacheEntryExpirationTime;
+        }
+
+        CacheEntry(byte[] clientId, int callId, long cacheEntryExpirationTime,
+                   boolean success) {
+            this(clientId, callId, cacheEntryExpirationTime);
+            this.state = success ? SUCCESS : FAILED;
+        }
+
+        private static int hashCode(long value) {
+            return (int)(value ^ (value >>> 32));
+        }
+
+        @Override
+        public int hashCode() {
+            return (hashCode(clientIdMostSignificantBits) * 31 + hashCode(clientIdLeastSignificantBits)) * 31 + callId;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof CacheEntry)) {
+                return false;
+            }
+            CacheEntry other = (CacheEntry) obj;
+            return callId == other.callId && clientIdMostSignificantBits == other.clientIdMostSignificantBits
+                    && clientIdLeastSignificantBits == other.clientIdLeastSignificantBits;
+        }
+
+        @Override
+        public void setNext(LinkedElement next) {
+            this.next = next;
+        }
+
+        @Override
+        public LinkedElement getNext() {
+            return next;
+        }
+
+        synchronized void completed(boolean success) {
+            state = success ? SUCCESS : FAILED;
+            this.notifyAll();
+        }
+
+        public synchronized boolean isSuccess() {
+            return state == SUCCESS;
+        }
+
+        @Override
+        public void setExpirationTime(long timeNano) {
+            // expiration time does not change
+        }
+
+        @Override
+        public long getExpirationTime() {
+            return cacheEntryExpirationTime;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s:%s:%s", new UUID(this.clientIdMostSignificantBits, this.clientIdLeastSignificantBits),
+                    this.callId, this.state);
+        }
+    }
+
+    public static class CacheEntryWithPayload extends CacheEntry {
+        private Object payload;
+
+        CacheEntryWithPayload(byte[] clientId, int callId, Object payload,
+                              long cacheEntryExpirationTime) {
+            super(clientId, callId, cacheEntryExpirationTime);
+            this.payload = payload;
+        }
+
+        CacheEntryWithPayload(byte[] clientId, int callId, Object payload,
+                              long cacheEntryExpirationTime, boolean success) {
+            super(clientId, callId, cacheEntryExpirationTime, success);
+            this.payload = payload;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return super.equals(obj);
+        }
+
+        @Override
+        public int hashCode() {
+            return super.hashCode();
+        }
+
+        public Object getPayload() {
+            return payload;
+        }
+    }
+
+    private final LightWeightGSet<CacheEntry, CacheEntry> cacheEntries;
+    private final long entryExpirationTime;
+    private final String cacheName;
+
+    private final ReentrantLock cacheLock = new ReentrantLock();
+
+    public RetryCache(String cacheName, double percentage, long entryExpirationTime) {
+        int capacity = LightWeightGSet.computeCapacity(percentage, cacheName);
+        capacity = Math.max(capacity, MAX_CAPACITY);
+        this.cacheEntries = new LightWeightCache<CacheEntry, CacheEntry>(capacity, capacity,
+                entryExpirationTime, 0);
+        this.entryExpirationTime = entryExpirationTime;
+        this.cacheName = cacheName;
+        this.retryCacheMetrics =  RetryCacheMetrics.create(this);
+    }
+
+    private static boolean skipRetryCache(byte[] clientId, int callId) {
+        return !Server.isRpcInvocation() || callId < 0
+                || Arrays.equals(clientId, RpcConstants.DUMMY_CLIENT_ID);
+    }
+
+    public void lock() {
+        this.cacheLock.lock();
+    }
+
+    public void unlock() {
+        this.cacheLock.unlock();
+    }
+
+    private void incrCacheClearedCounter() {
+        retryCacheMetrics.incrCacheCleared();
+    }
+
+    @VisibleForTesting
+    public LightWeightGSet<CacheEntry, CacheEntry> getCacheEntries() {
+        return cacheEntries;
+    }
+
+    @VisibleForTesting
+    public RetryCacheMetrics getMetricsForTests() {
+        return retryCacheMetrics;
+    }
+
+    public String getCacheName() {
+        return cacheName;
+    }
+
+    private CacheEntry waitForCompletion(CacheEntry newEntry) {
+        CacheEntry mapEntry = null;
+        cacheLock.lock();
+        try {
+            mapEntry = cacheEntries.get(newEntry);
+            if (mapEntry == null) {
+                if (LOG.isTraceEnabled()) {
+                    LOG.trace("Adding Rpc request clientId "
+                            + newEntry.clientIdMostSignificantBits + newEntry.clientIdLeastSignificantBits + " callId "
+                            + newEntry.callId + " to retryCache");
+                }
+                cacheEntries.put(newEntry);
+                retryCacheMetrics.incrCacheUpdated();
+                return newEntry;
+            } else {
+                retryCacheMetrics.incrCacheHit();
+            }
+        } finally {
+            cacheLock.unlock();
+        }
+        Preconditions.checkNotNull(mapEntry,
+                "Entry from the cache should not be null");
+        synchronized (mapEntry) {
+            while (mapEntry.state == CacheEntry.INPROGRESS) {
+                try {
+                    mapEntry.wait();
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if (mapEntry.state != CacheEntry.SUCCESS) {
+                mapEntry.state = CacheEntry.INPROGRESS;
+            }
+        }
+        return mapEntry;
+    }
+
+    public void addCacheEntry(byte[] clientId, int callId) {
+        CacheEntry newEntry = new CacheEntry(clientId, callId, System.nanoTime()
+                + entryExpirationTime, true);
+        cacheLock.lock();
+        try {
+            cacheEntries.put(newEntry);
+        } finally {
+            cacheLock.unlock();
+        }
+        retryCacheMetrics.incrCacheUpdated();
+    }
+
+    public void addCacheEntryWithPayload(byte[] clientId, int callId,
+                                         Object payload) {
+        CacheEntry newEntry = new CacheEntryWithPayload(clientId, callId, payload,
+                System.nanoTime() + entryExpirationTime, true);
+        cacheLock.lock();
+        try {
+            cacheEntries.put(newEntry);
+        } finally {
+            cacheLock.unlock();
+        }
+        retryCacheMetrics.incrCacheUpdated();
+    }
+
+    private static CacheEntry newEntry(long entryExpirationTime,
+                                       byte[] clientId, int callId) {
+        return new CacheEntry(clientId, callId,
+                System.nanoTime() + entryExpirationTime);
+    }
+
+    private static CacheEntryWithPayload newEntry(Object payload,
+                                                  long entryExpirationTime, byte[] clientId, int callId) {
+        return new CacheEntryWithPayload(clientId, callId,
+                payload, System.nanoTime() + entryExpirationTime);
+    }
+
+    public static CacheEntry waitForCompletion(RetryCache cache,
+                                               byte[] clientId, int callId) {
+        if (skipRetryCache(clientId, callId)) {
+            return null;
+        }
+        return cache != null ? cache
+                .waitForCompletion(newEntry(cache.entryExpirationTime,
+                        clientId, callId)) : null;
+    }
+
+    public static CacheEntryWithPayload waitForCompletion(RetryCache cache,
+                                                          Object payload, byte[] clientId, int callId) {
+        if (skipRetryCache(clientId, callId)) {
+            return null;
+        }
+        return (CacheEntryWithPayload) (cache != null ? cache
+                .waitForCompletion(newEntry(payload, cache.entryExpirationTime,
+                        clientId, callId)) : null);
+    }
+
+    public static void setState(CacheEntry e, boolean success) {
+        if (e == null) {
+            return;
+        }
+        e.completed(success);
+    }
+
+    public static void setState(CacheEntryWithPayload e, boolean success,
+                                Object payload) {
+        if (e == null) {
+            return;
+        }
+        e.payload = payload;
+        e.completed(success);
+    }
+
+    public static void clear(RetryCache cache) {
+        if (cache != null) {
+            cache.cacheEntries.clear();
+            cache.incrCacheClearedCounter();
+        }
+    }
+}
+```
+
+---
+
+**Summary of Changes:**
+- Renamed `set` → `cacheEntries`
+- Renamed `lock` → `cacheLock`
+- Renamed `expirationTime` in outer class to `entryExpirationTime`
+- Renamed `clientIdMsb`/`clientIdLsb` → `clientIdMostSignificantBits`/`clientIdLeastSignificantBits`
+- Renamed field/parameter instances of `expirationTime` inside `CacheEntry` and related methods accordingly
+
+**No logic changes** were made, just identifier improvements for readability and maintainability.

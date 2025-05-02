@@ -1,4 +1,4 @@
-28-04-2025, 09:33
+02-05-2025, 09:33
 
 Certainly! After reviewing the `EntityIndexingServiceImpl` class, there **are several attribute (field) naming refactoring opportunities** to improve readability and follow Java naming conventions:
 

@@ -1,0 +1,130 @@
+02-05-2025, 10:50
+
+Certainly. Let's review the code regarding **rename attribute refactoring** opportunities, especially focusing on attribute names to see if identifiers could be made more descriptive:
+
+### 1. Attribute: `runner`
+- **Current name:** `runner`
+- **Context:** It holds an `InternalRunner` instance that is being wrapped.
+- **Analysis:** The name is somewhat generic. Since in this context, `StrictRunner` is acting as a wrapper, `wrappedRunner` could be more descriptive.
+
+### 2. Attribute: `testClass`
+- **Current name:** `testClass`
+- **Context:** Holds the test class object for reporting purposes.
+- **Analysis:** Adequately descriptive.
+
+### 3. Attribute: `filterRequested`
+- **Current name:** `filterRequested`
+- **Context:** Tracks if a filter operation was requested and impacted execution.
+- **Analysis:** Considering its use, maybe `wasFilterRequested` for clarity, but `filterRequested` is already reasonable. Still, to improve clarity, `wasFilterRequested` aligns well with its boolean nature.
+
+### 4. Inner class: `delegate`
+- **Current name:** `delegate` (inside `RecordingFilter`)
+- **Context:** Refers to the `Filter` being wrapped.
+- **Analysis:** Consider renaming to `wrappedFilter` for clarity.
+
+---
+
+## Refactored Code
+
+```java
+package org.mockito.internal.runners;
+
+import org.junit.runner.Description;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.notification.RunNotifier;
+import org.mockito.Mockito;
+import org.mockito.internal.junit.UnnecessaryStubbingsReporter;
+import org.mockito.internal.runners.util.FailureDetector;
+
+public class StrictRunner implements InternalRunner {
+
+    private final Class<?> testClass;
+    private final InternalRunner wrappedRunner;
+    private boolean wasFilterRequested;
+
+    /**
+     * @param wrappedRunner - the runner to wrap around
+     * @param testClass - for reporting purposes
+     */
+    public StrictRunner(InternalRunner wrappedRunner, Class<?> testClass) {
+        this.wrappedRunner = wrappedRunner;
+        this.testClass = testClass;
+        this.wasFilterRequested = false;
+    }
+
+    @Override
+    public void run(RunNotifier notifier) {
+        // TODO need to be able to opt in for full stack trace instead of just relying on the stack trace filter
+        UnnecessaryStubbingsReporter reporter = new UnnecessaryStubbingsReporter();
+        FailureDetector listener = new FailureDetector();
+
+        Mockito.framework().addListener(reporter);
+        try {
+            notifier.addListener(listener);
+            wrappedRunner.run(notifier);
+        } finally {
+            Mockito.framework().removeListener(reporter);
+        }
+
+        if (!wasFilterRequested && listener.isSuccessful()) {
+            reporter.validateUnusedStubs(testClass, notifier);
+        }
+    }
+
+    @Override
+    public Description getDescription() {
+        return wrappedRunner.getDescription();
+    }
+
+    @Override
+    public void filter(Filter filter) throws NoTestsRemainException {
+        Filter recordingFilter = new RecordingFilter(filter);
+        wrappedRunner.filter(recordingFilter);
+    }
+
+    private class RecordingFilter extends Filter {
+
+        private final Filter wrappedFilter;
+
+        public RecordingFilter(Filter wrappedFilter) {
+            this.wrappedFilter = wrappedFilter;
+        }
+
+        @Override
+        public void apply(Object child) throws NoTestsRemainException {
+            wrappedFilter.apply(child);
+        }
+
+        @Override
+        public Filter intersect(Filter second) {
+            return wrappedFilter.intersect(second);
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            boolean result = wrappedFilter.shouldRun(description);
+            if (!result) {
+                wasFilterRequested = true;
+            }
+            return result;
+        }
+
+        @Override
+        public String describe() {
+            return wrappedFilter.describe();
+        }
+    }
+}
+```
+
+---
+
+### **Summary of changes:**
+- Renamed `runner` to `wrappedRunner`.
+- Renamed `filterRequested` to `wasFilterRequested`.
+- Renamed `delegate` to `wrappedFilter` in the inner `RecordingFilter` class.
+
+---
+
+Let me know if you want a detailed explanation for each change!

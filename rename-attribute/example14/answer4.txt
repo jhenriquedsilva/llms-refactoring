@@ -1,0 +1,214 @@
+02-05-2025, 10:45
+
+Upon reviewing the code snippet, several attribute (field/variable) names could be renamed for better readability and clarity. Here are some notable *rename attribute refactoring* opportunities and rationales:
+
+- **termAtt** → **termAttribute**: Clearer, avoids abbreviation.
+- **offsetAtt** → **offsetAttribute**: Clearer, avoids abbreviation.
+- **posAtt** → **positionIncrementAttribute**: Clearer, avoids abbreviation.
+- **resultToken** → **tokenBuffer**: More descriptive of its purpose.
+- **charsRead** → **numCharsRead**: Clarifies what the int is counting.
+- **skipped** → **numPathsSkipped**: More obvious what is being skipped.
+- **startPosition** → **tokenStartPosition**: Clarifies that this is the start of the current token.
+
+Below is the **refactored class** with improved attribute names. Only attribute (field) renaming is performed (constructor parameters and local variables keep their short names to match standard Lucene style, though those can be further expanded if desired):
+
+---
+
+```java
+package org.apache.lucene.analysis.path;
+
+import java.io.IOException;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.AttributeFactory;
+import org.apache.lucene.util.IgnoreRandomChains;
+
+/**
+ * Tokenizer for path-like hierarchies.
+ *
+ * <p>Take something like:
+ *
+ * <pre>
+ *  /something/something/else
+ * </pre>
+ *
+ * and make:
+ *
+ * <pre>
+ *  /something
+ *  /something/something
+ *  /something/something/else
+ * </pre>
+ */
+@IgnoreRandomChains(reason = "broken offsets")
+public class PathHierarchyTokenizer extends Tokenizer {
+
+    public PathHierarchyTokenizer() {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(int skip) {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter) {
+        this(bufferSize, delimiter, delimiter, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement, int skip) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, char delimiter, char replacement, int skip) {
+        this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter, char replacement, int skip) {
+        this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, int bufferSize, char delimiter, char replacement, int skip) {
+        super(factory);
+        if (bufferSize < 0) {
+            throw new IllegalArgumentException("bufferSize cannot be negative");
+        }
+        if (skip < 0) {
+            throw new IllegalArgumentException("skip cannot be negative");
+        }
+        termAttribute.resizeBuffer(bufferSize);
+
+        this.delimiter = delimiter;
+        this.replacement = replacement;
+        this.skip = skip;
+        tokenBuffer = new StringBuilder(bufferSize);
+    }
+
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
+    public static final char DEFAULT_DELIMITER = '/';
+    public static final int DEFAULT_SKIP = 0;
+
+    private final char delimiter;
+    private final char replacement;
+    private final int skip;
+
+    // RENAMED attributes for clarity
+    private final CharTermAttribute termAttribute = addAttribute(CharTermAttribute.class);
+    private final OffsetAttribute offsetAttribute = addAttribute(OffsetAttribute.class);
+    private final PositionIncrementAttribute positionIncrementAttribute =
+            addAttribute(PositionIncrementAttribute.class);
+
+    private int tokenStartPosition = 0;
+    private int numPathsSkipped = 0;
+    private boolean endDelimiter = false;
+    private StringBuilder tokenBuffer;
+
+    private int numCharsRead = 0;
+
+    @Override
+    public final boolean incrementToken() throws IOException {
+        clearAttributes();
+        termAttribute.append(tokenBuffer);
+        positionIncrementAttribute.setPositionIncrement(1);
+        int length = 0;
+        boolean added = false;
+        if (endDelimiter) {
+            termAttribute.append(replacement);
+            length++;
+            endDelimiter = false;
+            added = true;
+        }
+
+        while (true) {
+            int c = input.read();
+            if (c >= 0) {
+                numCharsRead++;
+            } else {
+                if (numPathsSkipped > skip) {
+                    length += tokenBuffer.length();
+                    termAttribute.setLength(length);
+                    offsetAttribute.setOffset(correctOffset(tokenStartPosition), correctOffset(tokenStartPosition + length));
+                    if (added) {
+                        tokenBuffer.setLength(0);
+                        tokenBuffer.append(termAttribute.buffer(), 0, length);
+                    }
+                    return added;
+                } else {
+                    return false;
+                }
+            }
+            if (!added) {
+                added = true;
+                numPathsSkipped++;
+                if (numPathsSkipped > skip) {
+                    termAttribute.append(c == delimiter ? replacement : (char) c);
+                    length++;
+                } else {
+                    tokenStartPosition++;
+                }
+            } else {
+                if (c == delimiter) {
+                    if (numPathsSkipped > skip) {
+                        endDelimiter = true;
+                        break;
+                    }
+                    numPathsSkipped++;
+                    if (numPathsSkipped > skip) {
+                        termAttribute.append(replacement);
+                        length++;
+                    } else {
+                        tokenStartPosition++;
+                    }
+                } else {
+                    if (numPathsSkipped > skip) {
+                        termAttribute.append((char) c);
+                        length++;
+                    } else {
+                        tokenStartPosition++;
+                    }
+                }
+            }
+        }
+        length += tokenBuffer.length();
+        termAttribute.setLength(length);
+        offsetAttribute.setOffset(correctOffset(tokenStartPosition), correctOffset(tokenStartPosition + length));
+        tokenBuffer.setLength(0);
+        tokenBuffer.append(termAttribute.buffer(), 0, length);
+        return true;
+    }
+
+    @Override
+    public final void end() throws IOException {
+        super.end();
+        // set final offset
+        int finalOffset = correctOffset(numCharsRead);
+        offsetAttribute.setOffset(finalOffset, finalOffset);
+    }
+
+    @Override
+    public void reset() throws IOException {
+        super.reset();
+        tokenBuffer.setLength(0);
+        numCharsRead = 0;
+        endDelimiter = false;
+        numPathsSkipped = 0;
+        tokenStartPosition = 0;
+    }
+}
+```
+
+---
+
+**Key benefits**:
+- Attribute names are more descriptive and self-explanatory.
+- Maintains clarity for future maintainers or reviewers.
+- No changes to method parameters/local variable names for brevity and continuity with the original Lucene code style.
+
+If you require additional renames (e.g., for local variables or method parameters), please specify!

@@ -1,0 +1,141 @@
+02-05-2025, 10:53
+
+This code snippet offers several opportunities for **rename attribute refactoring**—specifically, some identifier names can be improved for clarity and adherence to common Java naming conventions:
+
+### Candidates for renaming:
+
+1. **testClass**
+   - **Current meaning**: A class under test.
+   - **Potential confusion**: The name is general; "testClass" does not immediately signal that this variable holds the actual `Class` object of the test (as opposed to, say, a test class _name_ or an _instance_ of a test).
+   - **Proposal**: Rename to `testClassType` or `testClassObject` for clarity.
+
+2. **runner**
+   - **Current meaning**: The `InternalRunner` instance being wrapped.
+   - **Potential confusion**: The field and the parameter have the same name; while legal, some teams prefer more descriptive names. But "runner" is fairly standard here, and since it is a private field, it may be fine to leave as-is unless your team prefers more descriptive terms (e.g., `delegateRunner`).
+   - **Proposal**: Consider renaming to `delegateRunner` for explicitness.
+
+3. **filterRequested**
+   - **Current meaning**: Tracks whether test filtering has been requested.
+   - **Potential confusion**: The name is clear, but might be even clearer as `isFilterRequested` (boolean variables are often named as questions).
+   - **Proposal**: Rename to `isFilterRequested`.
+
+4. **delegate** (in RecordingFilter)
+   - **Current meaning**: The underlying `Filter`.
+   - **Potential confusion**: "delegate" is a standard term for this pattern, but more descriptive would be `wrappedFilter` or `innerFilter`.
+   - **Proposal**: Rename to `wrappedFilter`.
+
+Implementing the above, here’s the **refactored version**:
+
+---
+
+```java
+package org.mockito.internal.runners;
+
+import org.junit.runner.Description;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.notification.RunNotifier;
+import org.mockito.Mockito;
+import org.mockito.internal.junit.UnnecessaryStubbingsReporter;
+import org.mockito.internal.runners.util.FailureDetector;
+
+public class StrictRunner implements InternalRunner {
+
+    private final Class<?> testClassType;
+    private final InternalRunner delegateRunner;
+    private boolean isFilterRequested;
+
+    /**
+     * @param delegateRunner - the runner to wrap around
+     * @param testClassType - for reporting purposes
+     */
+    public StrictRunner(InternalRunner delegateRunner, Class<?> testClassType) {
+        this.delegateRunner = delegateRunner;
+        this.testClassType = testClassType;
+        this.isFilterRequested = false;
+    }
+
+    @Override
+    public void run(RunNotifier notifier) {
+        // TODO need to be able to opt in for full stack trace instead of just relying on the stack
+        // trace filter
+        UnnecessaryStubbingsReporter reporter = new UnnecessaryStubbingsReporter();
+        FailureDetector listener = new FailureDetector();
+
+        Mockito.framework().addListener(reporter);
+        try {
+            // add listener that detects test failures
+            notifier.addListener(listener);
+            delegateRunner.run(notifier);
+        } finally {
+            Mockito.framework().removeListener(reporter);
+        }
+
+        if (!isFilterRequested && listener.isSuccessful()) {
+            // only report when:
+            // 1. if all tests from given test have ran (tests skipped is false)
+            //   Otherwise we would report unnecessary stubs even if the user runs just single test
+            // from the class
+            // 2. tests are successful (we don't want to add an extra failure on top of any existing
+            // failure, to avoid confusion)
+            reporter.validateUnusedStubs(testClassType, notifier);
+        }
+    }
+
+    @Override
+    public Description getDescription() {
+        return delegateRunner.getDescription();
+    }
+
+    @Override
+    public void filter(Filter filter) throws NoTestsRemainException {
+        Filter recordingFilter = new RecordingFilter(filter);
+        delegateRunner.filter(recordingFilter);
+    }
+
+    private class RecordingFilter extends Filter {
+
+        private final Filter wrappedFilter;
+
+        public RecordingFilter(Filter wrappedFilter) {
+            this.wrappedFilter = wrappedFilter;
+        }
+
+        @Override
+        public void apply(Object child) throws NoTestsRemainException {
+            wrappedFilter.apply(child);
+        }
+
+        @Override
+        public Filter intersect(Filter second) {
+            return wrappedFilter.intersect(second);
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            boolean result = wrappedFilter.shouldRun(description);
+            if (!result) {
+                isFilterRequested = true;
+            }
+            return result;
+        }
+
+        @Override
+        public String describe() {
+            return wrappedFilter.describe();
+        }
+    }
+}
+```
+
+---
+
+### **Summary of changes**
+- `testClass` ➔ `testClassType`
+- `runner` ➔ `delegateRunner`
+- `filterRequested` ➔ `isFilterRequested`
+- `delegate` (in RecordingFilter) ➔ `wrappedFilter`
+
+---
+
+These changes improve code **readability** and **maintainability** by making the roles of these fields more explicit.

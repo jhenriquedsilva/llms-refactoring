@@ -1,0 +1,118 @@
+02-05-2025, 11:14
+
+There are indeed some opportunities for **rename attribute refactoring** here, specifically for attribute names that are vague or have redundant naming. According to Java naming conventions and best practices, a few improvements can enhance readability and clarity:
+
+### Identified Refactoring Opportunities
+
+1. **`certificates`** → **`certificateSupplier`**
+   The current attribute holds a _supplier_ for certificates, not the certificates themselves.
+
+2. **Consistency:**
+   The current naming:
+   - `privateKeySupplier` (good: identifies it's a supplier)
+   - `certificates` (looks like a direct list, but it's a supplier)
+   For consistency and clarity both should have the `_Supplier` suffix, indicating they are both `Supplier<T>` types.
+
+3. **Other Attributes (`details`, `privateKeySupplier`)**:
+   - These are clear and contextually appropriate.
+
+
+### Refactored Code
+
+Below is the **refactored class** with comments indicating what has been changed:
+
+```java
+package org.springframework.boot.ssl.pem;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
+import java.util.List;
+import java.util.function.Supplier;
+
+import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.function.SingletonSupplier;
+import org.springframework.util.function.ThrowingSupplier;
+
+/**
+ * {@link PemSslStore} loaded from {@link PemSslStoreDetails}.
+ *
+ * @author Phillip Webb
+ * @see PemSslStore#load(PemSslStoreDetails)
+ */
+final class LoadedPemSslStore implements PemSslStore {
+
+    private final PemSslStoreDetails details;
+
+    // Renamed for consistency and clarity
+    private final Supplier<List<X509Certificate>> certificateSupplier;
+
+    private final Supplier<PrivateKey> privateKeySupplier;
+
+    LoadedPemSslStore(PemSslStoreDetails details) {
+        Assert.notNull(details, "Details must not be null");
+        this.details = details;
+        this.certificateSupplier = supplier(() -> loadCertificates(details)); // updated name
+        this.privateKeySupplier = supplier(() -> loadPrivateKey(details));
+    }
+
+    private static <T> Supplier<T> supplier(ThrowingSupplier<T> supplier) {
+        return SingletonSupplier.of(supplier.throwing(LoadedPemSslStore::asUncheckedIOException));
+    }
+
+    private static UncheckedIOException asUncheckedIOException(String message, Exception cause) {
+        return new UncheckedIOException(message, (IOException) cause);
+    }
+
+    private static List<X509Certificate> loadCertificates(PemSslStoreDetails details) throws IOException {
+        PemContent pemContent = PemContent.load(details.certificates());
+        if (pemContent == null) {
+            return null;
+        }
+        List<X509Certificate> certificates = pemContent.getCertificates();
+        Assert.state(!CollectionUtils.isEmpty(certificates), "Loaded certificates are empty");
+        return certificates;
+    }
+
+    private static PrivateKey loadPrivateKey(PemSslStoreDetails details) throws IOException {
+        PemContent pemContent = PemContent.load(details.privateKey());
+        return (pemContent != null) ? pemContent.getPrivateKey(details.privateKeyPassword()) : null;
+    }
+
+    @Override
+    public String type() {
+        return this.details.type();
+    }
+
+    @Override
+    public String alias() {
+        return this.details.alias();
+    }
+
+    @Override
+    public String password() {
+        return this.details.password();
+    }
+
+    @Override
+    public List<X509Certificate> certificates() {
+        return this.certificateSupplier.get(); // updated usage here
+    }
+
+    @Override
+    public PrivateKey privateKey() {
+        return this.privateKeySupplier.get();
+    }
+
+}
+```
+
+---
+
+**Summary of changes:**
+- `certificates` (attribute): **renamed to `certificateSupplier`** to reflect its true type and purpose.
+- **All usages updated** accordingly for consistency and clarity.
+
+This refactoring enhances readability, makes intent clear for future maintainers, and provides a more uniform naming approach between the certificate and private key supplier fields.

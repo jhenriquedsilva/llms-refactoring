@@ -1,0 +1,131 @@
+02-05-2025, 11:01
+
+**Review of the Code for Rename Attribute Refactoring**
+
+I've reviewed the code with the purpose of improving identifier readability and clarity. Here are some observations:
+
+### Potentially Low-Quality or Vague Identifiers
+
+Let's evaluate the following names:
+
+- `TERSE_NAME`: This is not immediately meaningful—it's just "text". More commonly, such a constant is named `LANGUAGE_ID` or similar.
+- `TextLvh`: The suffix "Lvh" is unclear; in context, this appears to mean "LanguageVersionHandler." Naming it `PlainTextLanguageVersionHandler` would give more clarity.
+- `astInfo`: This is okay, though `astInformation` would be clearer, but "AST" is a well-known acronym in this context.
+- `PlainTextFile`: This is pretty descriptive for the single produced node.
+
+### Refactoring Opportunities
+
+#### 1. `TERSE_NAME` → `LANGUAGE_ID`
+#### 2. `TextLvh` → `PlainTextLanguageVersionHandler`
+
+These changes improve identifier clarity and self-documentation.
+
+---
+
+## **Refactored Code with Improved Names**
+
+```java
+package net.sourceforge.pmd.lang;
+
+import net.sourceforge.pmd.annotation.Experimental;
+import net.sourceforge.pmd.cpd.AnyTokenizer;
+import net.sourceforge.pmd.cpd.CpdCapableLanguage;
+import net.sourceforge.pmd.cpd.Tokenizer;
+import net.sourceforge.pmd.lang.ast.AstInfo;
+import net.sourceforge.pmd.lang.ast.Parser;
+import net.sourceforge.pmd.lang.ast.Parser.ParserTask;
+import net.sourceforge.pmd.lang.ast.RootNode;
+import net.sourceforge.pmd.lang.ast.impl.AbstractNode;
+import net.sourceforge.pmd.lang.document.TextRegion;
+import net.sourceforge.pmd.lang.impl.SimpleLanguageModuleBase;
+
+/**
+ * A dummy language implementation whose parser produces a single node.
+ * This is provided for cases where a non-null language is required, but
+ * the parser is not useful. This is useful eg to mock rules when no other
+ * language is on the classpath. This language is not exposed by {@link LanguageRegistry}
+ * and can only be used explicitly with {@link #getInstance()}.
+ *
+ * @author Clément Fournier
+ * @since 6.48.0
+ */
+@Experimental
+public final class PlainTextLanguage extends SimpleLanguageModuleBase implements CpdCapableLanguage {
+
+    private static final String LANGUAGE_ID = "text";
+    private static final PlainTextLanguage INSTANCE = new PlainTextLanguage();
+
+    private PlainTextLanguage() {
+        super(LanguageMetadata.withId(LANGUAGE_ID).name("Plain text")
+                        .extensions("plain-text-file-goo-extension")
+                        .addDefaultVersion("default"),
+                new PlainTextLanguageVersionHandler());
+    }
+
+    /**
+     * Returns the singleton instance of this language.
+     */
+    public static PlainTextLanguage getInstance() {
+        return INSTANCE; // note: this language is _not_ exposed via LanguageRegistry (no entry in META-INF/services)
+    }
+
+    @Override
+    public Tokenizer createCpdTokenizer(LanguagePropertyBundle bundle) {
+        return new AnyTokenizer();
+    }
+
+    private static final class PlainTextLanguageVersionHandler implements LanguageVersionHandler {
+        @Override
+        public Parser getParser() {
+            return PlainTextFile::new;
+        }
+    }
+
+    /**
+     * The only node produced by the parser of {@link PlainTextLanguage}.
+     */
+    public static class PlainTextFile extends AbstractNode<PlainTextFile, PlainTextFile> implements RootNode {
+
+        private final AstInfo<PlainTextFile> astInfo;
+
+        PlainTextFile(ParserTask task) {
+            this.astInfo = new AstInfo<>(task, this);
+        }
+
+        @Override
+        public TextRegion getTextRegion() {
+            return getTextDocument().getEntireRegion();
+        }
+
+        @Override
+        public String getXPathNodeName() {
+            return "TextFile";
+        }
+
+        @Override
+        public String getImage() {
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            return "Plain text file (" + getEndLine() + " lines)";
+        }
+
+        @Override
+        public AstInfo<? extends RootNode> getAstInfo() {
+            return astInfo;
+        }
+    }
+
+}
+```
+
+---
+
+### Summary
+
+- `TERSE_NAME` → `LANGUAGE_ID`
+- `TextLvh` → `PlainTextLanguageVersionHandler`
+
+No other identifiers were low-quality or confusing. This improves code readability without changing any logic.

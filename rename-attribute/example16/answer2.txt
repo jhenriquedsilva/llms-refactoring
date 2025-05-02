@@ -1,0 +1,444 @@
+02-05-2025, 10:57
+
+### Review & Analysis
+
+Looking through the code, the main opportunities for **rename attribute refactoring** are in the `DataClass`:
+
+```java
+private final String param1;
+private final boolean param2;
+private int param3;
+
+@ConstructorProperties({"param1", "param2", "optionalParam"})
+DataClass(String param1, boolean p2, Optional<Integer> optionalParam) {
+    this.param1 = param1;
+    this.param2 = p2;
+    Assert.notNull(optionalParam, "Optional must not be null");
+    optionalParam.ifPresent(integer -> this.param3 = integer);
+}
+```
+
+#### Issues
+- `param1`, `param2`, and `param3` are not meaningful names.
+- The constructor parameter `p2` is inconsistent with the field `param2`.
+- `optionalParam` in the constructor does not clearly align with `param3`, which is not descriptive.
+
+#### Refactored Attribute Names
+
+Suppose these represent user data:
+- `param1` → `name`
+- `param2` → `active`
+- `param3` → `age`
+- `optionalParam` → `optionalAge`
+
+#### ConstructorProperties
+Change to: `@ConstructorProperties({"name", "active", "optionalAge"})`
+
+We will also update getter names and places in test assertions, *including* in Map keys passed to resolver.
+
+---
+
+## Refactored Code
+
+```java
+package org.springframework.validation;
+
+import java.beans.ConstructorProperties;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import jakarta.validation.constraints.NotNull;
+import org.junit.jupiter.api.Test;
+
+import org.springframework.core.ResolvableType;
+import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.lang.Nullable;
+import org.springframework.util.Assert;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Unit tests for {@link DataBinder} with constructor binding.
+ *
+ * @author Rossen Stoyanchev
+ */
+public class DataBinderConstructTests {
+
+    @Test
+    void dataClassBinding() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1", "active", "true"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        DataClass dataClass = getTarget(binder);
+        assertThat(dataClass.name()).isEqualTo("value1");
+        assertThat(dataClass.active()).isEqualTo(true);
+        assertThat(dataClass.age()).isEqualTo(0);
+    }
+
+    @Test
+    void dataClassBindingWithOptionalParameter() {
+        MapValueResolver valueResolver =
+                new MapValueResolver(Map.of("name", "value1", "active", "true", "optionalAge", "8"));
+
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        DataClass dataClass = getTarget(binder);
+        assertThat(dataClass.name()).isEqualTo("value1");
+        assertThat(dataClass.active()).isEqualTo(true);
+        assertThat(dataClass.age()).isEqualTo(8);
+    }
+
+    @Test
+    void dataClassBindingWithMissingParameter() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        BindingResult bindingResult = binder.getBindingResult();
+        assertThat(bindingResult.getAllErrors()).hasSize(1);
+        assertThat(bindingResult.getFieldValue("name")).isEqualTo("value1");
+        assertThat(bindingResult.getFieldValue("active")).isNull();
+        assertThat(bindingResult.getFieldValue("age")).isNull();
+    }
+
+    @Test // gh-31821
+    void dataClassBindingWithNestedOptionalParameterWithMissingParameter() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1"));
+        DataBinder binder = initDataBinder(NestedDataClass.class);
+        binder.construct(valueResolver);
+
+        NestedDataClass dataClass = getTarget(binder);
+        assertThat(dataClass.name()).isEqualTo("value1");
+        assertThat(dataClass.nestedDataClass()).isNull();
+    }
+
+    @Test
+    void dataClassBindingWithConversionError() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1", "active", "x"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        BindingResult bindingResult = binder.getBindingResult();
+        assertThat(bindingResult.getAllErrors()).hasSize(1);
+        assertThat(bindingResult.getFieldValue("name")).isEqualTo("value1");
+        assertThat(bindingResult.getFieldValue("active")).isEqualTo("x");
+        assertThat(bindingResult.getFieldValue("age")).isNull();
+    }
+
+    @SuppressWarnings("SameParameterValue")
+    private static DataBinder initDataBinder(Class<?> targetType) {
+        DataBinder binder = new DataBinder(null);
+        binder.setTargetType(ResolvableType.forClass(targetType));
+        binder.setConversionService(new DefaultFormattingConversionService());
+        return binder;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T getTarget(DataBinder dataBinder) {
+        assertThat(dataBinder.getBindingResult().getAllErrors()).isEmpty();
+        Object target = dataBinder.getTarget();
+        assertThat(target).isNotNull();
+        return (T) target;
+    }
+
+
+    private static class DataClass {
+
+        @NotNull
+        private final String name;
+
+        private final boolean active;
+
+        private int age;
+
+        @ConstructorProperties({"name", "active", "optionalAge"})
+        DataClass(String name, boolean active, Optional<Integer> optionalAge) {
+            this.name = name;
+            this.active = active;
+            Assert.notNull(optionalAge, "Optional must not be null");
+            optionalAge.ifPresent(integer -> this.age = integer);
+        }
+
+        public String name() {
+            return this.name;
+        }
+
+        public boolean active() {
+            return this.active;
+        }
+
+        public int age() {
+            return this.age;
+        }
+    }
+
+
+    private static class NestedDataClass {
+
+        private final String name;
+
+        @Nullable
+        private final DataClass nestedDataClass;
+
+        public NestedDataClass(String name, @Nullable DataClass nestedDataClass) {
+            this.name = name;
+            this.nestedDataClass = nestedDataClass;
+        }
+
+        public String name() {
+            return this.name;
+        }
+
+        @Nullable
+        public DataClass nestedDataClass() {
+            return this.nestedDataClass;
+        }
+    }
+
+
+    private static class MapValueResolver implements DataBinder.ValueResolver {
+
+        private final Map<String, Object> values;
+
+        private MapValueResolver(Map<String, Object> map) {
+            this.values = map;
+        }
+
+        @Override
+        public Object resolveValue(String name, Class<?> type) {
+            return values.get(name);
+        }
+
+        @Override
+        public Set<String> getNames() {
+            return this.values.keySet();
+        }
+    }
+
+}
+```
+
+---
+
+**Summary of changes:**
+- `param1` → `name`
+- `param2` (and `p2`) → `active`
+- `param3` → `age`
+- `optionalParam` → `optionalAge`
+- Updated all references, assertions, and `ConstructorProperties`.
+- In `NestedDataClass`, `param1` → `name` and `nestedParam2` → `nestedDataClass`, updated all usages accordingly.
+
+This should make the code much clearer and self-explanatory.
+
+
+
+FINISHED REFACTORING 0
+
+
+
+After reviewing the provided code, several attribute (field/parameter) identifiers are observed that could be named in a more descriptive manner to enhance readability and maintainability. Below are the key rename attribute refactoring opportunities:
+
+**1. `p2` parameter in `DataClass` constructor:**
+- **Current:** `DataClass(String param1, boolean p2, Optional<Integer> optionalParam)`
+- **Suggested:** Rename `p2` to `param2` for consistency and clarity, matching both the field and the mapping key.
+
+**2. `optionalParam` parameter in `DataClass` constructor (and annotation):**
+- **Current:** @ConstructorProperties({"param1", "param2", "optionalParam"}), parameter name `optionalParam`, sets `param3`.
+- **Analysis:** The backing field is `param3`. Consistency is maintained in usage, but if you wish for extra clarity, you could align the naming so that the field and constructor are both called `optionalParam` (change field to `optionalParam` and return method as well), but this might make usage less expressive about its optional nature. Arguably, keeping `param3` as is, but using the parameter as `optionalParam` is clear due to the Optional type.
+
+- **Decision:** The most notable low-quality name is `p2`; it's better to rename it to `param2`.
+
+---
+
+Here is the refactored code, applying only the necessary improvements to variable naming for clarity and internal consistency:
+
+```java
+package org.springframework.validation;
+
+import java.beans.ConstructorProperties;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import jakarta.validation.constraints.NotNull;
+import org.junit.jupiter.api.Test;
+
+import org.springframework.core.ResolvableType;
+import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.lang.Nullable;
+import org.springframework.util.Assert;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Unit tests for {@link DataBinder} with constructor binding.
+ *
+ * @author Rossen Stoyanchev
+ */
+public class DataBinderConstructTests {
+
+
+    @Test
+    void dataClassBinding() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("param1", "value1", "param2", "true"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        DataClass dataClass = getTarget(binder);
+        assertThat(dataClass.param1()).isEqualTo("value1");
+        assertThat(dataClass.param2()).isEqualTo(true);
+        assertThat(dataClass.param3()).isEqualTo(0);
+    }
+
+    @Test
+    void dataClassBindingWithOptionalParameter() {
+        MapValueResolver valueResolver =
+                new MapValueResolver(Map.of("param1", "value1", "param2", "true", "optionalParam", "8"));
+
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        DataClass dataClass = getTarget(binder);
+        assertThat(dataClass.param1()).isEqualTo("value1");
+        assertThat(dataClass.param2()).isEqualTo(true);
+        assertThat(dataClass.param3()).isEqualTo(8);
+    }
+
+    @Test
+    void dataClassBindingWithMissingParameter() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("param1", "value1"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        BindingResult bindingResult = binder.getBindingResult();
+        assertThat(bindingResult.getAllErrors()).hasSize(1);
+        assertThat(bindingResult.getFieldValue("param1")).isEqualTo("value1");
+        assertThat(bindingResult.getFieldValue("param2")).isNull();
+        assertThat(bindingResult.getFieldValue("param3")).isNull();
+    }
+
+    @Test // gh-31821
+    void dataClassBindingWithNestedOptionalParameterWithMissingParameter() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("param1", "value1"));
+        DataBinder binder = initDataBinder(NestedDataClass.class);
+        binder.construct(valueResolver);
+
+        NestedDataClass dataClass = getTarget(binder);
+        assertThat(dataClass.param1()).isEqualTo("value1");
+        assertThat(dataClass.nestedParam2()).isNull();
+    }
+
+    @Test
+    void dataClassBindingWithConversionError() {
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("param1", "value1", "param2", "x"));
+        DataBinder binder = initDataBinder(DataClass.class);
+        binder.construct(valueResolver);
+
+        BindingResult bindingResult = binder.getBindingResult();
+        assertThat(bindingResult.getAllErrors()).hasSize(1);
+        assertThat(bindingResult.getFieldValue("param1")).isEqualTo("value1");
+        assertThat(bindingResult.getFieldValue("param2")).isEqualTo("x");
+        assertThat(bindingResult.getFieldValue("param3")).isNull();
+    }
+
+    @SuppressWarnings("SameParameterValue")
+    private static DataBinder initDataBinder(Class<?> targetType) {
+        DataBinder binder = new DataBinder(null);
+        binder.setTargetType(ResolvableType.forClass(targetType));
+        binder.setConversionService(new DefaultFormattingConversionService());
+        return binder;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T getTarget(DataBinder dataBinder) {
+        assertThat(dataBinder.getBindingResult().getAllErrors()).isEmpty();
+        Object target = dataBinder.getTarget();
+        assertThat(target).isNotNull();
+        return (T) target;
+    }
+
+
+    private static class DataClass {
+
+        @NotNull
+        private final String param1;
+
+        private final boolean param2;
+
+        private int param3;
+
+        @ConstructorProperties({"param1", "param2", "optionalParam"})
+        DataClass(String param1, boolean param2, Optional<Integer> optionalParam) {
+            this.param1 = param1;
+            this.param2 = param2;
+            Assert.notNull(optionalParam, "Optional must not be null");
+            optionalParam.ifPresent(integer -> this.param3 = integer);
+        }
+
+        public String param1() {
+            return this.param1;
+        }
+
+        public boolean param2() {
+            return this.param2;
+        }
+
+        public int param3() {
+            return this.param3;
+        }
+    }
+
+
+    private static class NestedDataClass {
+
+        private final String param1;
+
+        @Nullable
+        private final DataClass nestedParam2;
+
+        public NestedDataClass(String param1, @Nullable DataClass nestedParam2) {
+            this.param1 = param1;
+            this.nestedParam2 = nestedParam2;
+        }
+
+        public String param1() {
+            return this.param1;
+        }
+
+        @Nullable
+        public DataClass nestedParam2() {
+            return this.nestedParam2;
+        }
+    }
+
+
+    private static class MapValueResolver implements DataBinder.ValueResolver {
+
+        private final Map<String, Object> values;
+
+        private MapValueResolver(Map<String, Object> map) {
+            this.values = map;
+        }
+
+        @Override
+        public Object resolveValue(String name, Class<?> type) {
+            return values.get(name);
+        }
+
+        @Override
+        public Set<String> getNames() {
+            return this.values.keySet();
+        }
+    }
+
+}
+```
+
+**Summary of Changes:**
+- Renamed constructor parameter `p2` to `param2` in `DataClass`.
+- Ensured all usages are consistent.
+
+No other attribute renames are strictly necessary or would substantially improve the code's readability, based on standard Java naming conventions and context.

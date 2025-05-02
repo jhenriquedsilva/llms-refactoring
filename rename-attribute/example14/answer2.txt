@@ -1,0 +1,228 @@
+02-05-2025, 10:47
+
+### Review and Refactoring
+
+#### Overview
+When reviewing for **Rename Attribute Refactoring** opportunities, the focus is on identifying non-descriptive, unclear, or misleading attribute (field) names, and renaming them for improved readability and maintainability.
+
+#### Key Class Attributes
+
+Let's analyze each attribute and constructor parameter for clarity:
+
+- `delimiter`, `replacement`, `skip`: Clear and descriptive given the context.
+- `termAtt`, `offsetAtt`, `posAtt`: Common abbreviations in Lucene framework for *Attribute*; acceptable, but could be expanded to `termAttribute`, `offsetAttribute`, `positionIncrementAttribute` for less ambiguity (especially for new contributors).
+- `startPosition`, `skipped`, `endDelimiter`, `resultToken`, `charsRead`:
+  - `startPosition` is fine.
+  - `skipped` is ambiguous. It's used to count how many path components have been *skipped* based on the `skip` value, so `skippedComponents` or `componentsSkipped` would be clearer.
+  - `endDelimiter` is descriptive.
+  - `resultToken`: This is a working buffer for the resulting token string. `tokenBuffer` is more precise.
+  - `charsRead`: Clear.
+
+#### Proposed Refactorings
+
+**Recommended changes:**
+- `skipped` → `componentsSkipped`
+- `resultToken` → `tokenBuffer`
+- `termAtt` → `termAttribute`
+- `offsetAtt` → `offsetAttribute`
+- `posAtt` → `positionIncrementAttribute`
+
+These changes improve clarity without altering the class's logic.
+
+---
+
+### Refactored Code
+
+```java
+package org.apache.lucene.analysis.path;
+
+import java.io.IOException;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.AttributeFactory;
+import org.apache.lucene.util.IgnoreRandomChains;
+
+/**
+ * Tokenizer for path-like hierarchies.
+ *
+ * <p>Take something like:
+ *
+ * <pre>
+ *  /something/something/else
+ * </pre>
+ *
+ * and make:
+ *
+ * <pre>
+ *  /something
+ *  /something/something
+ *  /something/something/else
+ * </pre>
+ */
+@IgnoreRandomChains(reason = "broken offsets")
+public class PathHierarchyTokenizer extends Tokenizer {
+
+    public PathHierarchyTokenizer() {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(int skip) {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter) {
+        this(bufferSize, delimiter, delimiter, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement, int skip) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, char delimiter, char replacement, int skip) {
+        this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter, char replacement, int skip) {
+        this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, int bufferSize, char delimiter, char replacement, int skip) {
+        super(factory);
+        if (bufferSize < 0) {
+            throw new IllegalArgumentException("bufferSize cannot be negative");
+        }
+        if (skip < 0) {
+            throw new IllegalArgumentException("skip cannot be negative");
+        }
+        termAttribute.resizeBuffer(bufferSize);
+
+        this.delimiter = delimiter;
+        this.replacement = replacement;
+        this.skip = skip;
+        tokenBuffer = new StringBuilder(bufferSize);
+    }
+
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
+    public static final char DEFAULT_DELIMITER = '/';
+    public static final int DEFAULT_SKIP = 0;
+
+    private final char delimiter;
+    private final char replacement;
+    private final int skip;
+
+    private final CharTermAttribute termAttribute = addAttribute(CharTermAttribute.class);
+    private final OffsetAttribute offsetAttribute = addAttribute(OffsetAttribute.class);
+    private final PositionIncrementAttribute positionIncrementAttribute =
+            addAttribute(PositionIncrementAttribute.class);
+
+    private int startPosition = 0;
+    private int componentsSkipped = 0;
+    private boolean endDelimiter = false;
+    private StringBuilder tokenBuffer;
+
+    private int charsRead = 0;
+
+    @Override
+    public final boolean incrementToken() throws IOException {
+        clearAttributes();
+        termAttribute.append(tokenBuffer);
+        positionIncrementAttribute.setPositionIncrement(1);
+        int length = 0;
+        boolean added = false;
+        if (endDelimiter) {
+            termAttribute.append(replacement);
+            length++;
+            endDelimiter = false;
+            added = true;
+        }
+
+        while (true) {
+            int c = input.read();
+            if (c >= 0) {
+                charsRead++;
+            } else {
+                if (componentsSkipped > skip) {
+                    length += tokenBuffer.length();
+                    termAttribute.setLength(length);
+                    offsetAttribute.setOffset(correctOffset(startPosition), correctOffset(startPosition + length));
+                    if (added) {
+                        tokenBuffer.setLength(0);
+                        tokenBuffer.append(termAttribute.buffer(), 0, length);
+                    }
+                    return added;
+                } else {
+                    return false;
+                }
+            }
+            if (!added) {
+                added = true;
+                componentsSkipped++;
+                if (componentsSkipped > skip) {
+                    termAttribute.append(c == delimiter ? replacement : (char) c);
+                    length++;
+                } else {
+                    startPosition++;
+                }
+            } else {
+                if (c == delimiter) {
+                    if (componentsSkipped > skip) {
+                        endDelimiter = true;
+                        break;
+                    }
+                    componentsSkipped++;
+                    if (componentsSkipped > skip) {
+                        termAttribute.append(replacement);
+                        length++;
+                    } else {
+                        startPosition++;
+                    }
+                } else {
+                    if (componentsSkipped > skip) {
+                        termAttribute.append((char) c);
+                        length++;
+                    } else {
+                        startPosition++;
+                    }
+                }
+            }
+        }
+        length += tokenBuffer.length();
+        termAttribute.setLength(length);
+        offsetAttribute.setOffset(correctOffset(startPosition), correctOffset(startPosition + length));
+        tokenBuffer.setLength(0);
+        tokenBuffer.append(termAttribute.buffer(), 0, length);
+        return true;
+    }
+
+    @Override
+    public final void end() throws IOException {
+        super.end();
+        // set final offset
+        int finalOffset = correctOffset(charsRead);
+        offsetAttribute.setOffset(finalOffset, finalOffset);
+    }
+
+    @Override
+    public void reset() throws IOException {
+        super.reset();
+        tokenBuffer.setLength(0);
+        charsRead = 0;
+        endDelimiter = false;
+        componentsSkipped = 0;
+        startPosition = 0;
+    }
+}
+```
+
+---
+
+**Summary:**
+The refactored code improves the clarity of attribute names without altering logic or semantics. This will help new developers quickly understand the code and existing developers avoid potential confusion.

@@ -1,0 +1,119 @@
+02-05-2025, 11:01
+
+Here’s a review of your code for possible **rename attribute refactoring** opportunities, with an emphasis on making attribute names more descriptive and consistent with Java naming conventions:
+
+### Potential Issues
+
+- The attribute `TERSE_NAME` could be more precisely named, e.g., `LANGUAGE_ID` or `LANGUAGE_TERSE_NAME`, to clarify its purpose.
+- The attribute `INSTANCE` could follow the Java singleton convention (`INSTANCE` is acceptable, but sometimes `SINGLETON` or just `instance` with `getInstance()` is also used).
+- The class name `TextLvh` is very terse. Presumably, it means "Text Language Version Handler." Renaming to `TextLanguageVersionHandler` would greatly improve clarity.
+- Attributes like `astInfo` and methods like `getAstInfo` are descriptive and follow conventions.
+
+### Refactored Code
+
+Below is your class with improved attribute and inner class names, while preserving all existing functionality.
+
+```java
+package net.sourceforge.pmd.lang;
+
+import net.sourceforge.pmd.annotation.Experimental;
+import net.sourceforge.pmd.cpd.AnyTokenizer;
+import net.sourceforge.pmd.cpd.CpdCapableLanguage;
+import net.sourceforge.pmd.cpd.Tokenizer;
+import net.sourceforge.pmd.lang.ast.AstInfo;
+import net.sourceforge.pmd.lang.ast.Parser;
+import net.sourceforge.pmd.lang.ast.Parser.ParserTask;
+import net.sourceforge.pmd.lang.ast.RootNode;
+import net.sourceforge.pmd.lang.ast.impl.AbstractNode;
+import net.sourceforge.pmd.lang.document.TextRegion;
+import net.sourceforge.pmd.lang.impl.SimpleLanguageModuleBase;
+
+/**
+ * A dummy language implementation whose parser produces a single node.
+ * This is provided for cases where a non-null language is required, but
+ * the parser is not useful. This is useful eg to mock rules when no other
+ * language is on the classpath. This language is not exposed by {@link LanguageRegistry}
+ * and can only be used explicitly with {@link #getInstance()}.
+ *
+ * @author Clément Fournier
+ * @since 6.48.0
+ */
+@Experimental
+public final class PlainTextLanguage extends SimpleLanguageModuleBase implements CpdCapableLanguage {
+    private static final String LANGUAGE_ID = "text";
+
+    private static final PlainTextLanguage INSTANCE = new PlainTextLanguage();
+
+    private PlainTextLanguage() {
+        super(LanguageMetadata.withId(LANGUAGE_ID).name("Plain text")
+                        .extensions("plain-text-file-goo-extension")
+                        .addDefaultVersion("default"),
+                new TextLanguageVersionHandler());
+    }
+
+    /**
+     * Returns the singleton instance of this language.
+     */
+    public static PlainTextLanguage getInstance() {
+        return INSTANCE; // note: this language is _not_ exposed via LanguageRegistry (no entry in META-INF/services)
+    }
+
+    @Override
+    public Tokenizer createCpdTokenizer(LanguagePropertyBundle bundle) {
+        return new AnyTokenizer();
+    }
+
+    private static final class TextLanguageVersionHandler implements LanguageVersionHandler {
+        @Override
+        public Parser getParser() {
+            return PlainTextFile::new;
+        }
+    }
+
+    /**
+     * The only node produced by the parser of {@link PlainTextLanguage}.
+     */
+    public static class PlainTextFile extends AbstractNode<PlainTextFile, PlainTextFile> implements RootNode {
+
+        private final AstInfo<PlainTextFile> astInfo;
+
+        PlainTextFile(ParserTask task) {
+            this.astInfo = new AstInfo<>(task, this);
+        }
+
+        @Override
+        public TextRegion getTextRegion() {
+            return getTextDocument().getEntireRegion();
+        }
+
+        @Override
+        public String getXPathNodeName() {
+            return "TextFile";
+        }
+
+        @Override
+        public String getImage() {
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            return "Plain text file (" + getEndLine() + " lines)";
+        }
+
+        @Override
+        public AstInfo<? extends RootNode> getAstInfo() {
+            return astInfo;
+        }
+    }
+
+}
+```
+
+---
+
+**Summary of changes:**
+- Renamed `TERSE_NAME` to `LANGUAGE_ID`
+- Renamed inner class `TextLvh` to `TextLanguageVersionHandler`
+
+_No other attribute renamings were necessary; the rest of the code follows good naming conventions._

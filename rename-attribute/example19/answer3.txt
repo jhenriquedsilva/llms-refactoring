@@ -1,0 +1,123 @@
+02-05-2025, 11:14
+
+Certainly! Let’s carefully review your code for attribute (field) names that could benefit from renaming for clarity. The goal is to ensure identifiers unambiguously convey their purpose.
+
+### Current Attribute Names
+```java
+private final PemSslStoreDetails details;
+private final Supplier<List<X509Certificate>> certificates;
+private final Supplier<PrivateKey> privateKeySupplier;
+```
+**Analysis:**
+- `details`: This is somewhat generic; consider `storeDetails` or `pemSslStoreDetails` for clarity.
+- `certificates`: As a `Supplier`, it would be clearer as `certificatesSupplier`.
+- `privateKeySupplier`: This is already clear.
+
+### Suggested Renames
+1. **`details` → `storeDetails`**
+   - Reason: Indicates these are the details for the store.
+2. **`certificates` → `certificatesSupplier`**
+   - Reason: Makes it clear this is a supplier, not a list.
+
+---
+
+## Refactored Class
+
+```java
+package org.springframework.boot.ssl.pem;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
+import java.util.List;
+import java.util.function.Supplier;
+
+import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.function.SingletonSupplier;
+import org.springframework.util.function.ThrowingSupplier;
+
+/**
+ * {@link PemSslStore} loaded from {@link PemSslStoreDetails}.
+ *
+ * @author Phillip Webb
+ * @see PemSslStore#load(PemSslStoreDetails)
+ */
+final class LoadedPemSslStore implements PemSslStore {
+
+    private final PemSslStoreDetails storeDetails;
+
+    private final Supplier<List<X509Certificate>> certificatesSupplier;
+
+    private final Supplier<PrivateKey> privateKeySupplier;
+
+    LoadedPemSslStore(PemSslStoreDetails storeDetails) {
+        Assert.notNull(storeDetails, "Details must not be null");
+        this.storeDetails = storeDetails;
+        this.certificatesSupplier = supplier(() -> loadCertificates(storeDetails));
+        this.privateKeySupplier = supplier(() -> loadPrivateKey(storeDetails));
+    }
+
+    private static <T> Supplier<T> supplier(ThrowingSupplier<T> supplier) {
+        return SingletonSupplier.of(supplier.throwing(LoadedPemSslStore::asUncheckedIOException));
+    }
+
+    private static UncheckedIOException asUncheckedIOException(String message, Exception cause) {
+        return new UncheckedIOException(message, (IOException) cause);
+    }
+
+    private static List<X509Certificate> loadCertificates(PemSslStoreDetails storeDetails) throws IOException {
+        PemContent pemContent = PemContent.load(storeDetails.certificates());
+        if (pemContent == null) {
+            return null;
+        }
+        List<X509Certificate> certificates = pemContent.getCertificates();
+        Assert.state(!CollectionUtils.isEmpty(certificates), "Loaded certificates are empty");
+        return certificates;
+    }
+
+    private static PrivateKey loadPrivateKey(PemSslStoreDetails storeDetails) throws IOException {
+        PemContent pemContent = PemContent.load(storeDetails.privateKey());
+        return (pemContent != null) ? pemContent.getPrivateKey(storeDetails.privateKeyPassword()) : null;
+    }
+
+    @Override
+    public String type() {
+        return this.storeDetails.type();
+    }
+
+    @Override
+    public String alias() {
+        return this.storeDetails.alias();
+    }
+
+    @Override
+    public String password() {
+        return this.storeDetails.password();
+    }
+
+    @Override
+    public List<X509Certificate> certificates() {
+        return this.certificatesSupplier.get();
+    }
+
+    @Override
+    public PrivateKey privateKey() {
+        return this.privateKeySupplier.get();
+    }
+
+}
+```
+
+### **Summary of Changes**
+| Old Name            | Refactored Name         |
+|---------------------|------------------------|
+| `details`           | `storeDetails`         |
+| `certificates`      | `certificatesSupplier` |
+
+---
+
+**Rationale:** The new names make it clear what each attribute holds, improving code readability and maintainability.
+
+If you have more code context or specific naming conventions, names can be further aligned, but these changes adhere to general Java naming best practices and the apparent intent from your code.

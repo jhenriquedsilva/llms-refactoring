@@ -1,0 +1,137 @@
+02-05-2025, 10:53
+
+**Analysis of Rename Attribute Refactoring Opportunities:**
+
+Let's look at the attribute (field) names in the provided class:
+
+- `testClass`
+- `runner`
+- `filterRequested`
+
+Let's briefly analyze each:
+
+- `testClass`: This is a `Class<?>`, and it's used for reporting and for passing to `reporter.validateUnusedStubs()`. The name is descriptive: it **is** a test class.
+- `runner`: Refers to an `InternalRunner`, which it wraps. The name is broad but fits the context. Could "wrappedRunner" be better? Perhaps.
+- `filterRequested`: This is a boolean set when a filter operation occurs. The name could be improved for clarity—e.g., "filterWasRequested" or "wasFilterApplied".
+
+Within the inner `RecordingFilter` class:
+
+- `delegate`: refers to the actual `Filter` object delegated to. This is a standard name for the pattern, but in highly readable code, "originalFilter" might be preferable.
+
+### Opportunities
+
+1. `runner` → `wrappedRunner`
+   This improves clarity by indicating it's a wrapped instance, not just any runner.
+2. `filterRequested` → `wasFilterApplied`
+   This boolean is set when a filter is applied (see `shouldRun`). The new name more clearly encodes its meaning.
+3. `delegate` (in `RecordingFilter`) → `originalFilter`
+   This makes it clear that this is the filter instance being wrapped/delegated to.
+
+---
+
+### Refactored Code
+
+```java
+package org.mockito.internal.runners;
+
+import org.junit.runner.Description;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.notification.RunNotifier;
+import org.mockito.Mockito;
+import org.mockito.internal.junit.UnnecessaryStubbingsReporter;
+import org.mockito.internal.runners.util.FailureDetector;
+
+public class StrictRunner implements InternalRunner {
+
+    private final Class<?> testClass;
+    private final InternalRunner wrappedRunner;
+    private boolean wasFilterApplied;
+
+    /**
+     * @param wrappedRunner - the runner to wrap around
+     * @param testClass - for reporting purposes
+     */
+    public StrictRunner(InternalRunner wrappedRunner, Class<?> testClass) {
+        this.wrappedRunner = wrappedRunner;
+        this.testClass = testClass;
+        this.wasFilterApplied = false;
+    }
+
+    @Override
+    public void run(RunNotifier notifier) {
+        // TODO need to be able to opt in for full stack trace instead of just relying on the stack
+        // trace filter
+        UnnecessaryStubbingsReporter reporter = new UnnecessaryStubbingsReporter();
+        FailureDetector listener = new FailureDetector();
+
+        Mockito.framework().addListener(reporter);
+        try {
+            // add listener that detects test failures
+            notifier.addListener(listener);
+            wrappedRunner.run(notifier);
+        } finally {
+            Mockito.framework().removeListener(reporter);
+        }
+
+        if (!wasFilterApplied && listener.isSuccessful()) {
+            // only report when:
+            // 1. if all tests from given test have ran (tests skipped is false)
+            //   Otherwise we would report unnecessary stubs even if the user runs just single test
+            // from the class
+            // 2. tests are successful (we don't want to add an extra failure on top of any existing
+            // failure, to avoid confusion)
+            reporter.validateUnusedStubs(testClass, notifier);
+        }
+    }
+
+    @Override
+    public Description getDescription() {
+        return wrappedRunner.getDescription();
+    }
+
+    @Override
+    public void filter(Filter filter) throws NoTestsRemainException {
+        Filter recordingFilter = new RecordingFilter(filter);
+        wrappedRunner.filter(recordingFilter);
+    }
+
+    private class RecordingFilter extends Filter {
+
+        private final Filter originalFilter;
+
+        public RecordingFilter(Filter originalFilter) {
+            this.originalFilter = originalFilter;
+        }
+
+        @Override
+        public void apply(Object child) throws NoTestsRemainException {
+            originalFilter.apply(child);
+        }
+
+        @Override
+        public Filter intersect(Filter second) {
+            return originalFilter.intersect(second);
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            boolean result = originalFilter.shouldRun(description);
+            if (!result) {
+                wasFilterApplied = true;
+            }
+            return result;
+        }
+
+        @Override
+        public String describe() {
+            return originalFilter.describe();
+        }
+    }
+}
+```
+
+---
+
+**Summary**:
+Rename attribute refactorings can improve clarity when the current names are generic or unclear. The above changes make the code more readable and self-documenting, especially for new team members or code reviewers.

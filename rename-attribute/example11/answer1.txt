@@ -1,0 +1,176 @@
+02-05-2025, 10:23
+
+Let's carefully **review the attribute names** in the provided code:
+
+### Fields
+
+- **WEBSOCKET_CORECLIENT_ATTRIBUTE**
+  _(Constant, seems fine for its purpose as a class name constant)_
+
+- **LOG**
+  _(Logger, typical and clear)_
+
+- **httpClient**
+  _(Represents HttpClient; could be `webSocketHttpClient` if further distinction is needed, but as it's clearly private, likely not ambiguous)_
+
+- **components**
+  _(Represents WebSocketComponents; the term "components" is generic. Changing this to `webSocketComponents` would add explicitness and align with Java’s usual clarity expectations.)_
+
+- **classLoader**
+  _(Standard name, fine as is.)_
+
+### Constructor/Method Parameters
+
+All parameters (`httpClient`, `webSocketComponents`, etc.) are clear.
+
+### Other Observations
+
+- Local variable `webSocketComponents` in the constructor shadows the class attribute `components`, leading to potential confusion.
+- In methods like `getWebSocketComponents()`, the attribute is called `components`, but the return type is `WebSocketComponents`.
+
+### **Main suggestion**
+
+**Rename the attribute `components` to `webSocketComponents`** throughout the class.
+- This improves clarity because "components" is ambiguous but "webSocketComponents" is explicit.
+- Similarly, rename local variables and usages accordingly.
+
+---
+
+## **Refactored Code**
+
+```java
+package org.eclipse.jetty.websocket.core.client;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.api.Request;
+import org.eclipse.jetty.util.DecoratedObjectFactory;
+import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.websocket.core.CoreSession;
+import org.eclipse.jetty.websocket.core.ExtensionConfig;
+import org.eclipse.jetty.websocket.core.FrameHandler;
+import org.eclipse.jetty.websocket.core.WebSocketComponents;
+import org.eclipse.jetty.websocket.core.WebSocketExtensionRegistry;
+import org.eclipse.jetty.websocket.core.client.internal.HttpClientProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class WebSocketCoreClient extends ContainerLifeCycle
+{
+    public static final String WEBSOCKET_CORECLIENT_ATTRIBUTE = WebSocketCoreClient.class.getName();
+
+    private static final Logger LOG = LoggerFactory.getLogger(WebSocketCoreClient.class);
+    private final HttpClient httpClient;
+    private final WebSocketComponents webSocketComponents;
+    private ClassLoader classLoader;
+
+    public WebSocketCoreClient()
+    {
+        this(null, new WebSocketComponents());
+    }
+
+    public WebSocketCoreClient(WebSocketComponents webSocketComponents)
+    {
+        this(null, webSocketComponents);
+    }
+
+    public WebSocketCoreClient(HttpClient httpClient, WebSocketComponents webSocketComponents)
+    {
+        this.httpClient = Objects.requireNonNullElse(httpClient, HttpClientProvider.get());
+        addBean(this.httpClient);
+        if (webSocketComponents == null)
+        {
+            if (this.httpClient.isStarted())
+                webSocketComponents = new WebSocketComponents(null, null, this.httpClient.getByteBufferPool(), null, null, this.httpClient.getExecutor());
+            else
+                webSocketComponents = new WebSocketComponents();
+        }
+        this.webSocketComponents = webSocketComponents;
+        addBean(this.webSocketComponents);
+        if (!this.httpClient.isStarted())
+        {
+            if (this.httpClient.getByteBufferPool() == null)
+                this.httpClient.setByteBufferPool(this.webSocketComponents.getBufferPool());
+            if (this.httpClient.getExecutor() == null)
+                this.httpClient.setExecutor(this.webSocketComponents.getExecutor());
+        }
+        classLoader = Thread.currentThread().getContextClassLoader();
+    }
+
+    public ClassLoader getClassLoader()
+    {
+        return classLoader;
+    }
+
+    public void setClassLoader(ClassLoader classLoader)
+    {
+        this.classLoader = Objects.requireNonNull(classLoader);
+    }
+
+    public CompletableFuture<CoreSession> connect(FrameHandler frameHandler, URI wsUri) throws IOException
+    {
+        CoreClientUpgradeRequest request = CoreClientUpgradeRequest.from(this, wsUri, frameHandler);
+        return connect(request);
+    }
+
+    public CompletableFuture<CoreSession> connect(CoreClientUpgradeRequest request) throws IOException
+    {
+        if (!isStarted())
+            throw new IllegalStateException(WebSocketCoreClient.class.getSimpleName() + "@" + this.hashCode() + " is not started");
+
+        // Validate Requested Extensions
+        for (ExtensionConfig reqExt : request.getExtensions())
+        {
+            if (!webSocketComponents.getExtensionRegistry().isAvailable(reqExt.getName()))
+            {
+                throw new IllegalArgumentException("Requested extension [" + reqExt.getName() + "] is not installed");
+            }
+        }
+
+        for (Request.Listener l : getBeans(Request.Listener.class))
+        {
+            request.listener(l);
+        }
+
+        if (LOG.isDebugEnabled())
+            LOG.debug("connect to websocket {}", request.getURI());
+
+        return request.sendAsync();
+    }
+
+    public WebSocketExtensionRegistry getExtensionRegistry()
+    {
+        return webSocketComponents.getExtensionRegistry();
+    }
+
+    public HttpClient getHttpClient()
+    {
+        return httpClient;
+    }
+
+    public DecoratedObjectFactory getObjectFactory()
+    {
+        return webSocketComponents.getObjectFactory();
+    }
+
+    public WebSocketComponents getWebSocketComponents()
+    {
+        return webSocketComponents;
+    }
+}
+```
+
+---
+
+### **Summary of Refactoring**
+
+- **Renamed field `components` → `webSocketComponents`**
+- **Updated all references, including parameters and local variables as needed, for clarity.**
+
+This makes the code **more readable**, especially for newcomers, because it’s explicit which components are referenced.
+
+**Let me know if you want any further adjustments or have specific naming policies!**

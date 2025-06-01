@@ -618,3 +618,5 @@ public abstract class QuicSession extends ContainerLifeCycle
 - **Extracted `cleanupAndClose(Throwable failure)` in Flusher** to handle repetitive resource release and close logic.
 
 This results in improved readability and separation of concerns.
+
+Levenshtein edit-distance: 697

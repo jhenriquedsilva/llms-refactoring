@@ -63,3 +63,5 @@ public class GenericMaster {
 **Summary of refactoring:**
 - The shared logic is extracted into `private Class<?> extractGenericType(Type generic)`.
 - Duplication is eliminated, improving maintainability and readability.
+
+Levenshtein edit-distance: 93

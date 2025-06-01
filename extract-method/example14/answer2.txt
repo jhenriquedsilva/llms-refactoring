@@ -445,3 +445,5 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
 - **Extracted `assignTransitionFields(Transition t)`** for code shared between `getNextTransition` and `getTransition`.
 
 This makes the code more maintainable and readable.
+
+Levenshtein edit-distance: 766

@@ -289,3 +289,5 @@ public final class BridgeMethodResolver {
 - **Simplified `findBridgedMethod` and `getMostSpecificMethod` to delegate to this new method.**
 
 This makes the code more maintainable and clear!
+
+Levenshtein edit-distance: 801

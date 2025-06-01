@@ -205,3 +205,5 @@ final class PulsarPropertiesMapper {
 - All "repeat pattern" property mapping steps are now in single-responsibility methods.
 
 **This structure will facilitate future changes and extensions, as each method does exactly one thing.**
+
+Levenshtein edit-distance: 2233

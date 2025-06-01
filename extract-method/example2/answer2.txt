@@ -1,17 +1,22 @@
-22-04-2025, 21:06
+28-05-2025, 19:41
 
-Yes, there **are extract method refactoring opportunities** in the provided code, primarily due to repeated code patterns inside the test methods. Specifically:
+Yes, there are **extract method refactoring** opportunities in this class to **improve readability and reusability**. In particular:
 
-- Several test methods involve the repeated logic of instantiating a `ClosedInputStream` and asserting that various read invocations return `EOF`.
-- The assertion logic can be extracted into helper methods to **improve code readability** and **reduce duplication**.
+- The code for "assert that cis.read... == EOF" is repeated in several places.
+- The creation and use of a `ClosedInputStream` for a sequence of `assertEquals` calls is repeated as well.
 
-Below is the **refactored code** making use of private helper methods for repeated assert patterns:
+To refactor, we can extract a helper method that takes a lambda (or use a functional interface, since we’re in Java 8+) to perform assertions on provided `ClosedInputStream`. This minimizes repetition, centralizes resource management, and clarifies the intent.
+
+Here is a suggested refactored version:
 
 ```java
 package org.apache.commons.io.input;
 
 import static org.apache.commons.io.IOUtils.EOF;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.io.IOException;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
 
@@ -20,61 +25,55 @@ import org.junit.jupiter.api.Test;
  */
 public class ClosedInputStreamTest {
 
+    // Helper method to manage ClosedInputStream lifecycle and run assertions
+    private void withClosedInputStream(Consumer<ClosedInputStream> testLogic) throws IOException {
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            testLogic.accept(cis);
+        }
+    }
+
     @Test
     public void testRead() throws Exception {
-        try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadReturnsEOF(cis, "read()");
-        }
+        withClosedInputStream(cis -> assertEquals(EOF, cis.read(), "read()"));
     }
 
     @Test
     public void testReadArray() throws Exception {
-        try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadArrayReturnsEOF(cis);
-        }
+        withClosedInputStream(cis -> {
+            assertEquals(EOF, cis.read(new byte[4096]));
+            assertEquals(EOF, cis.read(new byte[1]));
+            assertEquals(EOF, cis.read(new byte[0]));
+        });
     }
 
     @Test
     public void testReadArrayIndex() throws Exception {
-        try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadArrayIndexReturnsEOF(cis);
-        }
+        withClosedInputStream(cis -> {
+            assertEquals(EOF, cis.read(new byte[4096], 0, 1));
+            assertEquals(EOF, cis.read(new byte[1], 0, 1));
+            assertEquals(EOF, cis.read(new byte[0], 0, 0));
+        });
     }
 
     @Test
     public void testSingleton() throws Exception {
         try (@SuppressWarnings("deprecation")
              ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
-            assertReadReturnsEOF(cis, "read()");
+            assertEquals(EOF, cis.read(), "read()");
         }
         try (ClosedInputStream cis = ClosedInputStream.INSTANCE) {
-            assertReadReturnsEOF(cis, "read()");
+            assertEquals(EOF, cis.read(), "read()");
         }
     }
 
-    // Helper methods to reduce duplication
-
-    private void assertReadReturnsEOF(ClosedInputStream cis, String message) throws Exception {
-        assertEquals(EOF, cis.read(), message);
-    }
-
-    private void assertReadArrayReturnsEOF(ClosedInputStream cis) throws Exception {
-        assertEquals(EOF, cis.read(new byte[4096]));
-        assertEquals(EOF, cis.read(new byte[1]));
-        assertEquals(EOF, cis.read(new byte[0]));
-    }
-
-    private void assertReadArrayIndexReturnsEOF(ClosedInputStream cis) throws Exception {
-        assertEquals(EOF, cis.read(new byte[4096], 0, 1));
-        assertEquals(EOF, cis.read(new byte[1], 0, 1));
-        assertEquals(EOF, cis.read(new byte[0], 0, 0));
-    }
 }
 ```
 
-**Summary of Refactoring:**
-- **Extracted** assertion logic for each repeated read-type usage to dedicated private methods:
-  - `assertReadReturnsEOF`
-  - `assertReadArrayReturnsEOF`
-  - `assertReadArrayIndexReturnsEOF`
-- Increased **readability** and **maintainability** by eliminating duplication and making the intent clear in each test method.
+**Notes:**
+- Only `testSingleton` is not extracted since it requires different instances.
+- The `withClosedInputStream` helper minimizes boilerplate and standardizes resource management.
+- Using a Java `Consumer` makes it clear what the "test operation" for the stream is in each test.
+
+**This improves readability and reduces duplication without altering test semantics.**
+
+Levenshtein edit-distance: 420

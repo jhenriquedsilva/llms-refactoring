@@ -296,3 +296,5 @@ public final class BridgeMethodResolver {
 - Public API and all method contracts remain unchanged
 
 **This refactoring is safe and idiomatic for the problem.**
+
+Levenshtein edit-distance: 346

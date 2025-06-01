@@ -194,3 +194,5 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (786 + 946 + 765 + 1925 + 953) / 5 = 1075

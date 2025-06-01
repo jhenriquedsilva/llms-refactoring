@@ -299,4 +299,6 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
     }
 }
 ```
-If there are any refactoring opportunities, please do it and generate the refactored code. Otherwise, simply state that no refactoring is necessary.
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (3582 + 4572 + 4619 + 3058 + 2461) / 5 = 3658,4

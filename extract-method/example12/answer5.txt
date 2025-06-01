@@ -288,3 +288,5 @@ public class FileBasedConfig extends StoredConfig {
 - Extracted the encoding logic in `save()` into `encodeConfigText(String, boolean)`.
 
 This improves **readability** and **testability**, with no change in behavior. If further refactoring is needed (such as for testability or further code reuse), more granular extraction or class reorganization could be considered.
+
+Levenshtein edit-distance: 985

@@ -599,3 +599,5 @@ public class MvcUriComponentsBuilder {
 - The rest of the class was left intact as there were no further classic extract method refactoring opportunities.
 
 If you have further questions or want more aggressive refactoring (e.g., around argument checking or builders), let me know.
+
+Levenshtein edit-distance: 16299

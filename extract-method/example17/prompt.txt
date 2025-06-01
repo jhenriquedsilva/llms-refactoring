@@ -524,3 +524,5 @@ public final class IOUtil {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (2223 + 2271 + 2913 + 6569 + 3923) / 5 = 3579,8

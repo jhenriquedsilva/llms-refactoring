@@ -92,3 +92,5 @@ public class MvcUriComponentsBuilder {
 There is a refactoring opportunity due to duplicated code in `fromMethodCall(Object)` and `fromMethodCall(UriComponentsBuilder, Object)`. Extracting that logic into a private helper (`fromMethodInvocationInfo`) improves readability and maintainability, and removes duplication. All other code does not warrant further extraction based on visible duplication.
 
 If you need the **full verbatim class** with this change pasted in, let me know! Otherwise, the above illustrates the only necessary refactoring based on the code you provided.
+
+Levenshtein edit-distance: 37802

@@ -534,3 +534,5 @@ public abstract class QuicSession extends ContainerLifeCycle
 - Removed two nearly identical notification methods.
 
 All other code is left as-is due to necessity or clarity.
+
+Levenshtein edit-distance: 2280

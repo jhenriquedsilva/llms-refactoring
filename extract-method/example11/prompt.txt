@@ -538,3 +538,5 @@ public abstract class QuicSession extends ContainerLifeCycle
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (2280 + 697 + 764 + 2453 + 1271) / 5 = 1493

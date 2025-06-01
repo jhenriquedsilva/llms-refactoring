@@ -52,3 +52,5 @@ public class GenericMaster {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (335 + 208 + 227 + 93 + 93) / 5 = 191,2

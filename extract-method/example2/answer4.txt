@@ -1,13 +1,12 @@
-22-04-2025, 21:10
-Certainly! In the given code, there is **duplicate logic** in the form of repeatedly opening a `ClosedInputStream` and asserting that `cis.read()` (or its overloaded forms) returns `EOF`. All test methods use the pattern:
-```java
-try (ClosedInputStream cis = new ClosedInputStream()) {
-    // assertions on cis.read...
-}
-```
-**Extract Method Refactoring** can be applied to make unit tests more concise and improve code readability and maintainability.
+28-05-2025, 19:41
 
-### Refactored Code
+Yes, there are clear opportunities for **extract method** refactorings in this code. Specifically:
+
+- Creating a helper method for repeatedly asserting that different **read** variations on **ClosedInputStream** always return **EOF**. 
+- The logic for asserting `assertEquals(EOF, cis.read(), "read()")` or similar is duplicated across multiple test methods.
+- Extracting the *assertions for array* and *array with indices* as helper methods makes tests more readable and DRY.
+
+Here is a refactored version of the class using **extract method** refactoring:
 
 ```java
 package org.apache.commons.io.input;
@@ -24,63 +23,69 @@ public class ClosedInputStreamTest {
 
     @Test
     public void testRead() throws Exception {
-        assertReadEOF(new ClosedInputStream());
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadEqualsEOF(cis);
+        }
     }
 
     @Test
     public void testReadArray() throws Exception {
-        assertReadEOFWithArrays(new ClosedInputStream());
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayEqualsEOF(cis);
+        }
     }
 
     @Test
     public void testReadArrayIndex() throws Exception {
-        assertReadEOFWithArraysAndIndexes(new ClosedInputStream());
+        try (ClosedInputStream cis = new ClosedInputStream()) {
+            assertReadArrayIndexEqualsEOF(cis);
+        }
     }
 
     @Test
     public void testSingleton() throws Exception {
-        @SuppressWarnings("deprecation")
-        ClosedInputStream deprecatedInstance = ClosedInputStream.CLOSED_INPUT_STREAM;
-        assertReadEOF(deprecatedInstance);
-        assertReadEOF(ClosedInputStream.INSTANCE);
-    }
-
-    // --- Extracted helper methods below ---
-
-    private void assertReadEOF(ClosedInputStream cis) throws Exception {
-        try (ClosedInputStream input = cis) {
-            assertEquals(EOF, input.read(), "read()");
+        try (@SuppressWarnings("deprecation")
+             ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
+            assertReadEqualsEOF(cis);
+        }
+        try (ClosedInputStream cis = ClosedInputStream.INSTANCE) {
+            assertReadEqualsEOF(cis);
         }
     }
 
-    private void assertReadEOFWithArrays(ClosedInputStream cis) throws Exception {
-        try (ClosedInputStream input = cis) {
-            assertEquals(EOF, input.read(new byte[4096]));
-            assertEquals(EOF, input.read(new byte[1]));
-            assertEquals(EOF, input.read(new byte[0]));
-        }
+    // --- Extracted Helper Methods ---
+
+    private void assertReadEqualsEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(), "read()");
     }
 
-    private void assertReadEOFWithArraysAndIndexes(ClosedInputStream cis) throws Exception {
-        try (ClosedInputStream input = cis) {
-            assertEquals(EOF, input.read(new byte[4096], 0, 1));
-            assertEquals(EOF, input.read(new byte[1], 0, 1));
-            assertEquals(EOF, input.read(new byte[0], 0, 0));
-        }
+    private void assertReadArrayEqualsEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(new byte[4096]));
+        assertEquals(EOF, cis.read(new byte[1]));
+        assertEquals(EOF, cis.read(new byte[0]));
+    }
+
+    private void assertReadArrayIndexEqualsEOF(ClosedInputStream cis) throws Exception {
+        assertEquals(EOF, cis.read(new byte[4096], 0, 1));
+        assertEquals(EOF, cis.read(new byte[1], 0, 1));
+        assertEquals(EOF, cis.read(new byte[0], 0, 0));
     }
 }
 ```
 
+### **Summary of Refactorings:**
+
+- **assertReadEqualsEOF**: Used wherever `assertEquals(EOF, cis.read(), "read()")` occurs.
+- **assertReadArrayEqualsEOF**: Used for all `read(byte[])` assertions.
+- **assertReadArrayIndexEqualsEOF**: Used for all `read(byte[], int, int)` assertions.
+
+**Benefits:**  
+- Reduces code duplication  
+- Improves readability and maintainability  
+- Makes it easier to adjust repeated test logic in one place
+
 ---
 
-### **Explanation**
-- Three private helper methods are extracted:
-  - `assertReadEOF` (for `read()` check)
-  - `assertReadEOFWithArrays` (for `read(byte[])` check)
-  - `assertReadEOFWithArraysAndIndexes` (for `read(byte[], int, int)` check)
-- Each test method calls these helper methods, improving readability and reducing code duplication.
-- All resource handling for streams is still covered due to the use of try-with-resources within helpers.
+If you’d like, this pattern could be continued for other assertion groupings as the test class grows.
 
----
-
-**This refactoring enhances code maintainability and clarity by removing duplication and centralizing repeated logic.**
+Levenshtein edit-distance: 866

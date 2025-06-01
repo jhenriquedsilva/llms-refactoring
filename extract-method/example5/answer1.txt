@@ -1,12 +1,13 @@
-23-04-2025, 19:48
-This code is a great candidate for **Extract Method Refactoring**, especially to simplify long test methods and repeated blocks. Here are some clear refactoring opportunities:
+27-05-2025, 21:10
 
-1. **Extract Data Setup**: Data setup for test tables is verbose and repeated in several places.
-2. **Extract JSON Plan Modification Logic**: The function body that modifies the JSON plan appears almost verbatim twice.
-3. **Extract Expected Results Creation (optional)**: Though less urgent, building the expected results lists could be extracted.
-4. **Consistent Naming and Reuse**: Improve naming and reuse extracted methods within test methods for better readability.
+There **are several clear opportunities** for Extract Method refactoring in the provided code. The main candidates are:
 
-Below is your refactored code with these improvements:
+1. The long **`testDifferentStateTtlForDifferentOneInputOperator`** method repeats code patterns (test data registration, table creation, result assertion) that can be **extracted into small private helper methods**.
+2. The inline setup of input data for leftTableDataId and rightTableDataId in **`innerTestRegularJoin`** can be factored out for clarity.
+
+I will perform ONLY extraction, **preserving functionality**, and staying light on changes not strictly related to extracting methods for readability and reuse.
+
+Here's the refactored class:
 
 ```java
 package org.apache.flink.table.planner.runtime.stream.jsonplan;
@@ -37,32 +38,71 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 
     @Test
     void testDifferentStateTtlForDifferentOneInputOperator() throws Exception {
-        String dataId = registerOrdersSourceData();
-        createOrdersSourceTable(dataId);
-        createOrdersStatsSinkTable();
+        String dataId = registerOrderSourceTestData();
+        createTestOrdersSourceTable(dataId);
+        createTestOrdersStatsSinkTable();
+        executeOrdersStatsPlan();
 
-        compileSqlAndExecutePlan(getOrderStatsInsertSql(), getOneInputOperatorTtlSetter()).await();
-
-        assertResult(getExpectedOrderStats(), TestValuesTableFactory.getResultsAsStrings("OrdersStats"));
+        List<String> expected = Arrays.asList(
+            "+I[Tom, 2, 2, 229.8]",
+            "+I[Jerry, 1, 2, 99.9]",
+            "+I[Jerry, 1, 2, 99.9]",
+            "+I[Olivia, 2, 4, 1100.0]",
+            "+I[Michael, 1, 3, 599.9]"
+        );
+        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersStats"));
     }
 
     @Test
     void testDifferentStateTtlForSameTwoInputStreamOperator() throws Exception {
         innerTestRegularJoin(
-                getOrdersShipInfoInsertSql(),
-                getTwoInputJoinOperatorTtlSetter());
+                "INSERT INTO OrdersShipInfo \n"
+                        + "SELECT a.order_id, a.line_order_id, b.ship_mode FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id",
+                json -> {
+                    try {
+                        JsonNode target = JsonTestUtils.readFromString(json);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-join", 0, 3000L);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-join", 1, 9000L);
+                        return JsonTestUtils.writeToString(target);
+                    } catch (IOException e) {
+                        throw new TableException("Cannot modify compiled json plan.", e);
+                    }
+                });
     }
 
     @Test
     void testDifferentStateTtlThroughSqlHintForSameTwoInputStreamOperator() throws Exception {
         innerTestRegularJoin(
-                getOrdersShipInfoInsertSqlWithHint(),
-                Function.identity());
+                "INSERT INTO OrdersShipInfo \n"
+                        + "SELECT /*+ STATE_TTL('a' = '3s', 'b' = '9s') */\n"
+                        + " a.order_id, a.line_order_id, b.ship_mode "
+                        + "FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id",
+                json -> json);
     }
 
-    // ====== Extraction of Inner Test, Data, and Helper Methods ======
+    private void innerTestRegularJoin(String sql, Function<String, String> jsonPlanTransformer)
+            throws Exception {
+        String leftTableDataId = registerLeftTableData();
+        createTestOrdersJoinSourceTable(leftTableDataId);
 
-    private String registerOrdersSourceData() {
+        String rightTableDataId = registerRightTableData();
+        createTestLineOrdersSourceTable(rightTableDataId);
+
+        createTestValuesSinkTable(
+                "OrdersShipInfo", "`order_id` INT", "`line_order_id` INT", "`ship_mode` STRING");
+        compileSqlAndExecutePlan(sql, jsonPlanTransformer).await();
+
+        List<String> expected = Arrays.asList(
+                "+I[1, 1000002, TRUCK]", "+I[1, 1000004, RAIL]", "+I[1, 1000005, AIR]");
+        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersShipInfo"));
+    }
+
+    /* ------------------ Extracted private helper methods ------------------------- */
+
+    // For testDifferentStateTtlForDifferentOneInputOperator()
+    private String registerOrderSourceTestData() {
         return TestValuesTableFactory.registerRowData(
                 Arrays.asList(
                         GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
@@ -77,37 +117,31 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                 ));
     }
 
-    private void createOrdersSourceTable(String dataId) {
+    private void createTestOrdersSourceTable(String dataId) {
         createTestSourceTable(
-            "Orders",
-            new String[] {
-                    "`order_id` INT", "`buyer` STRING", "`quantity` INT", "`amount` DOUBLE"
-            },
-            null,
-            getProperties(dataId, 1, "2s")
-        );
+                "Orders",
+                new String[] {
+                        "`order_id` INT", "`buyer` STRING", "`quantity` INT", "`amount` DOUBLE"
+                },
+                null,
+                getProperties(dataId, 1, "2s"));
     }
 
-    private void createOrdersStatsSinkTable() {
+    private void createTestOrdersStatsSinkTable() {
         createTestNonInsertOnlyValuesSinkTable(
                 "OrdersStats",
                 "`buyer` STRING",
                 "`ord_cnt` BIGINT",
                 "`quantity_cnt` BIGINT",
-                "`total_amount` DOUBLE"
-        );
+                "`total_amount` DOUBLE");
     }
 
-    private String getOrderStatsInsertSql() {
-        return "INSERT INTO OrdersStats \n" +
-                "SELECT buyer, COUNT(1) AS ord_cnt, SUM(quantity) AS quantity_cnt, SUM(amount) AS total_amount FROM (\n" +
-                "SELECT *, ROW_NUMBER() OVER(PARTITION BY order_id, buyer, quantity, amount ORDER BY proctime() ASC) AS rk FROM Orders) tmp\n" +
-                "WHERE rk = 1\n" +
-                "GROUP BY buyer";
-    }
-
-    private Function<String, String> getOneInputOperatorTtlSetter() {
-        return json -> {
+    private void executeOrdersStatsPlan() throws Exception {
+        compileSqlAndExecutePlan("INSERT INTO OrdersStats \n"
+                        + "SELECT buyer, COUNT(1) AS ord_cnt, SUM(quantity) AS quantity_cnt, SUM(amount) AS total_amount FROM (\n"
+                        + "SELECT *, ROW_NUMBER() OVER(PARTITION BY order_id, buyer, quantity, amount ORDER BY proctime() ASC) AS rk FROM Orders) tmp\n"
+                        + "WHERE rk = 1\n"
+                        + "GROUP BY buyer", (Function<String, String>) json -> {
             try {
                 JsonNode target = JsonTestUtils.readFromString(json);
                 JsonTestUtils.setExecNodeStateMetadata(
@@ -118,69 +152,11 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
             } catch (IOException e) {
                 throw new TableException("Cannot modify compiled json plan.", e);
             }
-        };
+        }).await();
     }
 
-    private List<String> getExpectedOrderStats() {
-        return Arrays.asList(
-                "+I[Tom, 2, 2, 229.8]",
-                "+I[Jerry, 1, 2, 99.9]",
-                "+I[Jerry, 1, 2, 99.9]",
-                "+I[Olivia, 2, 4, 1100.0]",
-                "+I[Michael, 1, 3, 599.9]");
-    }
-
-    private String getOrdersShipInfoInsertSql() {
-        return "INSERT INTO OrdersShipInfo \n" +
-               "SELECT a.order_id, a.line_order_id, b.ship_mode FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id";
-    }
-
-    private String getOrdersShipInfoInsertSqlWithHint() {
-        return "INSERT INTO OrdersShipInfo \n" +
-               "SELECT /*+ STATE_TTL('a' = '3s', 'b' = '9s') */\n" +
-               " a.order_id, a.line_order_id, b.ship_mode " +
-               "FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id";
-    }
-
-    private Function<String, String> getTwoInputJoinOperatorTtlSetter() {
-        return json -> {
-            try {
-                JsonNode target = JsonTestUtils.readFromString(json);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-join", 0, 3000L);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-join", 1, 9000L);
-                return JsonTestUtils.writeToString(target);
-            } catch (IOException e) {
-                throw new TableException("Cannot modify compiled json plan.", e);
-            }
-        };
-    }
-
-    private void innerTestRegularJoin(String sql, Function<String, String> jsonPlanTransformer)
-            throws Exception {
-        String leftTableDataId = registerOrdersJoinLeftSourceData();
-        createTestSourceTable(
-                "Orders",
-                new String[] {"`order_id` INT", "`line_order_id` INT"},
-                null,
-                getProperties(leftTableDataId, 1, "2s"));
-
-        String rightTableDataId = registerOrdersJoinRightSourceData();
-        createTestSourceTable(
-                "LineOrders",
-                new String[] {"`line_order_id` INT", "`ship_mode` STRING"},
-                null,
-                getProperties(rightTableDataId, 2, "4s"));
-
-        createTestValuesSinkTable(
-                "OrdersShipInfo", "`order_id` INT", "`line_order_id` INT", "`ship_mode` STRING");
-        compileSqlAndExecutePlan(sql, jsonPlanTransformer).await();
-
-        assertResult(getExpectedOrdersShipInfo(), TestValuesTableFactory.getResultsAsStrings("OrdersShipInfo"));
-    }
-
-    private String registerOrdersJoinLeftSourceData() {
+    // For innerTestRegularJoin()
+    private String registerLeftTableData() {
         return TestValuesTableFactory.registerRowData(
                 Arrays.asList(
                         GenericRowData.of(1, 1000001),
@@ -188,11 +164,18 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                         GenericRowData.of(1, 1000003),
                         GenericRowData.of(1, 1000004),
                         GenericRowData.of(1, 1000005),
-                        GenericRowData.of(2, 2000001)
-                ));
+                        GenericRowData.of(2, 2000001)));
     }
 
-    private String registerOrdersJoinRightSourceData() {
+    private void createTestOrdersJoinSourceTable(String leftTableDataId) {
+        createTestSourceTable(
+                "Orders",
+                new String[]{"`order_id` INT", "`line_order_id` INT"},
+                null,
+                getProperties(leftTableDataId, 1, "2s"));
+    }
+
+    private String registerRightTableData() {
         return TestValuesTableFactory.registerRowData(
                 Arrays.asList(
                         GenericRowData.of(2000001, StringData.fromString("TRUCK")),
@@ -200,13 +183,15 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                         GenericRowData.of(1000001, StringData.fromString("SHIP")),
                         GenericRowData.of(1000002, StringData.fromString("TRUCK")),
                         GenericRowData.of(1000003, StringData.fromString("RAIL")),
-                        GenericRowData.of(1000004, StringData.fromString("RAIL"))
-                ));
+                        GenericRowData.of(1000004, StringData.fromString("RAIL"))));
     }
 
-    private List<String> getExpectedOrdersShipInfo() {
-        return Arrays.asList(
-                "+I[1, 1000002, TRUCK]", "+I[1, 1000004, RAIL]", "+I[1, 1000005, AIR]");
+    private void createTestLineOrdersSourceTable(String rightTableDataId) {
+        createTestSourceTable(
+                "LineOrders",
+                new String[]{"`line_order_id` INT", "`ship_mode` STRING"},
+                null,
+                getProperties(rightTableDataId, 2, "4s"));
     }
 
     private static Map<String, String> getProperties(
@@ -225,11 +210,12 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 }
 ```
 
-**Summary of Refactorings:**
-- **Methods like** `registerOrdersSourceData()`, `createOrdersSourceTable`, `createOrdersStatsSinkTable`, and SQL getter methods have been extracted.
-- **JSON plan transformer functions** are extracted so their logic is clear and easily maintained.
-- **Repeated data setup for join-related tests** is extracted.
-- **Expected results list** is extracted for clarity.
+**Summary of Refactorings**:
 
-**Benefit:**
-All test methods now read at a higher level of abstraction, focusing on the "what" rather than the "how," which makes future maintenance and understanding much easier.
+- Extracted registerOrderSourceTestData, createTestOrdersSourceTable, createTestOrdersStatsSinkTable, executeOrdersStatsPlan for one input operator test.
+- Extracted registerLeftTableData, createTestOrdersJoinSourceTable, registerRightTableData, createTestLineOrdersSourceTable for two input join test setup.
+- Main test methods are now concise and readable; test setup logic is moved to helpers.
+
+**No functionality was changed.** Only method extraction for clarity and DRY.
+
+Levenshtein edit-distance: 5944

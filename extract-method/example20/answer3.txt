@@ -298,3 +298,5 @@ public final class BridgeMethodResolver {
 - No other major refactoring is necessary based on the current code.
 
 Let me know if you want further decomposition!
+
+Levenshtein edit-distance: 855

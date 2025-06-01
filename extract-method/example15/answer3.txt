@@ -70,3 +70,5 @@ public class GenericMaster {
 - Methods are more focused on their distinct responsibilities
 
 **This is a textbook use of the Extract Method refactoring technique.**
+
+Levenshtein edit-distance: 227

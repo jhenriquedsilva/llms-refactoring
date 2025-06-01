@@ -185,3 +185,5 @@ final class PulsarPropertiesMapper {
 - Simplified the main `customizeAuthentication` method to use this helper, increasing clarity and separation of concerns.
 
 Let me know if you'd like me to look for even more aggressive/uniform extract refactorings or prefer another style!
+
+Levenshtein edit-distance: 272

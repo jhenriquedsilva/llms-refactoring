@@ -98,3 +98,5 @@ public class RemoteClusterCredentialsManager {
 
 **Summary:**
 We extracted the repeated logger/debug code into a private method called `logUpdatedClusterCredentials()`. This makes the code more maintainable and readable.
+
+Levenshtein edit-distance: 635

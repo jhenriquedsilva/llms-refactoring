@@ -202,4 +202,6 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
     }
 }
 ```
-If there are any refactoring opportunities, please do it and generate the refactored code. Otherwise, simply state that no refactoring is necessary.
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (5944 + 6704 + 5363 + 5699 + 6850) / 5 = 6112

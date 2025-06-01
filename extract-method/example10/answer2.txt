@@ -343,3 +343,5 @@ class FileChannelDataBlock implements CloseableDataBlock {
 - **Extracted open/close reference/debug code** to small private helper methods to promote code reuse and cleaner main logic.
 
 **Feel free to ask further for Javadoc or code comments on the extracted methods if needed.**
+
+Levenshtein edit-distance: 1878

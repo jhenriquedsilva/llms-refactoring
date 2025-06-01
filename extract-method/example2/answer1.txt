@@ -1,10 +1,27 @@
-22-04-2025, 21:03
-Yes, there **are refactoring opportunities** here, particularly with **extract method refactoring**. The code contains quite a bit of repetition regarding the process of creating a `ClosedInputStream` and asserting that `read()` returns `EOF`. We can extract helper methods to:
+28-05-2025, 19:39
 
-- Reduce code duplication in each test case for asserting `EOF` results.
-- Improve readability and maintainability.
+**Analysis:**
 
-**Here's the refactored code:**
+Reviewing the provided code, we see the following repeating patterns:
+
+- **Creation of `ClosedInputStream` in a try-with-resources block**, performing one or multiple assertions that the result of various `read` methods is `EOF`.
+- **Similar assertion statements**: `assertEquals(EOF, cis.read(...), ...)` or `assertEquals(EOF, cis.read(...))`.
+
+While the assertions themselves differ (they use different overloads of `read`), the setup and assertion logic is repetitive. An **Extract Method Refactoring** can be done to avoid code duplication in test setup and assertion, thus improving maintainability and readability.
+
+**Refactoring Approach:**
+
+1. **Extract a Helper Method**
+   Introduce one or more private helper methods, such as:
+   - `private void assertReadReturnsEOF(ClosedInputStream cis)`
+   - `private void assertReadArrayReturnsEOF(ClosedInputStream cis, int arraySize)`
+   - Or a more general method: `private void assertRead(ClosedInputStream cis, int expected, Supplier<Integer> readOperation)`
+   For simplicity, we can start by extracting the repeated test logic for read methods.
+
+2. **Apply in Each Test**
+   Replace repeated try-with-resources blocks and assertions with calls to these helpers.
+
+**Refactored Class:**
 
 ```java
 package org.apache.commons.io.input;
@@ -13,6 +30,7 @@ import static org.apache.commons.io.IOUtils.EOF;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
+import java.util.function.IntSupplier;
 
 /**
  * Tests {@link ClosedInputStream}.
@@ -22,25 +40,25 @@ public class ClosedInputStreamTest {
     @Test
     public void testRead() throws Exception {
         try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadEOF(cis);
+            assertReadReturnsEOF(cis, "read()");
         }
     }
 
     @Test
     public void testReadArray() throws Exception {
         try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadArrayEOF(cis, 4096);
-            assertReadArrayEOF(cis, 1);
-            assertReadArrayEOF(cis, 0);
+            assertReadArrayReturnsEOF(cis, new byte[4096]);
+            assertReadArrayReturnsEOF(cis, new byte[1]);
+            assertReadArrayReturnsEOF(cis, new byte[0]);
         }
     }
 
     @Test
     public void testReadArrayIndex() throws Exception {
         try (ClosedInputStream cis = new ClosedInputStream()) {
-            assertReadArrayIndexEOF(cis, 4096, 0, 1);
-            assertReadArrayIndexEOF(cis, 1, 0, 1);
-            assertReadArrayIndexEOF(cis, 0, 0, 0);
+            assertReadArrayIndexReturnsEOF(cis, new byte[4096], 0, 1);
+            assertReadArrayIndexReturnsEOF(cis, new byte[1], 0, 1);
+            assertReadArrayIndexReturnsEOF(cis, new byte[0], 0, 0);
         }
     }
 
@@ -48,32 +66,36 @@ public class ClosedInputStreamTest {
     public void testSingleton() throws Exception {
         try (@SuppressWarnings("deprecation")
              ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
-            assertReadEOF(cis);
+            assertReadReturnsEOF(cis, "read()");
         }
         try (ClosedInputStream cis = ClosedInputStream.INSTANCE) {
-            assertReadEOF(cis);
+            assertReadReturnsEOF(cis, "read()");
         }
     }
 
-    // Refactored helper methods to reduce code duplication:
-
-    private void assertReadEOF(ClosedInputStream cis) throws Exception {
-        assertEquals(EOF, cis.read(), "read()");
+    private void assertReadReturnsEOF(ClosedInputStream cis, String message) throws Exception {
+        assertEquals(EOF, cis.read(), message);
     }
 
-    private void assertReadArrayEOF(ClosedInputStream cis, int len) throws Exception {
-        assertEquals(EOF, cis.read(new byte[len]));
+    private void assertReadArrayReturnsEOF(ClosedInputStream cis, byte[] arr) throws Exception {
+        assertEquals(EOF, cis.read(arr));
     }
 
-    private void assertReadArrayIndexEOF(ClosedInputStream cis, int len, int off, int n) throws Exception {
-        assertEquals(EOF, cis.read(new byte[len], off, n));
+    private void assertReadArrayIndexReturnsEOF(ClosedInputStream cis, byte[] arr, int off, int len) throws Exception {
+        assertEquals(EOF, cis.read(arr, off, len));
     }
 }
 ```
 
-**Summary of changes:**
-- Introduced `assertReadEOF`, `assertReadArrayEOF`, and `assertReadArrayIndexEOF` helper methods.
-- Tests now delegate repeated code to these helpers, making test logic concise.
+**Summary of Refactoring:**
 
-**Benefit:**
-This refactoring improves test readability, maintainability, and reduces duplication, following best testing practices.
+- **Extracted assertion logic** into private helper methods to avoid duplication.
+- **Improved maintainability and readability** by reducing repeated code in test methods.
+
+**Optional:** For more advanced refactoring, you could use `IntSupplier` or `Executable` to generalize the assertion methods further. However, the above version keeps things explicit and clear for a test class.
+
+---
+
+If you need a more advanced refactoring or have a specific style requirement, feel free to specify!
+
+Levenshtein edit-distance: 845

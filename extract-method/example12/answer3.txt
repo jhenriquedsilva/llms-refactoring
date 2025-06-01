@@ -242,3 +242,5 @@ public class FileBasedConfig extends StoredConfig {
 
 **Summary of why:**
 The original `load()` and `save()` methods contain several independent tasks strung together, making them difficult to read and maintain. Extracting key code blocks into private methods makes the class easier to navigate and the intent of each step clearer. This is a textbook case for **extract method** refactoring.
+
+Levenshtein edit-distance: 2823

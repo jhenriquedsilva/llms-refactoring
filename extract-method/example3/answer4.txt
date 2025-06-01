@@ -1,13 +1,10 @@
-23-04-2025, 19:30
-**Refactoring Opportunity Analysis**
+27-05-2025, 21:23
 
-There **is** an extract method refactoring opportunity in your code, specifically in the private method `accept(Field field)`. The method contains multiple `if` branches, each returning `false` if a certain condition is met. Each check has a descriptive logical purpose that would benefit from being broken down into smaller, clearly-named helper methods. This improves readability, testability, and maintainability.
+Yes, there are opportunities for **extract method refactoring** in this code, especially in the `accept(Field field)` method where a series of checks are performed to filter out fields that should not be included in the diff process.
+Breaking each check into its own clearly named helper method can improve readability and maintainability by giving each rule a clear responsibility.
 
-Let's refactor the code by extracting these logical checks into individual methods.
-
----
-
-### **Refactored Code**
+Below is the **refactored version** of the class using extract method refactoring where appropriate:  
+(I've moved each check in `accept(Field field)` to a private helper method.)
 
 ```java
 package org.apache.commons.lang3.builder;
@@ -23,25 +20,57 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 
 public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 
+    /**
+     * Constructs a new instance.
+     *
+     * @param <T> type of the left and right object.
+     * @since 3.15.0
+     */
     public static final class Builder<T> {
+
         private String[] excludeFieldNames = ArrayUtils.EMPTY_STRING_ARRAY;
         private DiffBuilder<T> diffBuilder;
 
+        /**
+         * Builds a new configured {@link ReflectionDiffBuilder}.
+         *
+         * @return a new configured {@link ReflectionDiffBuilder}.
+         */
         public ReflectionDiffBuilder<T> build() {
             return new ReflectionDiffBuilder<>(diffBuilder, excludeFieldNames);
         }
 
+        /**
+         * Sets the DiffBuilder.
+         *
+         * @param diffBuilder the DiffBuilder.
+         * @return this.
+         */
         public Builder<T> setDiffBuilder(final DiffBuilder<T> diffBuilder) {
             this.diffBuilder = diffBuilder;
             return this;
         }
 
+        /**
+         * Sets field names to exclude from output. Intended for fields like {@code "password"} or {@code "lastModificationDate"}.
+         *
+         * @param excludeFieldNames field names to exclude.
+         * @return this.
+         */
         public Builder<T> setExcludeFieldNames(final String... excludeFieldNames) {
             this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);
             return this;
         }
+
     }
 
+    /**
+     * Constructs a new {@link Builder}.
+     *
+     * @param <T> type of the left and right object.
+     * @return a new {@link Builder}.
+     * @since 3.15.0
+     */
     public static <T> Builder<T> builder() {
         return new Builder<>();
     }
@@ -50,10 +79,15 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
         if (excludeFieldNames == null) {
             return ArrayUtils.EMPTY_STRING_ARRAY;
         }
+        // clone and remove nulls
         return ArraySorter.sort(ReflectionToStringBuilder.toNoNullStringArray(excludeFieldNames));
     }
 
     private final DiffBuilder<T> diffBuilder;
+
+    /**
+     * Field names to exclude from output. Intended for fields like {@code "password"} or {@code "lastModificationDate"}.
+     */
     private String[] excludeFieldNames;
 
     private ReflectionDiffBuilder(final DiffBuilder<T> diffBuilder, final String[] excludeFieldNames) {
@@ -61,21 +95,42 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
         this.excludeFieldNames = excludeFieldNames;
     }
 
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * <p>
+     * If {@code left == right} or {@code left.equals(right)} then the builder will not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * </p>
+     *
+     * @param left  {@code this} object.
+     * @param right the object to diff against.
+     * @param style the style will use when outputting the objects, {@code null} uses the default
+     * @throws IllegalArgumentException if {@code left} or {@code right} is {@code null}.
+     * @deprecated Use {@link Builder}.
+     */
     @Deprecated
     public ReflectionDiffBuilder(final T left, final T right, final ToStringStyle style) {
         this(DiffBuilder.<T>builder().setLeft(left).setRight(right).setStyle(style).build(), null);
     }
 
-    // EXTRACT METHOD REFACTORING STARTS HERE
-
     private boolean accept(final Field field) {
-        return !isInnerClassField(field)
-            && !isTransientField(field)
-            && !isStaticField(field)
-            && !isExcludedField(field)
-            && !isDiffExcluded(field);
+        if (isInnerClassField(field)) {
+            return false;
+        }
+        if (isTransientField(field)) {
+            return false;
+        }
+        if (isStaticField(field)) {
+            return false;
+        }
+        if (isExcludedField(field)) {
+            return false;
+        }
+        return !isDiffExcludedAnnotationPresent(field);
     }
 
+    // Extracted methods for refactoring
     private boolean isInnerClassField(final Field field) {
         return field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1;
     }
@@ -92,10 +147,10 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
         return this.excludeFieldNames != null && Arrays.binarySearch(this.excludeFieldNames, field.getName()) >= 0;
     }
 
-    private boolean isDiffExcluded(final Field field) {
+    private boolean isDiffExcludedAnnotationPresent(final Field field) {
         return field.isAnnotationPresent(DiffExclude.class);
     }
-    // EXTRACT METHOD REFACTORING ENDS HERE
+    // End of extracted methods
 
     private void appendFields(final Class<?> clazz) {
         for (final Field field : FieldUtils.getAllFields(clazz)) {
@@ -103,6 +158,8 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
                 try {
                     diffBuilder.append(field.getName(), FieldUtils.readField(field, getLeft(), true), FieldUtils.readField(field, getRight(), true));
                 } catch (final IllegalAccessException e) {
+                    // this can't happen. Would get a Security exception instead
+                    // throw a runtime exception in case the impossible happens.
                     throw new IllegalArgumentException("Unexpected IllegalAccessException: " + e.getMessage(), e);
                 }
             }
@@ -114,10 +171,17 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
         if (getLeft().equals(getRight())) {
             return diffBuilder.build();
         }
+
         appendFields(getLeft().getClass());
         return diffBuilder.build();
     }
 
+    /**
+     * Gets the field names that should be excluded from the diff.
+     *
+     * @return Returns the excludeFieldNames.
+     * @since 3.13.0
+     */
     public String[] getExcludeFieldNames() {
         return this.excludeFieldNames.clone();
     }
@@ -130,6 +194,14 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
         return diffBuilder.getRight();
     }
 
+    /**
+     * Sets the field names to exclude.
+     *
+     * @param excludeFieldNames The field names to exclude from the diff or {@code null}.
+     * @return {@code this}
+     * @since 3.13.0
+     * @deprecated Use {@link Builder#setExcludeFieldNames(String[])}.
+     */
     @Deprecated
     public ReflectionDiffBuilder<T> setExcludeFieldNames(final String... excludeFieldNames) {
         this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);
@@ -139,19 +211,11 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 }
 ```
 
----
+### Summary of Refactoring
 
-### **Summary of Refactoring**
+- **accept(Field field)** has been transformed to use **isInnerClassField**, **isTransientField**, **isStaticField**, **isExcludedField**, and **isDiffExcludedAnnotationPresent** helper methods.
+- This improves **readability** by giving names to each filtering rule, and it allows for easier maintenance and extension in the future.
 
-- **Extracted conditional checks** in `accept(Field)` to:
-  - `isInnerClassField`
-  - `isTransientField`
-  - `isStaticField`
-  - `isExcludedField`
-  - `isDiffExcluded`
-- **Increased readability**—each extracted method expresses intent.
-- **Reduced code complexity** in the main `accept(Field)` logic.
+Let me know if you want to see further refactorings or optimizations!
 
----
-
-**This refactoring improves code clarity and makes further enhancements or individual condition testing easier.**
+Levenshtein edit-distance: 936

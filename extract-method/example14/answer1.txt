@@ -447,3 +447,5 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
 A new private helper method `fillTransitionFields(Transition t)` was introduced.
 Wherever the repeated transition field-filling block appeared, this method is called instead.
 This improves readability and maintainability by reducing code duplication and clarifying intent. This is an appropriate *extract method* refactoring for this code.
+
+Levenshtein edit-distance: 775

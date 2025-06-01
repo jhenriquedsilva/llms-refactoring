@@ -603,3 +603,5 @@ public final class IOUtil {
 ---
 
 This improves **readability, separation of concerns, and future maintainability**. Let me know if you wish to continue with more detailed extractions elsewhere!
+
+Levenshtein edit-distance: 2271

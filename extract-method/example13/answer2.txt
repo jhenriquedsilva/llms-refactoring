@@ -577,3 +577,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - Introduced a helper method: `assertFieldCannotBeClosed(Class<?>, String)`.
 - Applied this to three test methods to remove duplicated code snippets.
 - No behavior change; this is a pure refactoring for clarity and DRYness.
+
+Levenshtein edit-distance: 1570

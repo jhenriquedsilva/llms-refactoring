@@ -270,3 +270,6 @@ class FileChannelDataBlock implements CloseableDataBlock {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+
+Mean: (26120 + 26164 + 26835 + 26883 + 26291) / 5 = 26458,6

@@ -301,3 +301,5 @@ public class FileBasedConfig extends StoredConfig {
   - Extracted BOM-writing/encoding logic in `save()` into `getSavedBytesFromText()`.
 
 This improves code readability and maintainability, making each method shorter, more focused, and easier to test.
+
+Levenshtein edit-distance: 1620

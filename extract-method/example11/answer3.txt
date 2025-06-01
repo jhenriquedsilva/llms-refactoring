@@ -544,3 +544,5 @@ public abstract class QuicSession extends ContainerLifeCycle
 Other areas remain unchanged, as most logic repetition is necessary due to QUIC API surface area.
 
 **This increases code clarity and reduces maintenance cost for listener notification logic.**
+
+Levenshtein edit-distance: 764

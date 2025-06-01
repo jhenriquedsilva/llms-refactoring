@@ -87,3 +87,5 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 - `indexNullAs` left as-is, since it does not fit the pattern.
 
 **This improves code clarity and maintainability by consolidating the repetitive pattern.**
+
+Levenshtein edit-distance: 449

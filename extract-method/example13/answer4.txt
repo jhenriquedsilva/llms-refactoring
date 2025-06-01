@@ -621,3 +621,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - Other duplication in this class is more incidental and not as easily abstracted without harming readability or intent.
 
 If you want to extract even more helpers, let me know!
+
+Levenshtein edit-distance: 2548

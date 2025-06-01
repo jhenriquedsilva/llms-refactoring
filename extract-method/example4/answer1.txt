@@ -97,3 +97,5 @@ public class RemoteClusterCredentialsManager {
 - **Replaced** duplicated code in `updateClusterCredentials` by calling the new method.
 
 This improves code readability and maintainability by removing duplication.
+
+Levenshtein edit-distance: 643

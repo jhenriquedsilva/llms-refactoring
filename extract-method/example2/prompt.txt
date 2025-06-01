@@ -50,4 +50,6 @@ public class ClosedInputStreamTest {
 
 }
 ```
-If there are any refactoring opportunities, please do it and generate the refactored code. Otherwise, simply state that no refactoring is necessary.
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (845 + 420 + 976 + 866 + 1013) / 5 = 824

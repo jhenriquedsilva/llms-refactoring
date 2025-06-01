@@ -159,6 +159,10 @@ final class PulsarPropertiesMapper {
 
     }
 
+
+
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (2233 + 2370 + 272 + 900 + 2243) / 5 = 1603,6

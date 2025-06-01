@@ -454,4 +454,6 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
     }
 }
 ```
-If there are any refactoring opportunities, please do it and generate the refactored code. Otherwise, simply state that no refactoring is necessary.
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (4451 + 3052 + 2671 + 4008 + 2716) / 5 = 3379,6

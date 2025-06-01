@@ -887,3 +887,7 @@ public class MvcUriComponentsBuilder {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+EXAMPLE WHERE GPT SHRUNK THE ANSWER
+
+Mean: (16315 + 16299 + 15922 + 31684 + 37802) / 5 = 23604,4

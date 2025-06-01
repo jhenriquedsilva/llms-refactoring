@@ -554,3 +554,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (1076 + 1570 + 1098 + 2548 + 1055) / 5 = 1836,75

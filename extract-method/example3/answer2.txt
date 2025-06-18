@@ -224,3 +224,5 @@ These methods make it clearer what each check is doing inside `accept(Field fiel
 **No functional changes** are made—just improved the structure and readability.
 
 Levenshtein edit-distance: 885
+Compiles
+Tests pass

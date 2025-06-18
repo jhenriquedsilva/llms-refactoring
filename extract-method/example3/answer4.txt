@@ -219,3 +219,5 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 Let me know if you want to see further refactorings or optimizations!
 
 Levenshtein edit-distance: 936
+Compiles
+Tests pass

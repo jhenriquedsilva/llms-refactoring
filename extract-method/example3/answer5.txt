@@ -230,3 +230,5 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 If you wish further extraction (for example, into a list of strategies or predicates), you can go further, but this is the standard and practical application of the **extract method** refactoring here.
 
 Levenshtein edit-distance: 937
+Compiles
+Tests pass

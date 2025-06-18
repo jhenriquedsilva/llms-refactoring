@@ -236,3 +236,5 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 This restructuring maintains the original test logic while improving maintainability and reducing duplication, following Extract Method Refactoring best practices.
 
 Levenshtein edit-distance: 5699
+Compiles
+Tests pass

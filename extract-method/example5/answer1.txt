@@ -219,3 +219,5 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 **No functionality was changed.** Only method extraction for clarity and DRY.
 
 Levenshtein edit-distance: 5944
+Compiles
+Tests pass

@@ -371,3 +371,4 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
 If you need additional, deeper extractions, or want even finer-grained refactoring (e.g. for null-check/exception idioms), just ask!
 
 Levenshtein edit-distance: 3582
+Does not compile

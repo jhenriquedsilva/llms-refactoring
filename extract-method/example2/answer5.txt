@@ -82,3 +82,5 @@ public class ClosedInputStreamTest {
 The class was refactored by extracting method logic for commonly repeated `ClosedInputStream` EOF assertions. This improves reusability, readability, and maintainability.
 
 Levenshtein edit-distance: 1013
+Compiles
+Tests pass

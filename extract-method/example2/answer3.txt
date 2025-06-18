@@ -85,3 +85,5 @@ public class ClosedInputStreamTest {
 If you'd like even further reduction (for example, even combining the resource management in single methods for singleton cases or more parameterization), just let me know!
 
 Levenshtein edit-distance: 976
+Compiles
+Tests pass

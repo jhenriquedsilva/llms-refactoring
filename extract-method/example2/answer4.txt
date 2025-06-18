@@ -89,3 +89,5 @@ public class ClosedInputStreamTest {
 If you’d like, this pattern could be continued for other assertion groupings as the test class grows.
 
 Levenshtein edit-distance: 866
+Compiles
+Tests pass

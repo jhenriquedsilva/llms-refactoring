@@ -99,3 +99,5 @@ public class ClosedInputStreamTest {
 If you need a more advanced refactoring or have a specific style requirement, feel free to specify!
 
 Levenshtein edit-distance: 845
+Compiles
+Tests pass

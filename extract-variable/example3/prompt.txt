@@ -186,3 +186,5 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (1227 + 885 + 567 + 464 + 925) / 5 = 813,6

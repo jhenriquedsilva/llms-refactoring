@@ -252,3 +252,7 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 - In `testTimeZoneStrategyPattern_TimeZone_getAvailableIDs`, extracted `String pattern = TIMEZONE_PATTERN` before the loop.
 
 These small but effective refactorings enhance readability and maintainability by clarifying intent and reducing duplication.
+
+Levenshtein edit-distance: 464
+Compiles
+Tests pass

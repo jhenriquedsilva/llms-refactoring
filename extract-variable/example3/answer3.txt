@@ -216,3 +216,7 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 - Extracted the checks for "isLanguageUndetermined" and "isAvailableLocale" into local variables where they are reused within a method.
 
 If you have further extract-variable or refactor-specific preferences, let me know!
+
+Levenshtein edit-distance: 567
+Compiles
+Tests pass

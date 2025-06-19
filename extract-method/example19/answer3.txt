@@ -187,3 +187,5 @@ final class PulsarPropertiesMapper {
 Let me know if you'd like me to look for even more aggressive/uniform extract refactorings or prefer another style!
 
 Levenshtein edit-distance: 272
+Does not compile
+Tests do not pass

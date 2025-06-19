@@ -239,3 +239,5 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 The primary extract method opportunity for code deduplication in this class is the `contentInfoToMimeType(ContentInfo)` method, now used by all three `guessMimeType` overloads. No other substantial duplicate code in this snippet merited similar refactoring.
 
 Levenshtein edit-distance: 953
+Compiles
+Tests pass

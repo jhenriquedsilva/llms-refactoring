@@ -237,3 +237,5 @@ This:
 **If you'd like more aggressive refactoring (e.g., dynamic property-to-method mappings), please specify.**
 
 Levenshtein edit-distance: 2243
+Does not compile
+Tests do not pass

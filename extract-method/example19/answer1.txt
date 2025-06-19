@@ -207,3 +207,5 @@ final class PulsarPropertiesMapper {
 **This structure will facilitate future changes and extensions, as each method does exactly one thing.**
 
 Levenshtein edit-distance: 2233
+Does not compile
+Tests do not pass

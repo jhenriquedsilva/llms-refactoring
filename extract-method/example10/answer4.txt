@@ -284,3 +284,5 @@ class FileChannelDataBlock implements CloseableDataBlock {
 This improves readability, isolates errors/side effects, and helps maintain the single responsibility principle within methods.
 
 Levenshtein edit-distance: 2969
+Compiles
+Passes 9 ouf of 13

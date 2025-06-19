@@ -70,3 +70,5 @@ public class GenericMaster {
 - Future changes to the generic type resolution logic only need to be made in one place.
 
 Levenshtein edit-distance: 93
+Compiles
+Tests pass

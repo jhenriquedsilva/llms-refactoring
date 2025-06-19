@@ -579,3 +579,4 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - No behavior change; this is a pure refactoring for clarity and DRYness.
 
 Levenshtein edit-distance: 1570
+Does not compile

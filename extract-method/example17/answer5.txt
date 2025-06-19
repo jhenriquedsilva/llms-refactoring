@@ -528,3 +528,5 @@ public final class IOUtil {
 **If you need more or different extract method refactorings, or want to target other parts (such as repeated buffer handling), let me know!**
 
 Levenshtein edit-distance: 3923
+Compiles
+Tests pass

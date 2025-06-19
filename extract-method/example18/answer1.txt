@@ -216,3 +216,5 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 - The public API stays unchanged; only the implementation is simplified and easier to maintain.
 
 Levenshtein edit-distance: 786
+Compiles
+Tests pass

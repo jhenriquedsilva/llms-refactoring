@@ -473,3 +473,5 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
 This refactoring applies extract method to the logic for filling in transition fields, removing code duplication, and improving maintainability and readability.
 
 Levenshtein edit-distance: 732
+Compiles
+Tests pass

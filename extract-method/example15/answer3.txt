@@ -72,3 +72,5 @@ public class GenericMaster {
 **This is a textbook use of the Extract Method refactoring technique.**
 
 Levenshtein edit-distance: 227
+Compiles
+Tests pass

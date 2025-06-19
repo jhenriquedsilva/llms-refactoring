@@ -298,3 +298,5 @@ public final class BridgeMethodResolver {
 **This refactoring is safe and idiomatic for the problem.**
 
 Levenshtein edit-distance: 346
+Compiles
+Tests pass

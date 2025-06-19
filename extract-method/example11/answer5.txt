@@ -588,3 +588,4 @@ Other smaller code block repetitions are arguably not worth extracting due to th
 If you'd like other kinds of extract method refactorings, please specify further.
 
 Levenshtein edit-distance: 1271
+Does not compile

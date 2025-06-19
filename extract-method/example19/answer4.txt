@@ -197,3 +197,5 @@ This refactoring **improves clarity and maintainability** without changing the b
 Let me know if you'd like further decomposition or indentation adjustments!
 
 Levenshtein edit-distance: 900
+Does not compile
+Tests do not pass

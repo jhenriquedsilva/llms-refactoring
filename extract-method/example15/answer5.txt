@@ -65,3 +65,5 @@ public class GenericMaster {
 - Duplication is eliminated, improving maintainability and readability.
 
 Levenshtein edit-distance: 93
+Compiles
+Tests pass

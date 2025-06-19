@@ -185,3 +185,5 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 **This refactoring improves readability, maintainability, and testability.**
 
 Levenshtein edit-distance: 1925
+Compiles
+Tests pass

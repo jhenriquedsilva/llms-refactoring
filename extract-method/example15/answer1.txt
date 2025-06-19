@@ -73,3 +73,5 @@ public class GenericMaster {
 - Improved code readability and maintainability.
 
 Levenshtein edit-distance: 335
+Compiles
+Tests pass

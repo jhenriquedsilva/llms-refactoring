@@ -84,3 +84,4 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 **Yes, refactoring is possible** by extracting the common code pattern in methods calling `vectorTypeOptionsStep()`. The above refactored code accomplishes this.
 
 Levenshtein edit-distance: 603
+Does not compile

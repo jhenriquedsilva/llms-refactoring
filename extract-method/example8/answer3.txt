@@ -90,3 +90,4 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 **If you want to further refactor (even `indexNullAs`), you could generalize the utility method, but as is, the above refactoring strikes a good balance.**
 
 Levenshtein edit-distance: 523
+Does not compile

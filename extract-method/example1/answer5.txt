@@ -430,3 +430,5 @@ public class RegexpCheck extends AbstractCheck {
 If you need additional opportunities, please clarify!
 
 Levenshtein edit-distance: 199
+Compiles
+Tests pass

@@ -194,3 +194,5 @@ public class RegexpCheck extends AbstractCheck {
 This removes duplicated message formatting logic and improves clarity. No other significant extract-method refactorings are needed; the rest of the logic is reasonably cohesive and clear.
 
 Levenshtein edit-distance: 7018
+Compiles
+Tests pass

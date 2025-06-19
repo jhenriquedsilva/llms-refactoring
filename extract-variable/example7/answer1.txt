@@ -336,3 +336,6 @@ These changes collectively improve readability and maintainability, especially f
 ---
 
 **If you need more aggressive or different extraction, or only want the specific locations with "before/after" diffs, just ask.**
+
+Levenshtein edit-distance: 2524
+Compiles

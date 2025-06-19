@@ -211,3 +211,6 @@ public class BoundedInputStreamTest {
 - Improved code readability and maintainability by removing magic numbers/literals.
 
 If you need the refactoring to be more granular or focused on only a particular test method, let me know!
+
+Levenshtein edit-distance: 2031
+Does not compile

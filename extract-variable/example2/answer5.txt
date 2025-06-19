@@ -190,3 +190,7 @@ public class BoundedInputStreamTest {
 - Kept the code logic unchanged, just eliminated duplication and improved clarity.
 
 **This enhances readability and avoids repeated instantiation of the same byte arrays, supporting the team in easier future maintenance and review.**
+
+Levenshtein edit-distance: 563
+Compiles
+Tests pass

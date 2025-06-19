@@ -192,3 +192,7 @@ public class BoundedInputStreamTest {
 5. **Improved Readability**: Less repetition; any changes to string/lengths are easier to maintain.
 
 This refactoring maintains the **original logic and tests unchanged** but makes the code clearer and easier to maintain, especially as tests grow.
+
+Levenshtein edit-distance: 1511
+Compiles
+Tests pass

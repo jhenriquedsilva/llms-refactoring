@@ -185,3 +185,7 @@ public class BoundedInputStreamTest {
 - Added minor extracted variables for `limitGreaterThanLength` and `limitLessThanLength` in relevant methods to show intent.
 
 **These refactorings improve both readability and maintainability of the code.**
+
+Levenshtein edit-distance: 1545
+Compiles
+Tests pass

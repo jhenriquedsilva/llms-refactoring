@@ -136,3 +136,6 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 - **`filter == null ? null : filter.toQuery(context)`** is now extracted to `filterQuery` for use in both vector type branches.
 
 This improves code readability, reduces duplication, and helps maintenance.
+
+Levenshtein edit-distance: 258
+Compiles

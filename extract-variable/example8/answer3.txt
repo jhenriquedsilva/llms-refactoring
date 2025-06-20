@@ -128,3 +128,6 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 - This improves code readability and makes future changes easier.
 
 No other obvious repeated complex expressions benefit significantly from extract variable refactoring in this snippet.
+
+Levenshtein edit-distance: 257
+Compiles

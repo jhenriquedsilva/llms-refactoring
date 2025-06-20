@@ -145,3 +145,6 @@ Improved readability, reduced repetition, and made future maintenance easier.
 ---
 
 **If you need further refactoring (i.e., for other code smells), let me know!**
+
+Levenshtein edit-distance: 430
+Compiles

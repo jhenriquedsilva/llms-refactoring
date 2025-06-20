@@ -114,3 +114,5 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (430 + 478 + 257 + 258 + 303) / 5 = 345,2

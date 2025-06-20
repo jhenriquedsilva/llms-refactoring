@@ -133,3 +133,6 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 - Extracted the expression `(filter == null ? null : filter.toQuery(context))` into the local variable `filterQuery` in `doToQuery`.
 
 This improves readability and reduces duplication per standard extract variable refactoring best practices.
+
+Levenshtein edit-distance: 303
+Compiles

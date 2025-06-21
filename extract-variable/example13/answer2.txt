@@ -539,3 +539,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - **Wave of refactoring makes repeated logic easier to change and reason about.**
 
 There is no behavioral change—only improved readability, maintainability, and reduced repetition.
+
+Levenshtein edit-distance: 1835
+Does not compile

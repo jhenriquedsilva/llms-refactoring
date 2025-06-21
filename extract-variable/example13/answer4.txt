@@ -586,3 +586,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - Ensured clarity and maintainability by avoiding repeated method calls in a single scope.
 
 Let me know if you'd like further fine-grained refactoring suggestions!
+
+Levenshtein edit-distance: 506
+Does not compile

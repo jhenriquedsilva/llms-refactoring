@@ -544,3 +544,7 @@ public class CommitGraphWriter {
 - Extracted `data.size() - dataHeaderSize` result to variable in `computeBloomFilterChunks`.
 
 If you need more aggressive refactorings or refactoring for other purposes (such as method extractions, class splitting, etc.), please clarify!
+
+Levenshtein edit-distance: 2122
+Compiles
+Tests dot pass due to no generated Java docs

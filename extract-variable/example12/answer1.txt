@@ -589,3 +589,7 @@ public class CommitGraphWriter {
 - Provided extractions to clarify loops/conditions, especially in edge writing and commit data construction.
 
 These minor refactorings aid readability, maintainability, and ease future changes.
+
+Levenshtein edit-distance: 1497
+Compiles
+Tests pass

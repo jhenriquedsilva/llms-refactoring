@@ -266,3 +266,6 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 - Improved readability and maintainability by centralizing magic values.
 
 **Let me know if you need any further refactorings or explanations!**
+
+Levenshtein edit-distance: 413
+Compiles

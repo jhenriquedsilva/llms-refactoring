@@ -253,3 +253,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (413 + 543 + 827 + 612 + 287) / 3 = 536,4

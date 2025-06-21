@@ -280,3 +280,6 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 - **All instances of `"\\"` replaced with `ESCAPE_CHAR`**
 - No logic changed; consistency and maintainability are improved.
 - This is the only significant extract variable refactoring opportunity in the code.
+
+Levenshtein edit-distance: 287
+Compiles

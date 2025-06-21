@@ -281,3 +281,6 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
 This makes the code less error-prone in case you want to change the escape character in the future, and keeps your logic more readable.
 **No logic is changed; only local repeated values are extracted.**
+
+Levenshtein edit-distance: 612
+Compiles

@@ -374,3 +374,7 @@ final class SerializableTypeWrapper {
 No change in logic or structure.
 
 **Let me know if you want more aggressive refactoring (e.g., extract methods, reorganize class nesting, etc.)!**
+
+Levenshtein edit-distance: 830
+Compiles
+Tests pass

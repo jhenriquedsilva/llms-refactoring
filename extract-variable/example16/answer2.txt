@@ -379,3 +379,7 @@ final class SerializableTypeWrapper {
 - This improves readability and maintains efficiency.
 
 **Let me know if you want more aggressive refactorings!**
+
+Levenshtein edit-distance: 411
+Compiles
+Tests pass

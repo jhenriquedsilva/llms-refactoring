@@ -81,3 +81,5 @@ public class UploadConfigSetFileAPI extends ConfigSetAPIBase {
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (136 + 185 + 788 + 181 + 576) / 5 = 373,2

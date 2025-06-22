@@ -852,3 +852,5 @@ class InlineDelegateByteBuddyMockMaker
 }
 ```
 If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.
+
+Mean: (705 + 1376 + 748 + 1163 + 1013) / 5 = 1001

@@ -874,3 +874,7 @@ class InlineDelegateByteBuddyMockMaker
 
 **Summary:**
 This class benefits from several "extract variable" refactorings, most notably in error handling and when dealing with lengthy chained method calls or repeated expressions. These changes improve readability, maintainability, and reduce the risk of introducing subtle bugs if the extracted expression's value or type ever changes.
+
+Levenshtein edit-distance: 1013
+Compiles
+Tests pass

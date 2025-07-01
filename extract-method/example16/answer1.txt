@@ -649,4 +649,6 @@ No other significant extract method candidates are present. For complex producti
 
 **If you have more such code samples, I can continue to refactor for maintainability/readability.**
 
+Does not compile
+Test do not pass
 Levenshtein edit-distance: 16315

@@ -600,4 +600,6 @@ public class MvcUriComponentsBuilder {
 
 If you have further questions or want more aggressive refactoring (e.g., around argument checking or builders), let me know.
 
+Compiles
+Tests pass
 Levenshtein edit-distance: 16299

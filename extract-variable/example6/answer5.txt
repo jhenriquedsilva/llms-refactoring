@@ -473,3 +473,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 - No other extract-variable opportunities of significant value are obvious beyond these.
 
 **If you have further preferences (like moving the calculation to a helper method), let me know!**
+
+Compiles

@@ -504,3 +504,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 ---
 
 These changes make the code **easier to maintain, read, and less error-prone**. Let me know if you want the diff view or only specific methods refactored instead.
+
+Compiles

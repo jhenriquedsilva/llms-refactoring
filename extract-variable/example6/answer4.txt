@@ -476,3 +476,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 - No logic is changed, only code duplication is reduced, and expressions clarified.
 
 **You may extract further if you wish (as mini-methods), but this already provides the core readability and maintainability benefit.**
+
+Compiles

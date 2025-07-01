@@ -470,3 +470,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 ---
 
 **Let me know if you want to see other types of refactorings (e.g., method extraction, DRYing up), but for strictly "extract variable" as per your instruction, the above changes cover the opportunities.**
+
+Compiles

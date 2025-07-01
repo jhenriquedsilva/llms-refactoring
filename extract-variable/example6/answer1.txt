@@ -475,3 +475,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 These changes improve code readability, centralize calculation logic, and facilitate easier future adjustments.
 
 Let me know if you want even finer-grained refactoring, but this should cover the main readability and repetition issues!
+
+Compiles

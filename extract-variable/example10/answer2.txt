@@ -90,3 +90,5 @@ public interface ResolvedTypeParameterValueProvider {
 
 **Explanation:**
 This approach avoids repeated calls, enhances code readability, and is a common and recommended refactoring in such scenarios.
+
+Compiles

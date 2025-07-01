@@ -86,3 +86,5 @@ public interface ResolvedTypeParameterValueProvider {
 
 **Conclusion:**
 Applying the *extract variable* refactoring here improves code clarity, avoids redundant code, and makes future maintenance easier.
+
+Compiles

@@ -73,3 +73,5 @@ public interface ResolvedTypeParameterValueProvider {
 - Extracted `typeParam.get()` into a `typeParamValue` variable after the `isPresent()` check.
 
 **These changes do not alter the logic, and enable easier maintenance and readability.**
+
+Compiles

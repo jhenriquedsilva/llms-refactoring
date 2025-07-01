@@ -98,3 +98,5 @@ public interface ResolvedTypeParameterValueProvider {
 ---
 
 If you're interested in further refactoring for clarity (such as caching multiple uses of `type.asWildcard()` in deep branches), it could be done, but this is the most canonical extract variable refactoring based on your request.
+
+Compiles

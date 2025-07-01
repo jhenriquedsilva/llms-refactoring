@@ -108,3 +108,5 @@ public class UndertowServletWebServer extends UndertowWebServer {
 ---
 
 **These changes improve readability and maintainability, making intentions more explicit.**
+
+Compiles

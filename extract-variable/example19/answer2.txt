@@ -109,3 +109,5 @@ public class UndertowServletWebServer extends UndertowWebServer {
 - Extracted `String effectiveContextPath = StringUtils.hasText(this.contextPath) ? this.contextPath : "/";` in `getStartLogMessage()`
 
 This improves readability by giving clear names to complex expressions and intermediate results.
+
+Compiles

@@ -118,3 +118,5 @@ public class UndertowServletWebServer extends UndertowWebServer {
 
 **Summary:**
 Only one small extract variable refactoring was suitable for `getStartLogMessage` to clarify the context path string being logged. All other code was already clear and did not require refactoring for readability.
+
+Compiles

@@ -167,3 +167,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 - Consistently used variable names for field names.
 
 These improvements enhance the clarity and maintainability of the code.
+
+Compiles

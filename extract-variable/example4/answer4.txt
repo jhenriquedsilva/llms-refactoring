@@ -171,3 +171,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 - This also prepares the code for easier maintenance: if the vector’s dimension changes or the way vectors are generated is updated, you don’t have to hunt for every occurrence.
 
 If you wish for even further reduction of duplication (e.g. a method to generate a random vector), let me know!
+
+Compiles

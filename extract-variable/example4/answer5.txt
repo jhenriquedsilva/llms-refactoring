@@ -180,3 +180,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 - **`KnnSearchBuilder` instantiations** reuse those float[] and configuration variables.
 
 This refactoring improves readability and maintainability without altering the logic or performance.
+
+Compiles

@@ -179,3 +179,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 - Used local variables for `randomFloatArray` and `KnnSearchBuilder` where they were constructed multiple times in loops, improving readability.
 
 There are no other significant opportunities for extract variable refactoring in this context.
+
+Compiles

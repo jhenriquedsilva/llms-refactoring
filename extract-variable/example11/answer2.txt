@@ -178,4 +178,6 @@ public abstract class HttpChannel implements CyclicTimeouts.Expirable
 **No further repeated complex expressions** have been found that merit extraction. If you need more aggressive refactoring for other patterns (such as handling logger calls), let me know!
 
 Levenshtein edit-distance: 59
+
 Compiles
+Tests pass

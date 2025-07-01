@@ -544,10 +544,210 @@ final class DefaultWebClient implements WebClient {
     }
 
 
-    // ... (Rest of DefaultWebClient unchanged) ...
     private static class DefaultResponseSpec implements ResponseSpec {
-        // ... as in your original code ...
-        // Omitted for brevity
+
+        private static final StatusHandler DEFAULT_STATUS_HANDLER =
+                new StatusHandler(code -> code.value() >= 400, ClientResponse::createException);
+
+
+        private final HttpMethod httpMethod;
+
+        private final URI uri;
+
+        private final Mono<ClientResponse> responseMono;
+
+        private final List<StatusHandler> statusHandlers = new ArrayList<>(1);
+
+        private final int defaultStatusHandlerCount;
+
+        DefaultResponseSpec(HttpMethod httpMethod, URI uri, Mono<ClientResponse> responseMono,
+                            List<StatusHandler> defaultStatusHandlers) {
+
+            this.httpMethod = httpMethod;
+            this.uri = uri;
+            this.responseMono = responseMono;
+            this.statusHandlers.addAll(defaultStatusHandlers);
+            this.statusHandlers.add(DEFAULT_STATUS_HANDLER);
+            this.defaultStatusHandlerCount = this.statusHandlers.size();
+        }
+
+        @Override
+        public ResponseSpec onStatus(Predicate<HttpStatusCode> statusCodePredicate,
+                                     Function<ClientResponse, Mono<? extends Throwable>> exceptionFunction) {
+
+            Assert.notNull(statusCodePredicate, "StatusCodePredicate must not be null");
+            Assert.notNull(exceptionFunction, "Function must not be null");
+            int index = this.statusHandlers.size() - this.defaultStatusHandlerCount;  // Default handlers always last
+            this.statusHandlers.add(index, new StatusHandler(statusCodePredicate, exceptionFunction));
+            return this;
+        }
+
+        @Override
+        public ResponseSpec onRawStatus(IntPredicate statusCodePredicate,
+                                        Function<ClientResponse, Mono<? extends Throwable>> exceptionFunction) {
+
+            return onStatus(toStatusCodePredicate(statusCodePredicate), exceptionFunction);
+        }
+
+        private static Predicate<HttpStatusCode> toStatusCodePredicate(IntPredicate predicate) {
+            return value -> predicate.test(value.value());
+        }
+
+        @Override
+        public <T> Mono<T> bodyToMono(Class<T> elementClass) {
+            Assert.notNull(elementClass, "Class must not be null");
+            return this.responseMono.flatMap(response ->
+                    handleBodyMono(response, response.bodyToMono(elementClass)));
+        }
+
+        @Override
+        public <T> Mono<T> bodyToMono(ParameterizedTypeReference<T> elementTypeRef) {
+            Assert.notNull(elementTypeRef, "ParameterizedTypeReference must not be null");
+            return this.responseMono.flatMap(response ->
+                    handleBodyMono(response, response.bodyToMono(elementTypeRef)));
+        }
+
+        @Override
+        public <T> Flux<T> bodyToFlux(Class<T> elementClass) {
+            Assert.notNull(elementClass, "Class must not be null");
+            return this.responseMono.flatMapMany(response ->
+                    handleBodyFlux(response, response.bodyToFlux(elementClass)));
+        }
+
+        @Override
+        public <T> Flux<T> bodyToFlux(ParameterizedTypeReference<T> elementTypeRef) {
+            Assert.notNull(elementTypeRef, "ParameterizedTypeReference must not be null");
+            return this.responseMono.flatMapMany(response ->
+                    handleBodyFlux(response, response.bodyToFlux(elementTypeRef)));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<T>> toEntity(Class<T> bodyClass) {
+            return this.responseMono.flatMap(response ->
+                    WebClientUtils.mapToEntity(response,
+                            handleBodyMono(response, response.bodyToMono(bodyClass))));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<T>> toEntity(ParameterizedTypeReference<T> bodyTypeRef) {
+            return this.responseMono.flatMap(response ->
+                    WebClientUtils.mapToEntity(response,
+                            handleBodyMono(response, response.bodyToMono(bodyTypeRef))));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<List<T>>> toEntityList(Class<T> elementClass) {
+            return this.responseMono.flatMap(response ->
+                    WebClientUtils.mapToEntityList(response,
+                            handleBodyFlux(response, response.bodyToFlux(elementClass))));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<List<T>>> toEntityList(ParameterizedTypeReference<T> elementTypeRef) {
+            return this.responseMono.flatMap(response ->
+                    WebClientUtils.mapToEntityList(response,
+                            handleBodyFlux(response, response.bodyToFlux(elementTypeRef))));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<Flux<T>>> toEntityFlux(Class<T> elementType) {
+            return this.responseMono.flatMap(response ->
+                    handlerEntityFlux(response, response.bodyToFlux(elementType)));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<Flux<T>>> toEntityFlux(ParameterizedTypeReference<T> elementTypeRef) {
+            return this.responseMono.flatMap(response ->
+                    handlerEntityFlux(response, response.bodyToFlux(elementTypeRef)));
+        }
+
+        @Override
+        public <T> Mono<ResponseEntity<Flux<T>>> toEntityFlux(BodyExtractor<Flux<T>, ? super ClientHttpResponse> bodyExtractor) {
+            return this.responseMono.flatMap(response ->
+                    handlerEntityFlux(response, response.body(bodyExtractor)));
+        }
+
+        @Override
+        public Mono<ResponseEntity<Void>> toBodilessEntity() {
+            return this.responseMono.flatMap(response ->
+                    WebClientUtils.mapToEntity(response, handleBodyMono(response, Mono.<Void>empty()))
+                            .flatMap(entity -> response.releaseBody()
+                                    .onErrorResume(WebClientUtils.WRAP_EXCEPTION_PREDICATE, exceptionWrappingFunction(response))
+                                    .thenReturn(entity))
+            );
+        }
+
+        private <T> Mono<T> handleBodyMono(ClientResponse response, Mono<T> body) {
+            body = body.onErrorResume(WebClientUtils.WRAP_EXCEPTION_PREDICATE, exceptionWrappingFunction(response));
+            Mono<T> result = applyStatusHandlers(response);
+            return (result != null ? result.switchIfEmpty(body) : body);
+        }
+
+        private <T> Publisher<T> handleBodyFlux(ClientResponse response, Flux<T> body) {
+            body = body.onErrorResume(WebClientUtils.WRAP_EXCEPTION_PREDICATE, exceptionWrappingFunction(response));
+            Mono<T> result = applyStatusHandlers(response);
+            return (result != null ? result.flux().switchIfEmpty(body) : body);
+        }
+
+        private <T> Mono<? extends ResponseEntity<Flux<T>>> handlerEntityFlux(ClientResponse response, Flux<T> body) {
+            ResponseEntity<Flux<T>> entity = new ResponseEntity<>(
+                    body.onErrorResume(WebClientUtils.WRAP_EXCEPTION_PREDICATE, exceptionWrappingFunction(response)),
+                    response.headers().asHttpHeaders(),
+                    response.statusCode());
+
+            Mono<ResponseEntity<Flux<T>>> result = applyStatusHandlers(response);
+            return (result != null ? result.defaultIfEmpty(entity) : Mono.just(entity));
+        }
+
+        private <T> Function<Throwable, Mono<? extends T>> exceptionWrappingFunction(ClientResponse response) {
+            return t -> response.createException().flatMap(ex -> Mono.error(ex.initCause(t)));
+        }
+
+        @Nullable
+        private <T> Mono<T> applyStatusHandlers(ClientResponse response) {
+            HttpStatusCode statusCode = response.statusCode();
+            for (StatusHandler handler : this.statusHandlers) {
+                if (handler.test(statusCode)) {
+                    Mono<? extends Throwable> exMono;
+                    try {
+                        exMono = handler.apply(response);
+                        exMono = exMono.flatMap(ex -> releaseIfNotConsumed(response, ex));
+                        exMono = exMono.onErrorResume(ex -> releaseIfNotConsumed(response, ex));
+                    }
+                    catch (Throwable ex2) {
+                        exMono = releaseIfNotConsumed(response, ex2);
+                    }
+                    Mono<T> result = exMono.flatMap(Mono::error);
+                    return result.checkpoint(statusCode + " from " +
+                            WebClientUtils.getRequestDescription(this.httpMethod, this.uri) +
+                            " [DefaultWebClient]");
+                }
+            }
+            return null;
+        }
+
+
+        private static class StatusHandler {
+
+            private final Predicate<HttpStatusCode> predicate;
+
+            private final Function<ClientResponse, Mono<? extends Throwable>> exceptionFunction;
+
+            public StatusHandler(Predicate<HttpStatusCode> predicate,
+                                 Function<ClientResponse, Mono<? extends Throwable>> exceptionFunction) {
+
+                this.predicate = predicate;
+                this.exceptionFunction = exceptionFunction;
+            }
+
+            public boolean test(HttpStatusCode status) {
+                return this.predicate.test(status);
+            }
+
+            public Mono<? extends Throwable> apply(ClientResponse response) {
+                return this.exceptionFunction.apply(response);
+            }
+        }
     }
 
     private static class ObservationFilterFunction implements ExchangeFilterFunction {
@@ -574,3 +774,6 @@ The only significant extract variable refactoring needed in your code was around
 ---
 
 **Let me know if you also want other types of improvements or just stick to extract variable refactorings!**
+
+Compiles
+Tests pass

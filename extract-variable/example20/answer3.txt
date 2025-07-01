@@ -765,3 +765,5 @@ final class DefaultWebClient implements WebClient {
 
 If you need further/more aggressive refactoring (such as method extraction), let me know!
 
+Compiles
+Tests pass

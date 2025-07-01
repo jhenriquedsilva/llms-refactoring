@@ -114,3 +114,5 @@ public final class IdeaProjectLoaderUtil {
 - The rest of the logic was preserved for clarity and correctness.
 
 This improves **code readability**, reduces repetition, and aligns with clean code best practices.
+
+Compiles

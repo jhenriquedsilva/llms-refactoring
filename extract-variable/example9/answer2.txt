@@ -114,3 +114,5 @@ public final class IdeaProjectLoaderUtil {
 - The logic and method signatures are unchanged.
 
 If you need further extraction or more aggressive refactoring (e.g., extracting common code into private helpers), let me know!
+
+Compiles

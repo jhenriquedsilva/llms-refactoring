@@ -112,3 +112,4 @@ public final class IdeaProjectLoaderUtil {
 **Summary:**
 The refactored code eliminates repeated computations of `home.resolve(...)` expressions by extracting them into variables. This improves both efficiency and **code readability**.
 
+Compiles

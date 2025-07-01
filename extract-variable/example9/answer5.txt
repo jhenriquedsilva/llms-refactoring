@@ -109,3 +109,5 @@ public final class IdeaProjectLoaderUtil {
 - This improves readability and maintainability by reducing redundancy.
 
 Let me know if you would like even further refactoring or refactoring of any helper methods!
+
+Compiles

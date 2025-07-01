@@ -122,3 +122,5 @@ public final class IdeaProjectLoaderUtil {
 
 **Conclusion:**
 **Extract variable refactoring** was possible and recommended for this code, mainly in the two main methods. The above code is the improved version.
+
+Compiles

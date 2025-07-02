@@ -406,3 +406,5 @@ public class BoundedInputStream extends ProxyInputStream {
 If you want the *minimum* diff (e.g., keep deprecated methods as-is), you could leave legacy methods/fields for backward compatibility.
 
 **Let me know if you want the diff or minimal changes only!**
+
+Compiles

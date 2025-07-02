@@ -421,3 +421,5 @@ public class RetryCache {
 - `next` -> `nextEntry`
 
 These refactorings improve code readability, maintainability, and follow common Java naming conventions.
+
+Compiles

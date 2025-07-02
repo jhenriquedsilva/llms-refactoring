@@ -546,3 +546,5 @@ final class EntityIndexingServiceImpl implements EntityIndexingServiceEx {
 
 **No other attribute names are obviously low-quality.**
 If you want more aggressive semantic renaming, or have questions about variable naming outside of identifiers for data holders, let me know!
+
+Does not compile

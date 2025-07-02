@@ -535,3 +535,5 @@ final class EntityIndexingServiceImpl implements EntityIndexingServiceEx {
 - Updated corresponding constructor/field usages
 
 **If you would like even more attribute name improvements, let me know.**
+
+Does not compile

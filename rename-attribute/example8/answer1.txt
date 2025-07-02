@@ -108,3 +108,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 
 **Conclusion:**
 There **were** rename attribute refactoring opportunities regarding `maxConn`. The refactored version above addresses these for improved readability, clarity, and maintainability.
+
+Compiles

@@ -112,3 +112,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 ---
 
 **This refactoring improves clarity, naming consistency, and maintainability of the class.**
+
+Compiles

@@ -101,3 +101,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 - Updated the `toString`, constructors, field, and equality methods accordingly.
 
 This improves the readability and maintainability of the code.
+
+Compiles

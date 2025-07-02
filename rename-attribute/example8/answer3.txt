@@ -104,3 +104,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 - Updated all references to the renamed field for consistency.
 
 These changes improve code readability and maintainability by using a clear and consistent identifier.
+
+Compiles

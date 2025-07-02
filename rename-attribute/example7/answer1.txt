@@ -127,3 +127,5 @@ Other field names are already clear and do not require further renaming.
 ---
 
 *If you'd like more aggressive naming changes (e.g., for `uniqueKeyPropertyNames` → `uniqueKeyProperties`), let me know!*
+
+Compiles

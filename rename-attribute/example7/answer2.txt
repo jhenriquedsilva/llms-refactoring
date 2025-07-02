@@ -121,3 +121,5 @@ public class UniqueKeySelectingDelegate extends AbstractSelectingDelegate {
 - Updated the constructor and `getSelectSQL()` accordingly.
 
 No other attributes in this class require renaming for clarity or improved readability.
+
+Compiles

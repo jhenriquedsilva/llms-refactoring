@@ -215,3 +215,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
 - `objectsEquals` → `objectsAreEqual` (in DiffBuilder and every usage)
 
 All uses have been updated for naming clarity, which increases code readability and maintainability.
+
+Compiles
+Tests pass

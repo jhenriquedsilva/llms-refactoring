@@ -276,3 +276,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
 - Adjusted constructor and methods for new field names.
 
 **These renames make the code's intent clearer and improve maintainability.**
+
+Compiles
+Tests pass

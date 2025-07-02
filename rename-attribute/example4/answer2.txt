@@ -416,3 +416,5 @@ public class MetadataDataStreamsService {
 - Renamed field `lifecycle` to `dataStreamLifecycle` in `UpdateLifecycleTask`.
 - Renamed getter from `getDataLifecycle()` to `getDataStreamLifecycle()`.
 - Updated all usages accordingly for better clarity and consistency.
+
+Compiles

@@ -393,3 +393,5 @@ public class MetadataDataStreamsService {
 ---
 
 If you need even more aggressive refactoring, such as changing the naming of `setLifecycle`, `removeLifecycle`, etc., let me know!
+
+Compiles

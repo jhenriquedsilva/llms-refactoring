@@ -462,3 +462,5 @@ public class StreamMockEnvironment implements Environment {
 - `aggregateManager` → `globalAggregateManager`
 
 These changes improve **code readability and maintainability** by clarifying the semantic meaning of the class attributes.
+
+Does not compile

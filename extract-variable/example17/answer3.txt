@@ -284,3 +284,5 @@ public final class ASTModifierList extends AbstractJavaNode {
 - **In `hasAny` and `hasAnyExplicitly`**: Extracted the result of `Arrays.stream(mods).anyMatch(actual::contains)` into a variable named `anyOther`.
 
 **No other refactoring changes are necessary** since all other repeated or complex expressions are in separate contexts or not repeated enough to warrant further extraction.
+
+Compiles

@@ -274,3 +274,5 @@ public final class ASTModifierList extends AbstractJavaNode {
 - Extracted `Arrays.stream(mods)` into a `modsStream` variable in `hasAny` and `hasAnyExplicitly`.
 
 This makes the intent clearer, avoids repetition, and aligns well with best practices regarding extract variable refactoring.
+
+Compiles

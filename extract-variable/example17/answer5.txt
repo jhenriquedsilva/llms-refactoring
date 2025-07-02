@@ -266,3 +266,5 @@ public final class ASTModifierList extends AbstractJavaNode {
 
 If you want even more extraction (e.g., extracting `Arrays.asList(mods)` in all methods or unifying with a private helper), feel free to request that as well.
 Let me know if you would like a helper method to unify even more logic.
+
+Compiles

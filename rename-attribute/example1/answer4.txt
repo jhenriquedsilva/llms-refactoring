@@ -471,3 +471,6 @@ There are more improvements possible (for example, extracting some logic), but t
 ---
 
 **If you need only the refactoring list and recommendations without the code, or want a more detailed attribute-by-attribute rationale, let me know!**
+
+Does not compile
+Tests do not pass

@@ -495,3 +495,6 @@ public class CustomImportOrderCheck extends AbstractCheck {
 ---
 
 **This improves clarity, maintainability, and adherence to Java best practices.**
+
+Does not compile
+Tests do not pass

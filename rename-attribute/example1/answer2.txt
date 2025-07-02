@@ -792,3 +792,6 @@ public class CustomImportOrderCheck extends AbstractCheck {
 ---
 
 If you want only certain attributes refactored, let me know, and I can provide an even more focused version!
+
+Does not compile
+Tests do not pass

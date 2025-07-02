@@ -506,3 +506,6 @@ public class CustomImportOrderCheck extends AbstractCheck {
 
 **Note:**
 These changes strictly rename attributes and update their references throughout the class. If you need method renaming (e.g., from `setStandardPackageRegExp` to `setStandardPackagePattern`), remember to update related configuration usage elsewhere in your codebase!
+
+Does not compile
+Tests do not pass

@@ -365,3 +365,5 @@ public class AnnotatedMethod {
 - Renamed `bridgedMethod` and `getBridgedMethod()` to `resolvedMethod` and `getResolvedMethod()`
 
 **If you need further/other field, variable, or method name improvements, let me know!**
+
+Compiles

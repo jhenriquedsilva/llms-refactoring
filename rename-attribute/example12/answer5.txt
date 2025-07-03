@@ -358,3 +358,5 @@ public final class BitmapWalker {
 - Only the attribute `pm` had a rename opportunity.
 - It was renamed to `progressMonitor`, and all references updated throughout the class.
 - All other identifiers are already sufficiently readable and descriptive.
+
+Compiles

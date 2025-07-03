@@ -134,3 +134,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 - Renamed inner class `TextLvh` to `TextLanguageVersionHandler` for self-explanatory naming.
 
 Let me know if you'd like deeper/more aggressive renamings or explanations!
+
+Compiles

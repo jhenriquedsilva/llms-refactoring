@@ -129,3 +129,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 - `TextLvh` → `PlainTextLanguageVersionHandler`
 
 No other identifiers were low-quality or confusing. This improves code readability without changing any logic.
+
+Compiles

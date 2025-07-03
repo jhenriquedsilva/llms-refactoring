@@ -125,3 +125,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 
 **Summary:**
 Renamed `TERSE_NAME` → `LANGUAGE_ID`, `TextLvh` → `PlainTextLanguageVersionHandler`, and `astInfo` → `astInformation` for improved attribute clarity and maintainability.
+
+Compiles

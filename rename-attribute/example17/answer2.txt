@@ -117,3 +117,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 - Renamed inner class `TextLvh` to `TextLanguageVersionHandler`
 
 _No other attribute renamings were necessary; the rest of the code follows good naming conventions._
+
+Compiles

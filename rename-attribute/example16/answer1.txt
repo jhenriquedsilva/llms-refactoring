@@ -232,3 +232,6 @@ public class DataBinderConstructTests {
 - In `NestedDataClass`, `param1` → `name` and `nestedParam2` → `nestedDataClass`, updated all usages accordingly.
 
 This should make the code much clearer and self-explanatory.
+
+Compiles
+Tests pass

@@ -116,3 +116,5 @@ final class LoadedPemSslStore implements PemSslStore {
 - **All usages updated** accordingly for consistency and clarity.
 
 This refactoring enhances readability, makes intent clear for future maintainers, and provides a more uniform naming approach between the certificate and private key supplier fields.
+
+Compiles

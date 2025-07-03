@@ -139,3 +139,6 @@ public class StrictRunner implements InternalRunner {
 ---
 
 These changes improve code **readability** and **maintainability** by making the roles of these fields more explicit.
+
+Compiles
+Tests pass

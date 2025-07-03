@@ -128,3 +128,6 @@ public class StrictRunner implements InternalRunner {
 ---
 
 Let me know if you want a detailed explanation for each change!
+
+Compiles
+Tests pass

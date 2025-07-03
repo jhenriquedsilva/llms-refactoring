@@ -108,3 +108,6 @@ class XmlPrinterTest {
 - Renamed attribute `db` to `documentBuilder` throughout the class.
 
 **No further rename attribute refactoring is necessary.** Let me know if you want suggestions for method names or local variables as well!
+
+Compiles
+Tests pass

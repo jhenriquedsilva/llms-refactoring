@@ -869,3 +869,5 @@ public class ConcurrentUpdateHttp2SolrClient extends SolrClient {
 ---
 
 If you would like any further refinements or focus on other kinds of refactoring, please let me know!
+
+Compiles

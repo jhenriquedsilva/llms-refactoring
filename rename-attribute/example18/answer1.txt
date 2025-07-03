@@ -901,3 +901,5 @@ public class ConcurrentUpdateHttp2SolrClient extends SolrClient {
 - Used `executorService` everywhere instead of `scheduler` for clarity.
 
 Let me know if you need a more detailed justification or if you would like any other field names evaluated.
+
+Compiles

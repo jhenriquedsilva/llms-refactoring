@@ -222,3 +222,6 @@ public class PathHierarchyTokenizer extends Tokenizer {
 ---
 
 This improves consistency, expressiveness, and clarity of the attribute names throughout the code.
+
+Compiles
+Tests do not pass

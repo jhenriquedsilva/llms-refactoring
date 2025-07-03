@@ -212,3 +212,6 @@ public class PathHierarchyTokenizer extends Tokenizer {
 - No changes to method parameters/local variable names for brevity and continuity with the original Lucene code style.
 
 If you require additional renames (e.g., for local variables or method parameters), please specify!
+
+Compiles
+Tests pass

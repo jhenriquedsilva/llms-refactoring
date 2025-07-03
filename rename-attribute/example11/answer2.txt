@@ -141,3 +141,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 - Renamed `reqExt` to `requestedExtension`.
 
 These changes improve the readability and maintainability of your code.
+
+Compiles

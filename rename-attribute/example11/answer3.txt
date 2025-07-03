@@ -149,3 +149,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 ---
 
 **This refactoring enhances clarity and consistency in the codebase.**
+
+Compiles

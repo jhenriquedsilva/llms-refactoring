@@ -174,3 +174,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 This makes the code **more readable**, especially for newcomers, because it’s explicit which components are referenced.
 
 **Let me know if you want any further adjustments or have specific naming policies!**
+
+Compiles

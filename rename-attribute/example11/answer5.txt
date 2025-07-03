@@ -158,3 +158,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 Renamed the field `components` to `webSocketComponents` for consistency and clarity.
 
 No other fields stood out as requiring a rename. If you have questions about method parameter names or additional suggestions (beyond field/attribute renaming), let me know!
+
+Compiles

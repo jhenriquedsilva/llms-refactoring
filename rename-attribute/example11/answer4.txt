@@ -146,3 +146,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 - `WEBSOCKET_CORECLIENT_ATTRIBUTE` → `WEBSOCKET_CORE_CLIENT_ATTRIBUTE`
 
 These changes improve clarity, consistency, and maintainability. If you prefer to keep constants as is, you can ignore the second change.
+
+Compiles

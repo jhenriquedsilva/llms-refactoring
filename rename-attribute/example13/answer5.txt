@@ -510,3 +510,5 @@ class TempDirectory implements BeforeAllCallback, BeforeEachCallback, ParameterR
 - `dir` (in `CloseablePath`) → `tempDir` (adds specificity)
 
 All other identifiers are contextually clear and follow established conventions for this type of utility class.
+
+Compiles

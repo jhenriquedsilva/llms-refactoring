@@ -470,3 +470,5 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
 - Usage is updated throughout the class for these name changes.
 
 If you have a specific naming convention or prefer even shorter names, further tuning is possible!
+
+Compiles

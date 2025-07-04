@@ -285,3 +285,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 - `replaceIgnoreCase` → `escapeSequenceIgnoreCase`
 
 This provides better clarity, consistency and reflects intent for code reviewers and future maintainers.
+
+Compiles

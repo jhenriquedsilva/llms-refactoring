@@ -258,3 +258,5 @@ public class PartialMockingWithSpiesTest extends TestBase {
 - Adjusted test methods for spelling/clarity/consistency.
 
 **These changes improve code readability and maintainability.**
+
+Compiles

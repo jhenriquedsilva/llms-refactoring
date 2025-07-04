@@ -297,3 +297,5 @@ Several method names have been refactored for clarity and consistency:
 Other names (`replaceIgnoreCase`, `discardEscapeChar`, etc.) are already clear.
 
 If you need *only* the methods that changed or have further preferences, let me know!
+
+Compiles

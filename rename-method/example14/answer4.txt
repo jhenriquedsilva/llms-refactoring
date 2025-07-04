@@ -293,3 +293,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
 **Summary:**
 Refactoring focused on method names for clarity (`escapeChar`, `escapeQuoted`, `escapeWhiteChar`, `escapeTerm`, and `discardEscapeChar` → `escapeTermChars`, `escapeQuotedChars`, `escapeWhitespaceChars`, `escapeTermString`, and `unescapeChars` respectively). All usages and javadocs updated accordingly. No other major refactoring is necessary.
+
+Compiles

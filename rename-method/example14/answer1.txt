@@ -305,3 +305,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 **Summary:**
 If you implement these renamings, the code’s intention will be much clearer during maintenance and code review.
 If you refer to the methods from elsewhere, be sure to also update all callers accordingly.
+
+Compiles

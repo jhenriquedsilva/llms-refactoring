@@ -265,3 +265,5 @@ public class PartialMockingWithSpiesTest extends TestBase {
 - The `pleaseMakeStackTracesClean` method is renamed for clarity.
 
 **This will improve overall code readability and maintainability.**
+
+Compiles

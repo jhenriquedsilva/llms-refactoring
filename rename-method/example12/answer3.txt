@@ -1,36 +1,196 @@
-28-04-2025, 21:18
+04-07-2025, 14:50
 
-Certainly! The main focus of "Rename Method Refactoring" is to improve method names for enhanced readability and maintenance. Upon examining the code, some methods could benefit from clearer, more descriptive names. Below are the suggested renamings (along with rationale):
+Certainly! The main focus here is **method names as identifiers**—whether they are clear, descriptive, and readable, or if they are vague, misleading, unclear, or abbreviated. After reviewing the `BasePackFetchConnection` class, there **are several rename refactoring opportunities** that can improve the readability and expressiveness of the code. The following methods (including inner classes) are good candidates for a rename-refactoring:
 
-| Original Name              | Better Name                         | Reason                                                      |
-|----------------------------|-------------------------------------|-------------------------------------------------------------|
-| doFetch                    | performFetch                        | Clarity: “do” is vague, “perform” describes intent.         |
-| doFetchV2                  | performFetchV2                      | Align with performFetch, specify protocol.                  |
-| sendWants                  | sendWantedRefs                      | “Wants” is jargon; “WantedRefs” clarifies what is sent.     |
-| markReachable              | markReachableCommits                | Explicit: method marks “commits”, not generic “reachable”.  |
-| markRefsAdvertised         | markAdvertisedRefs                  | “Refs” comes before “Advertised” for consistency.           |
-| markAdvertised             | markAdvertisedObject                | More precise than just “markAdvertised”.                    |
-| parseReachable             | parseReachableCommit                | Explicit, as only commits are parsed.                       |
-| getRefObjectId             | resolveRefObjectId                  | “Resolve” is more standard for such logic.                  |
-| clearState                 | resetConnectionState                | More descriptive to clear what state.                       |
+**Key Opportunities:**
 
-Below is the class **with only method name changes as per table above** (commented where changes made).
-**No business logic is changed; only method names updated**.
+1. `doFetch` → `fetchInternal`
+2. `doFetchV2` → `fetchWithProtocolV2`
+3. `maxTimeWanted` → `computeMaxCommitTime`
+4. `markReachable` → `markReachableCommits`
+5. `negotiate` → `performNegotiation`
+6. `negotiateBegin` → `prepareNegotiationWalk`
+7. `markRefsAdvertised` → `markAdvertisedRefs`
+8. `markAdvertised` → `markObjectAsAdvertised`
+9. `markCommon` → `markCommonCommit`
+10. `parseReachable` → `addCommitAsReachable`
+11. `sendWants` → `sendWantedRefs`
+12. `sendShallow` → `sendShallowInfo`
+13. `handleShallowUnshallow` → `processShallowAndUnshallow`
+14. `enableCapabilities` → `composeCapabilitiesString`
+15. `getCapabilitiesV2` → `determineCapabilitiesForV2`
+16. `translateToLocalTips` → `resolveLocalTipsFromWants`
+
+I will now provide the entire class with these methods renamed accordingly. Where a renamed method is called, I will update the call site as well.
 
 ---
 
 ```java
-// ... (imports and package remain unchanged)
+package org.eclipse.jgit.transport;
+
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_DELIM;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_DEEPEN;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_DEEPEN_NOT;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_DEEPEN_SINCE;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_DONE;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_END;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_ERR;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_HAVE;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_SHALLOW;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_UNSHALLOW;
+import static org.eclipse.jgit.transport.GitProtocolConstants.PACKET_WANT;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.text.MessageFormat;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.eclipse.jgit.errors.PackProtocolException;
+import org.eclipse.jgit.errors.RemoteRepositoryException;
+import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
+import org.eclipse.jgit.lib.AnyObjectId;
+import org.eclipse.jgit.lib.Config;
+import org.eclipse.jgit.lib.MutableObjectId;
+import org.eclipse.jgit.lib.NullProgressMonitor;
+import org.eclipse.jgit.lib.ObjectDatabase;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ProgressMonitor;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevCommitList;
+import org.eclipse.jgit.revwalk.RevFlag;
+import org.eclipse.jgit.revwalk.RevObject;
+import org.eclipse.jgit.revwalk.RevSort;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.revwalk.filter.CommitTimeRevFilter;
+import org.eclipse.jgit.revwalk.filter.RevFilter;
+import org.eclipse.jgit.transport.GitProtocolConstants.MultiAck;
+import org.eclipse.jgit.transport.PacketLineIn.AckNackResult;
+import org.eclipse.jgit.util.StringUtils;
+import org.eclipse.jgit.util.TemporaryBuffer;
 
 public abstract class BasePackFetchConnection extends BasePackConnection
         implements FetchConnection {
-    // ... (fields remain unchanged)
+    private static final int MAX_HAVES = 256;
+    protected static final int MIN_CLIENT_BUFFER = 2 * 32 * 46 + 8;
+    public static final String OPTION_INCLUDE_TAG = GitProtocolConstants.OPTION_INCLUDE_TAG;
+    public static final String OPTION_MULTI_ACK = GitProtocolConstants.OPTION_MULTI_ACK;
+    public static final String OPTION_MULTI_ACK_DETAILED = GitProtocolConstants.OPTION_MULTI_ACK_DETAILED;
+    public static final String OPTION_THIN_PACK = GitProtocolConstants.OPTION_THIN_PACK;
+    public static final String OPTION_SIDE_BAND = GitProtocolConstants.OPTION_SIDE_BAND;
+    public static final String OPTION_SIDE_BAND_64K = GitProtocolConstants.OPTION_SIDE_BAND_64K;
+    public static final String OPTION_OFS_DELTA = GitProtocolConstants.OPTION_OFS_DELTA;
+    public static final String OPTION_SHALLOW = GitProtocolConstants.OPTION_SHALLOW;
+    public static final String OPTION_NO_PROGRESS = GitProtocolConstants.OPTION_NO_PROGRESS;
+    public static final String OPTION_NO_DONE = GitProtocolConstants.OPTION_NO_DONE;
+    public static final String OPTION_ALLOW_TIP_SHA1_IN_WANT = GitProtocolConstants.OPTION_ALLOW_TIP_SHA1_IN_WANT;
+    public static final String OPTION_ALLOW_REACHABLE_SHA1_IN_WANT = GitProtocolConstants.OPTION_ALLOW_REACHABLE_SHA1_IN_WANT;
+    public static final String OPTION_FILTER = GitProtocolConstants.OPTION_FILTER;
+
+    private final RevWalk walk;
+    private RevCommitList<RevCommit> reachableCommits;
+    final RevFlag REACHABLE;
+    final RevFlag COMMON;
+    private final RevFlag STATE;
+    final RevFlag ADVERTISED;
+
+    private MultiAck multiAck = MultiAck.OFF;
+    private boolean thinPack;
+    private boolean sideband;
+    private boolean includeTags;
+    private boolean allowOfsDelta;
+    private boolean useNegotiationTip;
+    private boolean noDone;
+    private boolean noProgress;
+    private String lockMessage;
+    private PackLock packLock;
+    private int maxHaves;
+    private Integer depth;
+    private Instant deepenSince;
+    private List<String> deepenNots;
+    private TemporaryBuffer.Heap state;
+    private PacketLineOut pckState;
+    private final FilterSpec filterSpec;
 
     public BasePackFetchConnection(PackTransport packTransport) {
-        // ... (constructor unchanged)
+        super(packTransport);
+
+        if (local != null) {
+            final FetchConfig cfg = getFetchConfig();
+            allowOfsDelta = cfg.allowOfsDelta;
+            maxHaves = cfg.maxHaves;
+            useNegotiationTip = cfg.useNegotiationTip;
+        } else {
+            allowOfsDelta = true;
+            maxHaves = Integer.MAX_VALUE;
+            useNegotiationTip = false;
+        }
+
+        includeTags = transport.getTagOpt() != TagOpt.NO_TAGS;
+        thinPack = transport.isFetchThin();
+        filterSpec = transport.getFilterSpec();
+        depth = transport.getDepth();
+        deepenSince = transport.getDeepenSince();
+        deepenNots = transport.getDeepenNots();
+
+        if (local != null) {
+            walk = new RevWalk(local);
+            walk.setRetainBody(false);
+            reachableCommits = new RevCommitList<>();
+            REACHABLE = walk.newFlag("REACHABLE"); //$NON-NLS-1$
+            COMMON = walk.newFlag("COMMON"); //$NON-NLS-1$
+            STATE = walk.newFlag("STATE"); //$NON-NLS-1$
+            ADVERTISED = walk.newFlag("ADVERTISED"); //$NON-NLS-1$
+
+            walk.carry(COMMON);
+            walk.carry(REACHABLE);
+            walk.carry(ADVERTISED);
+        } else {
+            walk = null;
+            REACHABLE = null;
+            COMMON = null;
+            STATE = null;
+            ADVERTISED = null;
+        }
     }
 
-    // ... (FetchConfig inner class unchanged)
+    static class FetchConfig {
+        final boolean allowOfsDelta;
+        final int maxHaves;
+        final boolean useNegotiationTip;
+
+        FetchConfig(Config c) {
+            allowOfsDelta = c.getBoolean("repack", "usedeltabaseoffset", true); //$NON-NLS-1$ //$NON-NLS-2$
+            maxHaves = c.getInt("fetch", "maxhaves", Integer.MAX_VALUE); //$NON-NLS-1$ //$NON-NLS-2$
+            useNegotiationTip = c.getBoolean("fetch", "usenegotiationtip", //$NON-NLS-1$ //$NON-NLS-2$
+                    false);
+        }
+
+        FetchConfig(boolean allowOfsDelta, int maxHaves) {
+            this(allowOfsDelta, maxHaves, false);
+        }
+
+        FetchConfig(boolean allowOfsDelta, int maxHaves,
+                    boolean useNegotiationTip) {
+            this.allowOfsDelta = allowOfsDelta;
+            this.maxHaves = maxHaves;
+            this.useNegotiationTip = useNegotiationTip;
+        }
+    }
 
     @Override
     public final void fetch(final ProgressMonitor monitor,
@@ -44,7 +204,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
                             final Collection<Ref> want, final Set<ObjectId> have,
                             OutputStream outputStream) throws TransportException {
         markStartedOperation();
-        performFetch(monitor, want, have, outputStream); // Renamed from doFetch
+        fetchInternal(monitor, want, have, outputStream);
     }
 
     @Override
@@ -69,7 +229,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         return Collections.<PackLock> emptyList();
     }
 
-    private void resetConnectionState() { // Renamed from clearState
+    private void clearState() {
         walk.dispose();
         reachableCommits = null;
         state = null;
@@ -79,23 +239,23 @@ public abstract class BasePackFetchConnection extends BasePackConnection
     /**
      * Execute common ancestor negotiation and fetch the objects.
      */
-    protected void performFetch(final ProgressMonitor monitor,
+    protected void fetchInternal(final ProgressMonitor monitor,
                            final Collection<Ref> want, final Set<ObjectId> have,
-                           OutputStream outputStream) throws TransportException { // Renamed from doFetch
+                           OutputStream outputStream) throws TransportException {
         try {
             noProgress = monitor == NullProgressMonitor.INSTANCE;
 
-            markAdvertisedRefs(); // Renamed from markRefsAdvertised
-            markReachableCommits(want, have, maxTimeWanted(want)); // Renamed from markReachable
+            markAdvertisedRefs();
+            markReachableCommits(want, have, computeMaxCommitTime(want));
 
             if (TransferConfig.ProtocolVersion.V2
                     .equals(getProtocolVersion())) {
                 state = new TemporaryBuffer.Heap(Integer.MAX_VALUE);
                 pckState = new PacketLineOut(state);
                 try {
-                    performFetchV2(monitor, want, outputStream); // Renamed from doFetchV2
+                    fetchWithProtocolV2(monitor, want, outputStream);
                 } finally {
-                    resetConnectionState(); // Renamed from clearState
+                    clearState();
                 }
                 return;
             }
@@ -105,39 +265,38 @@ public abstract class BasePackFetchConnection extends BasePackConnection
                 pckState = new PacketLineOut(state);
             }
             PacketLineOut output = statelessRPC ? pckState : pckOut;
-            if (sendWantedRefs(want, output)) { // Renamed from sendWants
+            if (sendWantedRefs(want, output)) {
                 boolean mayHaveShallow = depth != null || deepenSince != null || !deepenNots.isEmpty();
                 Set<ObjectId> shallowCommits = local.getObjectDatabase().getShallowCommits();
                 if (isCapableOf(GitProtocolConstants.CAPABILITY_SHALLOW)) {
-                    sendShallow(shallowCommits, output);
+                    sendShallowInfo(shallowCommits, output);
                 } else if (mayHaveShallow) {
                     throw new PackProtocolException(JGitText.get().shallowNotSupported);
                 }
                 output.end();
                 outNeedsEnd = false;
 
-                negotiate(monitor, mayHaveShallow, shallowCommits);
+                performNegotiation(monitor, mayHaveShallow, shallowCommits);
 
-                resetConnectionState(); // Renamed from clearState
+                clearState();
 
                 receivePack(monitor, outputStream);
             }
         } catch (CancelledException ce) {
             close();
-            return;
+            return; // Caller should test (or just know) this themselves.
         } catch (IOException | RuntimeException err) {
             close();
             throw new TransportException(err.getMessage(), err);
         }
     }
 
-    private void performFetchV2(ProgressMonitor monitor, Collection<Ref> want,
-                           OutputStream outputStream) throws IOException, CancelledException { // Renamed from doFetchV2
+    private void fetchWithProtocolV2(ProgressMonitor monitor, Collection<Ref> want,
+                           OutputStream outputStream) throws IOException, CancelledException {
         sideband = true;
-        negotiateBegin();
+        prepareNegotiationWalk();
 
         pckState.writeString("command=" + GitProtocolConstants.COMMAND_FETCH); //$NON-NLS-1$
-        // Capabilities...
         String agent = UserAgent.get();
         if (agent != null && isCapableOf(GitProtocolConstants.OPTION_AGENT)) {
             pckState.writeString(
@@ -146,20 +305,20 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         Set<String> capabilities = new HashSet<>();
         String advertised = getCapability(GitProtocolConstants.COMMAND_FETCH);
         if (!StringUtils.isEmptyOrNull(advertised)) {
-            capabilities.addAll(Arrays.asList(advertised.split("\s+"))); //$NON-NLS-1$
+            capabilities.addAll(Arrays.asList(advertised.split("\\s+"))); //$NON-NLS-1$
         }
         pckState.writeDelim();
-        for (String capability : getCapabilitiesV2(capabilities)) {
+        for (String capability : determineCapabilitiesForV2(capabilities)) {
             pckState.writeString(capability);
         }
 
-        if (!sendWantedRefs(want, pckState)) { // Renamed from sendWants
+        if (!sendWantedRefs(want, pckState)) {
             return;
         }
 
         Set<ObjectId> shallowCommits = local.getObjectDatabase().getShallowCommits();
         if (capabilities.contains(GitProtocolConstants.CAPABILITY_SHALLOW)) {
-            sendShallow(shallowCommits, pckState);
+            sendShallowInfo(shallowCommits, pckState);
         } else if (depth != null || deepenSince != null || !deepenNots.isEmpty()) {
             throw new PackProtocolException(JGitText.get().shallowNotSupported);
         }
@@ -177,14 +336,14 @@ public abstract class BasePackFetchConnection extends BasePackConnection
                 break;
             }
         }
-        resetConnectionState(); // Renamed from clearState
+        clearState();
         String line = pckIn.readString();
         if (sentDone && line.startsWith(PACKET_ERR)) {
             throw new RemoteRepositoryException(uri, line.substring(4));
         }
 
         if (GitProtocolConstants.SECTION_SHALLOW_INFO.equals(line)) {
-            line = handleShallowUnshallow(shallowCommits, pckIn);
+            line = processShallowAndUnshallow(shallowCommits, pckIn);
             if (!PacketLineIn.isDelimiter(line)) {
                 throw new PackProtocolException(MessageFormat
                         .format(JGitText.get().expectedGot, PACKET_DELIM,
@@ -192,7 +351,6 @@ public abstract class BasePackFetchConnection extends BasePackConnection
             }
             line = pckIn.readString();
         }
-
         if (!GitProtocolConstants.SECTION_PACKFILE.equals(line)) {
             throw new PackProtocolException(
                     MessageFormat.format(JGitText.get().expectedGot,
@@ -201,9 +359,91 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         receivePack(monitor, outputStream);
     }
 
-    // Other methods remain with only method name refactorings where applicable
+    private boolean sendNextHaveBatch(FetchStateV2 fetchState,
+                                      PacketLineOut output, ProgressMonitor monitor)
+            throws IOException, CancelledException {
+        long n = 0;
+        while (n < fetchState.havesToSend) {
+            final RevCommit c = walk.next();
+            if (c == null) {
+                break;
+            }
+            output.writeString(PACKET_HAVE + c.getId().name() + "\n");
+            n++;
+            if (n % 10 == 0 && monitor.isCancelled()) {
+                throw new CancelledException();
+            }
+        }
+        fetchState.havesTotal += n;
+        if (n == 0
+                || (fetchState.hadAcks
+                && fetchState.havesWithoutAck > MAX_HAVES)
+                || fetchState.havesTotal > maxHaves) {
+            output.writeString(PACKET_DONE + "\n");
+            output.end();
+            return true;
+        }
+        fetchState.havesWithoutAck += n;
+        output.end();
+        fetchState.incHavesToSend(statelessRPC);
+        return false;
+    }
 
-    private int maxTimeWanted(Collection<Ref> wants) {
+    private boolean readAcknowledgments(FetchStateV2 fetchState,
+                                        PacketLineIn input, ProgressMonitor monitor)
+            throws IOException, CancelledException {
+        String line = input.readString();
+        if (!GitProtocolConstants.SECTION_ACKNOWLEDGMENTS.equals(line)) {
+            throw new PackProtocolException(MessageFormat.format(
+                    JGitText.get().expectedGot,
+                    GitProtocolConstants.SECTION_ACKNOWLEDGMENTS, line));
+        }
+        MutableObjectId returnedId = new MutableObjectId();
+        line = input.readString();
+        boolean gotReady = false;
+        long n = 0;
+        while (!PacketLineIn.isEnd(line) && !PacketLineIn.isDelimiter(line)) {
+            AckNackResult ack = PacketLineIn.parseACKv2(line, returnedId);
+            if (!gotReady) {
+                if (ack == AckNackResult.ACK_COMMON) {
+                    markCommonCommit(walk.parseAny(returnedId), ack, true);
+                    fetchState.havesWithoutAck = 0;
+                    fetchState.hadAcks = true;
+                } else if (ack == AckNackResult.ACK_READY) {
+                    gotReady = true;
+                }
+            }
+            n++;
+            if (n % 10 == 0 && monitor.isCancelled()) {
+                throw new CancelledException();
+            }
+            line = input.readString();
+        }
+        if (gotReady) {
+            if (!PacketLineIn.isDelimiter(line)) {
+                throw new PackProtocolException(MessageFormat
+                        .format(JGitText.get().expectedGot, PACKET_DELIM,
+                                line));
+            }
+        } else if (!PacketLineIn.isEnd(line)) {
+            throw new PackProtocolException(MessageFormat
+                    .format(JGitText.get().expectedGot, PACKET_END, line));
+        }
+        return gotReady;
+    }
+
+    @Override
+    public void close() {
+        if (walk != null)
+            walk.close();
+        super.close();
+    }
+
+    FetchConfig getFetchConfig() {
+        return local.getConfig().get(FetchConfig::new);
+    }
+
+    private int computeMaxCommitTime(Collection<Ref> wants) {
         int maxTime = 0;
         for (Ref r : wants) {
             try {
@@ -214,16 +454,17 @@ public abstract class BasePackFetchConnection extends BasePackConnection
                         maxTime = cTime;
                 }
             } catch (IOException error) {
+                // We don't have it, but we want to fetch (thus fixing error).
             }
         }
         return maxTime;
     }
 
     private void markReachableCommits(Collection<Ref> want, Set<ObjectId> have,
-                               int maxTime) throws IOException { // Renamed from markReachable
+                               int maxTime) throws IOException {
         Collection<Ref> refsToMark;
         if (useNegotiationTip) {
-            refsToMark = translateToLocalTips(want);
+            refsToMark = resolveLocalTipsFromWants(want);
             if (refsToMark.size() < want.size()) {
                 refsToMark.addAll(local.getRefDatabase().getRefs());
             }
@@ -233,10 +474,10 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         markReachableRefTips(refsToMark);
 
         for (ObjectId id : local.getAdditionalHaves())
-            parseReachableCommit(id); // Renamed from parseReachable
+            addCommitAsReachable(id);
 
         for (ObjectId id : have)
-            parseReachableCommit(id); // Renamed from parseReachable
+            addCommitAsReachable(id);
 
         if (maxTime > 0) {
             final Date maxWhen = new Date(maxTime * 1000L);
@@ -256,23 +497,23 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         }
     }
 
-    private Collection<Ref> translateToLocalTips(Collection<Ref> want)
+    private Collection<Ref> resolveLocalTipsFromWants(Collection<Ref> want)
             throws IOException {
         String[] refs = want.stream().map(Ref::getName)
-                .collect(Collectors.toSet()).toArray(String[]::new);
+                .collect(Collectors.toSet()).toArray(new String[0]);
         Map<String, Ref> wantRefMap = local.getRefDatabase().exactRef(refs);
         return wantRefMap.values().stream()
-                .filter(r -> resolveRefObjectId(r) != null) // Renamed from getRefObjectId
+                .filter(r -> getRefObjectId(r) != null)
                 .collect(Collectors.toList());
     }
 
     private void markReachableRefTips(Collection<Ref> refsToMark) {
-        refsToMark.stream().map(BasePackFetchConnection::resolveRefObjectId) // Renamed from getRefObjectId
+        refsToMark.stream().map(BasePackFetchConnection::getRefObjectId)
                 .filter(Objects::nonNull)
-                .forEach(oid -> parseReachableCommit(oid)); // Renamed from parseReachable
+                .forEach(oid -> addCommitAsReachable(oid));
     }
 
-    private static ObjectId resolveRefObjectId(Ref ref) { // Renamed from getRefObjectId
+    private static ObjectId getRefObjectId(Ref ref) {
         ObjectId id = ref.getPeeledObjectId();
         if (id == null) {
             id = ref.getObjectId();
@@ -280,7 +521,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         return id;
     }
 
-    private void parseReachableCommit(ObjectId id) { // Renamed from parseReachable
+    private void addCommitAsReachable(ObjectId id) {
         try {
             RevCommit o = walk.parseCommit(id);
             if (!o.has(REACHABLE)) {
@@ -291,7 +532,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         }
     }
 
-    private boolean sendWantedRefs(Collection<Ref> want, PacketLineOut p) // Renamed from sendWants
+    private boolean sendWantedRefs(Collection<Ref> want, PacketLineOut p)
             throws IOException {
         boolean first = true;
         for (Ref r : want) {
@@ -312,10 +553,10 @@ public abstract class BasePackFetchConnection extends BasePackConnection
             line.append(PACKET_WANT).append(objectId.name());
             if (first && TransferConfig.ProtocolVersion.V0
                     .equals(getProtocolVersion())) {
-                line.append(enableCapabilities());
+                line.append(composeCapabilitiesString());
             }
             first = false;
-            line.append('\n');
+            line.append("\n");
             p.writeString(line.toString());
         }
         if (first) {
@@ -327,30 +568,362 @@ public abstract class BasePackFetchConnection extends BasePackConnection
         return true;
     }
 
-    private void markAdvertisedRefs() { // Renamed from markRefsAdvertised
-        for (Ref r : getRefs()) {
-            markAdvertisedObject(r.getObjectId()); // Renamed from markAdvertised
-            if (r.getPeeledObjectId() != null)
-                markAdvertisedObject(r.getPeeledObjectId()); // Renamed from markAdvertised
+    private Set<String> determineCapabilitiesForV2(Set<String> advertisedCapabilities)
+            throws TransportException {
+        Set<String> capabilities = new LinkedHashSet<>();
+        if (noProgress) {
+            capabilities.add(OPTION_NO_PROGRESS);
+        }
+        if (includeTags) {
+            capabilities.add(OPTION_INCLUDE_TAG);
+        }
+        if (allowOfsDelta) {
+            capabilities.add(OPTION_OFS_DELTA);
+        }
+        if (thinPack) {
+            capabilities.add(OPTION_THIN_PACK);
+        }
+        if (!filterSpec.isNoOp()
+                && !advertisedCapabilities.contains(OPTION_FILTER)) {
+            throw new PackProtocolException(uri,
+                    JGitText.get().filterRequiresCapability);
+        }
+        return capabilities;
+    }
+
+    private String composeCapabilitiesString() throws TransportException {
+        final StringBuilder line = new StringBuilder();
+        if (noProgress)
+            wantCapability(line, OPTION_NO_PROGRESS);
+        if (includeTags)
+            includeTags = wantCapability(line, OPTION_INCLUDE_TAG);
+        if (allowOfsDelta)
+            wantCapability(line, OPTION_OFS_DELTA);
+
+        if (wantCapability(line, OPTION_MULTI_ACK_DETAILED)) {
+            multiAck = MultiAck.DETAILED;
+            if (statelessRPC)
+                noDone = wantCapability(line, OPTION_NO_DONE);
+        } else if (wantCapability(line, OPTION_MULTI_ACK))
+            multiAck = MultiAck.CONTINUE;
+        else
+            multiAck = MultiAck.OFF;
+
+        if (thinPack)
+            thinPack = wantCapability(line, OPTION_THIN_PACK);
+        if (wantCapability(line, OPTION_SIDE_BAND_64K))
+            sideband = true;
+        else if (wantCapability(line, OPTION_SIDE_BAND))
+            sideband = true;
+
+        if (statelessRPC && multiAck != MultiAck.DETAILED) {
+            throw new PackProtocolException(uri, MessageFormat.format(
+                    JGitText.get().statelessRPCRequiresOptionToBeEnabled,
+                    OPTION_MULTI_ACK_DETAILED));
+        }
+
+        if (!filterSpec.isNoOp() && !wantCapability(line, OPTION_FILTER)) {
+            throw new PackProtocolException(uri,
+                    JGitText.get().filterRequiresCapability);
+        }
+
+        addUserAgentCapability(line);
+        return line.toString();
+    }
+
+    private void performNegotiation(ProgressMonitor monitor, boolean mayHaveShallow, Set<ObjectId> shallowCommits)
+            throws IOException, CancelledException {
+        final MutableObjectId ackId = new MutableObjectId();
+        int resultsPending = 0;
+        int havesSent = 0;
+        int havesSinceLastContinue = 0;
+        boolean receivedContinue = false;
+        boolean receivedAck = false;
+        boolean receivedReady = false;
+
+        if (statelessRPC) {
+            state.writeTo(out, null);
+        }
+
+        prepareNegotiationWalk();
+        SEND_HAVES: for (;;) {
+            final RevCommit c = walk.next();
+            if (c == null) {
+                break SEND_HAVES;
+            }
+
+            ObjectId o = c.getId();
+            pckOut.writeString(PACKET_HAVE + o.name() + "\n");
+            havesSent++;
+            havesSinceLastContinue++;
+
+            if ((31 & havesSent) != 0) {
+                continue;
+            }
+
+            if (monitor.isCancelled()) {
+                throw new CancelledException();
+            }
+
+            pckOut.end();
+            resultsPending++;
+
+            if (havesSent == 32 && !statelessRPC) {
+                continue;
+            }
+
+            READ_RESULT: for (;;) {
+                final AckNackResult anr = pckIn.readACK(ackId);
+                switch (anr) {
+                    case NAK:
+                        resultsPending--;
+                        break READ_RESULT;
+                    case ACK:
+                        multiAck = MultiAck.OFF;
+                        resultsPending = 0;
+                        receivedAck = true;
+                        if (statelessRPC) {
+                            state.writeTo(out, null);
+                        }
+                        break SEND_HAVES;
+                    case ACK_CONTINUE:
+                    case ACK_COMMON:
+                    case ACK_READY:
+                        markCommonCommit(walk.parseAny(ackId), anr, statelessRPC);
+                        receivedAck = true;
+                        receivedContinue = true;
+                        havesSinceLastContinue = 0;
+                        if (anr == AckNackResult.ACK_READY) {
+                            receivedReady = true;
+                        }
+                        break;
+                }
+
+                if (monitor.isCancelled()) {
+                    throw new CancelledException();
+                }
+            }
+
+            if (noDone && receivedReady) {
+                break SEND_HAVES;
+            }
+            if (statelessRPC) {
+                state.writeTo(out, null);
+            }
+
+            if ((receivedContinue && havesSinceLastContinue > MAX_HAVES)
+                    || havesSent >= maxHaves) {
+                break SEND_HAVES;
+            }
+        }
+
+        if (monitor.isCancelled()) {
+            throw new CancelledException();
+        }
+
+        if (!receivedReady || !noDone) {
+            pckOut.writeString(PACKET_DONE + "\n");
+            pckOut.flush();
+        }
+
+        if (!receivedAck) {
+            multiAck = MultiAck.OFF;
+            resultsPending++;
+        }
+
+        if (mayHaveShallow) {
+            String line = processShallowAndUnshallow(shallowCommits, pckIn);
+            if (!PacketLineIn.isEnd(line)) {
+                throw new PackProtocolException(MessageFormat
+                        .format(JGitText.get().expectedGot, PACKET_END, line));
+            }
+        }
+
+        READ_RESULT: while (resultsPending > 0 || multiAck != MultiAck.OFF) {
+            final AckNackResult anr = pckIn.readACK(ackId);
+            resultsPending--;
+            switch (anr) {
+                case NAK:
+                    break;
+                case ACK:
+                    break READ_RESULT;
+                case ACK_CONTINUE:
+                case ACK_COMMON:
+                case ACK_READY:
+                    multiAck = MultiAck.CONTINUE;
+                    break;
+            }
+
+            if (monitor.isCancelled()) {
+                throw new CancelledException();
+            }
         }
     }
 
-    private void markAdvertisedObject(AnyObjectId id) { // Renamed from markAdvertised
+    private void prepareNegotiationWalk() throws IOException {
+        walk.resetRetain(REACHABLE, ADVERTISED);
+        walk.markStart(reachableCommits);
+        walk.sort(RevSort.COMMIT_TIME_DESC);
+        walk.setRevFilter(new RevFilter() {
+            @Override
+            public RevFilter clone() {
+                return this;
+            }
+
+            @Override
+            public boolean include(RevWalk walker, RevCommit c) {
+                final boolean remoteKnowsIsCommon = c.has(COMMON);
+                if (c.has(ADVERTISED)) {
+                    c.add(COMMON);
+                }
+                return !remoteKnowsIsCommon;
+            }
+
+            @Override
+            public boolean requiresCommitBody() {
+                return false;
+            }
+        });
+    }
+
+    private void markAdvertisedRefs() {
+        for (Ref r : getRefs()) {
+            markObjectAsAdvertised(r.getObjectId());
+            if (r.getPeeledObjectId() != null)
+                markObjectAsAdvertised(r.getPeeledObjectId());
+        }
+    }
+
+    private void markObjectAsAdvertised(AnyObjectId id) {
         try {
             walk.parseAny(id).add(ADVERTISED);
         } catch (IOException readError) {
         }
     }
-    // ... Rest unchanged, with only method invocations renamed as above
 
-    // (Rest of class remains the same.
-    // No changes to non-method names or documentation unless the name was in the method name itself.)
+    private void markCommonCommit(RevObject obj, AckNackResult anr, boolean useState)
+            throws IOException {
+        if (useState && anr == AckNackResult.ACK_COMMON && !obj.has(STATE)) {
+            pckState.writeString(PACKET_HAVE + obj.name() + "\n");
+            obj.add(STATE);
+        }
+        obj.add(COMMON);
+        if (obj instanceof RevCommit)
+            ((RevCommit) obj).carry(COMMON);
+    }
+
+    private void receivePack(final ProgressMonitor monitor,
+                             OutputStream outputStream) throws IOException {
+        onReceivePack();
+        InputStream input = in;
+        SideBandInputStream sidebandIn = null;
+        if (sideband) {
+            sidebandIn = new SideBandInputStream(input, monitor,
+                    getMessageWriter(), outputStream);
+            input = sidebandIn;
+        }
+
+        try (ObjectInserter ins = local.newObjectInserter()) {
+            PackParser parser = ins.newPackParser(input);
+            parser.setAllowThin(thinPack);
+            parser.setObjectChecker(transport.getObjectChecker());
+            parser.setLockMessage(lockMessage);
+            packLock = parser.parse(monitor);
+            ins.flush();
+        } finally {
+            if (sidebandIn != null) {
+                sidebandIn.drainMessages();
+            }
+        }
+    }
+
+    private void sendShallowInfo(Set<ObjectId> shallowCommits, PacketLineOut output)
+            throws IOException {
+        for (ObjectId shallowCommit : shallowCommits) {
+            output.writeString(PACKET_SHALLOW + shallowCommit.name());
+        }
+
+        if (depth != null) {
+            output.writeString(PACKET_DEEPEN + depth);
+        }
+
+        if (deepenSince != null) {
+            output.writeString(
+                    PACKET_DEEPEN_SINCE + deepenSince.getEpochSecond());
+        }
+
+        if (deepenNots != null) {
+            for (String deepenNotRef : deepenNots) {
+                output.writeString(PACKET_DEEPEN_NOT + deepenNotRef);
+            }
+        }
+    }
+
+    private String processShallowAndUnshallow(
+            Set<ObjectId> advertisedShallowCommits, PacketLineIn input)
+            throws IOException {
+        String line = input.readString();
+        ObjectDatabase objectDatabase = local.getObjectDatabase();
+        HashSet<ObjectId> newShallowCommits = new HashSet<>(
+                advertisedShallowCommits);
+        while (!PacketLineIn.isDelimiter(line) && !PacketLineIn.isEnd(line)) {
+            if (line.startsWith(PACKET_SHALLOW)) {
+                newShallowCommits.add(ObjectId
+                        .fromString(line.substring(PACKET_SHALLOW.length())));
+            } else if (line.startsWith(PACKET_UNSHALLOW)) {
+                ObjectId unshallow = ObjectId
+                        .fromString(line.substring(PACKET_UNSHALLOW.length()));
+                if (!advertisedShallowCommits.contains(unshallow)) {
+                    throw new PackProtocolException(MessageFormat.format(
+                            JGitText.get().notShallowedUnshallow,
+                            unshallow.name()));
+                }
+                newShallowCommits.remove(unshallow);
+            }
+            line = input.readString();
+        }
+        objectDatabase.setShallowCommits(newShallowCommits);
+        return line;
+    }
+
+    protected void onReceivePack() {
+        // By default do nothing for TCP based protocols.
+    }
+
+    private static class CancelledException extends Exception {
+        private static final long serialVersionUID = 1L;
+    }
+
+    private static class FetchStateV2 {
+        long havesToSend = 32;
+        long havesTotal;
+        boolean hadAcks;
+        long havesWithoutAck;
+
+        void incHavesToSend(boolean statelessRPC) {
+            if (statelessRPC) {
+                if (havesToSend < 16384) {
+                    havesToSend *= 2;
+                } else {
+                    havesToSend = havesToSend * 11 / 10;
+                }
+            } else {
+                havesToSend += 32;
+            }
+        }
+    }
 }
 ```
 
+**Summary of Main Refactorings**:
+- All listed methods were renamed to more expressive alternatives regarding intent and context.
+- All internal invocations were also updated accordingly.
+
+**Rationale**:
+More descriptive method names enhance maintainability, understanding, and reduce cognitive load for new readers or contributors to the code.
+
 ---
 
-**Summary:**
-The above refactorings rename key methods for better intent, without changing any inner logic. Other method names (like `negotiate`, `receivePack`, etc.) are already clear enough with regards to their functionality and do not need renaming. If you need to see the entire file with these changes pasted in, let me know!
+If you want a _diff-style_ summary or more details for any rename, just ask!
 
-If you prefer to keep method names "as is", you may state "no refactoring necessary", but as per standard, these names are considered poor style in a modern codebase. Thus, **method renaming as performed above is appropriate and an improvement.**
+Compiles

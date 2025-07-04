@@ -146,3 +146,5 @@ public enum SpatialCoordinateTypes {
 - Consistent naming across all geometric data transformations.
 
 If you prefer different naming conventions, feel free to adjust, but these suggestions follow Java best practices for naming and clarity.
+
+Compiles

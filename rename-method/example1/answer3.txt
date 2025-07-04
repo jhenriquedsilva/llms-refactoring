@@ -610,3 +610,6 @@ public final class CommonUtil {
 #### **Note:** Callers of renamed methods must update their invocations accordingly.
 ---
 If you'd prefer other names, or would like to know why some methods were **not** renamed, let me know!
+
+Does not compile
+Tests do not pass

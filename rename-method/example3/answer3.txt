@@ -177,3 +177,6 @@ public class DiffResultTest extends AbstractLangTest {
 - All usages and invocations updated accordingly.
 
 **No further rename method refactorings are necessary based on the provided code.**
+
+Does not compile
+Tests do not pass

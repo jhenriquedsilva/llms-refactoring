@@ -494,3 +494,5 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
 - This improves readability, navigation, and maintainability.
 
 *If you want alternate names or have other suggestions for your team's style guide, let me know!*
+
+Compiles

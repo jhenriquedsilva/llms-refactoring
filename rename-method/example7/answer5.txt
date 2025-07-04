@@ -134,3 +134,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 
 **If you want to keep Hibernate’s naming conventions, you may simply state:**
 > No refactoring is necessary; method names are clear within ORM context and follow standard Hibernate conventions.
+
+Does not compile

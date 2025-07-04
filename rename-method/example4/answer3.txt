@@ -130,3 +130,5 @@ public enum SpatialCoordinateTypes {
 - Old names are replaced with new, improved names throughout the enum and overridden methods.
 
 If your team prefers a slightly different naming style (`toWKB`, `toWKT`, etc.), those can easily be adjusted, but the refactor above follows the suggestions to maximize clarity and self-documenting code.
+
+Compiles

@@ -129,3 +129,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 - **One rename refactoring recommended: `executeAndExtractReturning` → `executeInsertAndReturnValues`** for better readability and clarity.
 - All usages are updated, including in `executeAndExtract` and as the abstract method signature.
 - Nothing else needs renaming.
+
+Compiles

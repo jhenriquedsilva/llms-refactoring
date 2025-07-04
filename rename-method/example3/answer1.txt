@@ -169,3 +169,6 @@ public class DiffResultTest extends AbstractLangTest {
 - Renamed parameter in `diff` from `obj` to `other` (optional, for clarity).
 
 These changes improve code readability and maintainability.
+
+Compiles
+Tests pass

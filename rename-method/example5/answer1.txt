@@ -316,3 +316,5 @@ public abstract class FlinkHints {
 ---
 
 ### Let me know if you want more aggressive renaming or additional JavaDoc improvements!
+
+Compiles

@@ -167,3 +167,6 @@ public class DiffResultTest extends AbstractLangTest {
 - `getFieldName()` → `getBooleanFieldName()` in `SimpleClass` and all usages.
 
 These changes improve the clarity and context of the method responsibilities.
+
+Does not compile
+Tests do not pass

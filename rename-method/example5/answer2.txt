@@ -303,3 +303,5 @@ public abstract class FlinkHints {
 **No other significant rename opportunities were detected.**
 
 If you want any further improvements (e.g. `stringifyHints` to `hintsToString`), let me know!
+
+Compiles

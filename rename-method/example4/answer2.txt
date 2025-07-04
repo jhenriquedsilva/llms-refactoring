@@ -133,3 +133,5 @@ public enum SpatialCoordinateTypes {
 
 **Summary:**
 Several method names have been improved for clarity and to directly describe their input and output. This makes the API more apparent and improves code readability and maintainability.
+
+Compiles

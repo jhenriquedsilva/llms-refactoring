@@ -320,3 +320,6 @@ public class NullInputStream extends InputStream {
 ---
 
 **If you would like even more changes (e.g., parameter or variable names), let me know!**
+
+Compiles
+Tests pass

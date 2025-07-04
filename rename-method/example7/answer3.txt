@@ -145,3 +145,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 - Deprecated `executeAndExtract` → `executeAndExtractIdentifier_DEPRECATED` (for extra clarity, optional)
 
 > These renamings improve method intention clarity for current and future developers. If you’d like a less aggressive refactoring (e.g. keep deprecated method names unchanged), just let me know!
+
+Does not compile

@@ -414,3 +414,5 @@ class DescriptorsGenerator {
 | `prepareModuleInfos`    | `createModuleInfoList`           |
 
 If you have any further renaming policies or want to rename helper classes as well, let me know!
+
+Compiles

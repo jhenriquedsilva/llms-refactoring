@@ -400,3 +400,5 @@ class OrmSetupHelperCleaner {
 - Optionally, `cleanupData` was slightly adjusted to `cleanUpData` for Java convention/style.
 
 Please review other potential renamings for style, but these were the main clarity opportunities.
+
+Compiles

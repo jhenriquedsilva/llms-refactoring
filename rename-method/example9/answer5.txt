@@ -382,3 +382,5 @@ class DescriptorsGenerator {
 - No other code structure or logic was changed.
 
 Let me know if you want further improvements or if you prefer different naming conventions!
+
+Compiles

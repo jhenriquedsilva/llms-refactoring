@@ -371,3 +371,5 @@ class OrmSetupHelperCleaner {
 - This results in clearer intent, easier onboarding for new developers, and easier maintainability.
 
 If you have further customization or different naming standards, those can be adjusted as needed!
+
+Compiles

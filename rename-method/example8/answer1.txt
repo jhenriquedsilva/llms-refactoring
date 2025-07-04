@@ -29,7 +29,39 @@ This should be `tenantIds` (without plural "tenants").
 ```java
 package org.hibernate.search.util.impl.integrationtest.mapper.orm;
 
-// ... (imports remain the same)
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.metamodel.Attribute;
+import jakarta.persistence.metamodel.EmbeddableType;
+import jakarta.persistence.metamodel.EntityType;
+import jakarta.persistence.metamodel.ManagedType;
+import jakarta.persistence.metamodel.Metamodel;
+import jakarta.persistence.metamodel.PluralAttribute;
+
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.query.Query;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.mapping.impl.HibernateOrmMapping;
+import org.hibernate.search.util.common.SearchException;
+import org.hibernate.search.util.common.impl.Closer;
+import org.hibernate.search.util.common.impl.SuppressingCloser;
+import org.hibernate.search.util.impl.test.extension.ExtensionScope;
+import org.hibernate.search.util.impl.test.function.ThrowingConsumer;
+
+import org.jboss.logging.Logger;
 
 /**
  * This cleaner will look for a method annotated with a @DataClearConfigConfigurer
@@ -363,3 +395,5 @@ class OrmSetupHelperCleaner {
 - `tenantsIds` → `tenantIds`
 
 **These changes improve method naming consistency and make the intent clearer.**
+
+Compiles

@@ -365,3 +365,5 @@ class DescriptorsGenerator {
 - All refactorings are safe/behavior-preserving.
 
 Let me know if you need further adjustments, or if you'd like javadoc comments or additional documentation!
+
+Compiles

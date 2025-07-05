@@ -308,3 +308,6 @@ final class AttributeMethods {
 
 **These updates enhance readability and maintainability.**
 If you need the usages updated elsewhere, those should be refactored too.
+
+Compiles
+Tests pass

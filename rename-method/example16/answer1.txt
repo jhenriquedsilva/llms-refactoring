@@ -312,3 +312,6 @@ If you want to retain the name `hasNestedAnnotation` for external compatibility 
 
 **If you intend a more extensive renaming (like indexOf → getAttributeIndexByName), let me know!**
 Let me know if you’d like even more descriptive names elsewhere.
+
+Compiles
+Tests pass

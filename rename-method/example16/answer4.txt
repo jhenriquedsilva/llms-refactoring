@@ -317,3 +317,6 @@ final class AttributeMethods {
 ---
 
 If you would like even more granular suggestions or wish the names to be different, let me know!
+
+Compiles
+Tests pass

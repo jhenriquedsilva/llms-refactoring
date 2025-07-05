@@ -278,3 +278,5 @@ public class LBHttp2SolrClient extends LBSolrClient {
 If even more consistency for member variables is desired (`defaultDataStore` vs `defaultCollection`), that's possible but goes beyond strictly method renaming.
 
 **If you need the changes limited to only methods, or if you want additional class/field renaming, let me know!**
+
+Compiles

@@ -257,3 +257,5 @@ public class LBHttp2SolrClient extends LBSolrClient {
 - Updated all usages and interface signatures accordingly
 
 If desired, you may adjust the method names further to match your project's naming conventions or verbosity. If you need method documentation or have additional naming suggestions, let me know.
+
+Compiles

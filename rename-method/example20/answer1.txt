@@ -378,3 +378,5 @@ public class AnnotatedMethod {
 ---
 
 If you want refactorings beyond naming (e.g., extracting helper methods, reducing visibility), let me know! But as for **rename method refactorings**, these three are most impactful to clarity in this class.
+
+Compiles

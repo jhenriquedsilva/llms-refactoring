@@ -384,3 +384,5 @@ public class AnnotatedMethod {
 - `isOverrideFor(Method)` → `isOverriding(Method)`
 
 You may adjust further based on team conventions, but these changes improve clarity and naming consistency.
+
+Compiles

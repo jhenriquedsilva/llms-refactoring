@@ -161,3 +161,6 @@ class ClasspathClassLoaderTest {
 ---
 
 **If you would like documentation comments or further renaming suggestions, let me know!**
+
+Compiles
+Tests pass

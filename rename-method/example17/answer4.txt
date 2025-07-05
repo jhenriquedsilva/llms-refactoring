@@ -155,3 +155,6 @@ class ClasspathClassLoaderTest {
 Renaming the test methods and the helper to be more descriptive improves clarity about what each test is actually testing. If your team doesn't require the `test` prefix, you could keep the names without it, but specifying the Java version in the parameterized test's name (`testLoadFromJavaVersion`) and making helper method intentions explicit is a clear readability boost.
 
 **If you'd like a specific naming convention to be applied (e.g., prefix all with "should", or not use "test"), let me know!**
+
+Compiles
+Tests pass

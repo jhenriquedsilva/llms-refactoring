@@ -166,3 +166,6 @@ class ClasspathClassLoaderTest {
 - **All other names are already quite descriptive and idiomatic for a JUnit test class.**
 
 If you wish for more aggressive name changes (even more verbose), let me know!
+
+Compiles
+Tests pass

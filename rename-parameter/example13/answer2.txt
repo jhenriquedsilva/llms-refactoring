@@ -496,3 +496,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
 **Summary:**
 The only refactoring opportunities were to rename `testEvent` → `testEvents` and `msg` → `expectedMessage` in `assertFailingWithMessage`. No other method or parameter names were misleading or unclear.
+
+Compiles
+Tests pass

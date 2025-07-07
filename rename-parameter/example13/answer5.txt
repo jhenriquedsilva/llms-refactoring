@@ -532,3 +532,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 ---
 
 If you need further parameter naming detail or other refactorings, feel free to ask!
+
+Compiles
+Tests pass

@@ -544,3 +544,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - It and its usages are now renamed to `message` for readability and consistency with common conventions.
 
 If you want further (field/local variable) improvements or refactorings, just let me know!
+
+Compiles
+Tests pass

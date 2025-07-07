@@ -497,3 +497,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - All parameter renames clarify intentions and improve code readability.
 - No change in logic or test coverage.
 - Most identifiers outside method parameters were already clear.
+
+Compiles
+Tests pass

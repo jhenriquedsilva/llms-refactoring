@@ -630,3 +630,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 ---
 
 **These changes improve readability and clarity for developers, without changing any logic.**
+
+Compiles
+Tests pass

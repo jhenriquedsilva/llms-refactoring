@@ -630,3 +630,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 - No other parameter rename was necessary.
 
 **If you have other rename criteria, please specify!**
+
+Compiles
+Tests pass

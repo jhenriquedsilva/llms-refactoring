@@ -20,7 +20,32 @@ Below is the **refactored class** (with only parameter renaming and related chan
 ```java
 package org.apache.commons.io.build;
 
-// ... imports remain unchanged ...
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.RandomAccessFile;
+import java.io.Reader;
+import java.io.Writer;
+import java.net.URI;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Objects;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.RandomAccessFileMode;
+import org.apache.commons.io.RandomAccessFiles;
+import org.apache.commons.io.input.CharSequenceInputStream;
+import org.apache.commons.io.input.CharSequenceReader;
+import org.apache.commons.io.input.ReaderInputStream;
+import org.apache.commons.io.output.WriterOutputStream;
 
 public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends AbstractSupplier<T, B> {
 
@@ -307,4 +332,5 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 ---
 
 **If you prefer alternate parameter names or wish further changes, please specify!**
-
+Compiles
+Tests pass

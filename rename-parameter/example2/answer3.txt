@@ -609,3 +609,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 
 **Summary**:
 The improved code renames constructor parameters from `origin` to `inputOrigin` throughout, preventing variable shadowing and enhancing readability. No other rename-parameter refactorings are necessary at this time.
+
+Compiles
+Tests pass

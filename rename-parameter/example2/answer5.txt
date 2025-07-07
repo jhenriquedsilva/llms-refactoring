@@ -617,3 +617,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 ---
 
 If you require parameter renaming for arguments in the signatures (e.g., changing `origin` to `bytes`, `file`, `path`, etc.), let me know, but the parameter name `origin` is already quite appropriate for constructor contexts.
+
+Compiles
+Tests pass

@@ -124,3 +124,6 @@ public class AuditEventDefaultFormatter implements AuditEventFormatter {
 ---
 
 If you have any more pieces of code to review for identifier quality, feel free to share!
+
+Compiles
+Tests pass

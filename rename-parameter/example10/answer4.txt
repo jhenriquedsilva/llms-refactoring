@@ -165,3 +165,5 @@ class XmlPrinterTest {
 - All other parameters are descriptive and do not require improvement.
 
 **End of refactoring.**
+
+Does not compile

@@ -152,3 +152,5 @@ class XmlPrinterTest {
 - `assertXMLEquals(String xml1, String actual)` → `assertXMLEquals(String expectedXml, String actualXml)`
 
 **These changes improve code readability through more descriptive parameter naming.**
+
+Does not compile

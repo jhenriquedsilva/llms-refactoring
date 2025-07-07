@@ -143,3 +143,6 @@ class XmlPrinterTest {
 - `assertXMLEquals(String xml1, String actual)` ⟶ `assertXMLEquals(String expectedXml, String actualXml)`
 
 **All usages are updated accordingly for clarity and improved readability.**
+
+Compiles
+Tests pass

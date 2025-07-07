@@ -209,3 +209,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 - Renamed constructor parameter `joinHintNeedRemove` → `queryHintNeedRemove` for consistency and clarity.
 
 These changes improve code readability regarding parameter intent and naming consistency.
+
+Compiles

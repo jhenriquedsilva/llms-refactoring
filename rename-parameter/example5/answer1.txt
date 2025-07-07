@@ -207,3 +207,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 - Parameter names in `visitChild`, `visitBiRel` also improved for clarity
 
 This refactoring makes the code substantially more readable and self-explanatory.
+
+Compiles

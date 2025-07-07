@@ -196,3 +196,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 - Adapted assignments and usage accordingly.
 
 Other names within the code are reasonable for their context and do not require further refactoring. This should make the code easier to understand and maintain!
+
+Compiles

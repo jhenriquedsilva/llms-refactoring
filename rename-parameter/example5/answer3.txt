@@ -227,3 +227,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 - method parameter index variable standardized to `index` in `visitChild`
 
 These refactorings increase code clarity while maintaining the original logic.
+
+Compiles

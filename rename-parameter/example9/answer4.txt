@@ -9,7 +9,49 @@ Below is the same class with more meaningful parameter names introduced via **re
 ```java
 package com.intellij.util.indexing;
 
-// (imports remain as in the original code)
+import com.intellij.navigation.ItemPresentation;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.roots.AdditionalLibraryRootsProvider;
+import com.intellij.openapi.roots.SyntheticLibrary;
+import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.platform.backend.workspace.WorkspaceModel;
+import com.intellij.platform.workspace.jps.entities.LibraryId;
+import com.intellij.platform.workspace.jps.entities.ModuleId;
+import com.intellij.platform.workspace.storage.EntityPointer;
+import com.intellij.platform.workspace.storage.EntityStorage;
+import com.intellij.platform.workspace.storage.WorkspaceEntity;
+import com.intellij.platform.backend.workspace.VirtualFileUrls;
+import com.intellij.platform.workspace.storage.url.VirtualFileUrl;
+import com.intellij.platform.workspace.storage.url.VirtualFileUrlManager;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.MultiMap;
+import com.intellij.util.indexing.roots.IndexableIteratorPresentation;
+import com.intellij.util.indexing.roots.builders.IndexableIteratorBuilders;
+import com.intellij.util.indexing.roots.builders.IndexableSetContributorFilesIteratorBuilder;
+import com.intellij.util.indexing.roots.builders.SyntheticLibraryIteratorBuilder;
+import com.intellij.util.indexing.roots.origin.IndexingUrlRootHolder;
+import com.intellij.util.indexing.roots.origin.IndexingUrlSourceRootHolder;
+import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileIndex;
+import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileKind;
+import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileSet;
+import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileIndexImpl;
+import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileSetRecognizer;
+import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridge;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+import java.util.function.Predicate;
+
+import static com.intellij.util.indexing.roots.IndexableEntityProvider.IndexableIteratorBuilder;
 
 @ApiStatus.Experimental
 public final class ReincludedRootsUtil {
@@ -359,3 +401,5 @@ public final class ReincludedRootsUtil {
 - These changes improve the readability and maintainability of the code and help future developers better understand the parameter purposes.
 
 If you'd like to focus on even more specific names or additional helpers, that can be discussed as well!
+
+Compiles

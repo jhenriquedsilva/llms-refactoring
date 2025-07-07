@@ -416,3 +416,5 @@ public final class ReincludedRootsUtil {
 - `filesFromLibs` → `libraryRootFiles`
 
 Let me know if you also want to address other code style or readability issues!
+
+Compiles

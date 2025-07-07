@@ -282,3 +282,6 @@ public class DateCache
 - Javadoc and usages updated for renamed parameters.
 
 **This enhances code readability, and maintainability, and reduces ambiguity!**
+
+Compiles
+Tests pass

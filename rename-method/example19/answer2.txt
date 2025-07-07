@@ -320,3 +320,6 @@ class OAuth2WebSecurityConfigurationTests {
 - All usages and calls have been updated to reflect the new method names.
 
 If you require a finer granularity or further comments, feel free to ask!
+
+Compiles
+Tests pass

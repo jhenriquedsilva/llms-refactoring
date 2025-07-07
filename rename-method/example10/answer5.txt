@@ -711,3 +711,6 @@ public class LexicalPreservingPrinter {
 ---
 
 **If you require additional rename opportunities or a stricter naming convention, please specify your preferences.**
+
+Compiles
+Tests pass

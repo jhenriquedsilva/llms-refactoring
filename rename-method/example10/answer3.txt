@@ -637,3 +637,6 @@ public class LexicalPreservingPrinter {
 
 **Result:**
 This refactoring improves code readability, helps future maintainers, and clarifies the purpose of each method. No other changes were made to logic or method signatures.
+
+Compiles
+Tests pass

@@ -747,3 +747,6 @@ public class BouncyCastleGpgKeyLocator {
 - `userKeyboxPath` → `keyboxFile` (parameter, and as argument, where clarity improved)
 
 If you have additional specific preferences for parameter names, please clarify, but these are the most relevant and helpful rename parameter refactorings for this code.
+
+Compiles
+Tests pass

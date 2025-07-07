@@ -171,3 +171,5 @@ public class DateFormat extends ConfigurationFunction implements OptionalArgumen
 - Constructor parameter `date` → `dateExpression`
 
 This makes it much clearer to anyone reading or using the class what these parameters actually represent, thus improving code readability and maintainability. Other parameter naming in the class is acceptably clear.
+
+Compiles

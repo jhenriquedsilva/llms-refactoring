@@ -182,3 +182,5 @@ public class DateFormat extends ConfigurationFunction implements OptionalArgumen
 
 **Rationale:**
 This makes the purpose/meaning of parameters clear, improves maintainability, and eliminates confusion about the parameter roles in this context.
+
+Compiles

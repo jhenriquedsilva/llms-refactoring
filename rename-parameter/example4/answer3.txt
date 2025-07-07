@@ -201,3 +201,5 @@ public class DateFormat extends ConfigurationFunction implements OptionalArgumen
 The renamed parameter (`formatOrDate`) more clearly represents what is expected: either a format string or a date, depending on how the function is called. Similarly, using more descriptive local variable names in the `info()` method clarifies intent for maintainers and users of the API.
 
 If you have further questions about this refactoring or need improvements in another aspect (like method extraction or inline documentation), please indicate!
+
+Compiles

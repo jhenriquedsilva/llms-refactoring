@@ -208,3 +208,6 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 - In `Builder<T>#setExcludeFieldNames`, renamed `excludeFieldNamesParam` to `excludeFieldNames` for clarity and consistency.
 
 **No other rename parameter refactorings were needed.**
+
+Compiles
+Tests pass

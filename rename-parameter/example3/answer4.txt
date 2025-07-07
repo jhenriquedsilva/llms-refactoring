@@ -228,3 +228,5 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 **Summary**:
 Only the parameter on `Builder#setExcludeFieldNames` was renamed for clarity. All other parameter names are already appropriate.
 
+Compiles
+Tests pass

@@ -214,3 +214,6 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 - Also updated the static utility `toExcludeFieldNames` to use `fieldNamesToExclude`.
 
 No other changes are needed. These renames will improve code readability and maintainability.
+
+Compiles
+Tests pass

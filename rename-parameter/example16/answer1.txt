@@ -1152,3 +1152,6 @@ public final class WebSocketHttpTest {
 ---
 
 **No other parameter name refactoring is necessary.**
+
+Compiles
+Tests pass

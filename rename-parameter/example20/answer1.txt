@@ -314,3 +314,6 @@ public final class BridgeMethodResolver {
 - No changes to field or method names, only parameter names, as per your request.
 
 Let me know if you need further adjustments (e.g., for variable names inside methods, or method renaming as well)!
+
+Compiles
+Tests pass

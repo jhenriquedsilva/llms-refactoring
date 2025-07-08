@@ -673,3 +673,5 @@ public class WeightedSpanTermExtractor {
 ---
 
 **This refactoring results in more readable, precise parameter names, reducing ambiguity and making maintenance easier for your team.**
+
+Compiles

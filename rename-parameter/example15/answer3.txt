@@ -186,3 +186,6 @@ public class DataBinderConstructTests {
 - No other low-quality parameter names were detected.
 
 **No further changes are necessary.**
+
+Compiles
+Tests pass

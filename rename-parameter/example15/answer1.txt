@@ -193,3 +193,6 @@ public class DataBinderConstructTests {
 
 **Summary:**
 The only rename parameter refactoring necessary was changing `p2` to `param2` in `DataClass`. All other parameter names are sufficiently descriptive.
+
+Compiles
+Tests pass

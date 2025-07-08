@@ -72,3 +72,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 - **If your team prefers Boolean-style prefixes, you could use `pruningEnabled` instead.**
 
 **Let me know if you need other naming suggestions or code improvements!**
+
+Compiles

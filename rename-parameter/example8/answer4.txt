@@ -98,3 +98,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 
 **If you have a naming guideline specific to your project, adapt further as necessary!**
 If you have any questions about these choices, let me know.
+
+Compiles

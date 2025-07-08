@@ -62,3 +62,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 - In `getNumericDocValues`, pass `field` rather than `null` (if correct for your use case).
 
 If you want to suggest even more precise parameter names (depending on how the second argument in `getValues` is intended to be used), you could adapt further, but this already improves the clarity of the code for both maintainers and reviewers.
+
+Does not compile

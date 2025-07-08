@@ -277,3 +277,6 @@ final class PulsarPropertiesMapper {
 **Summary:**
 The original use of generic names like `properties` could lead to potential confusion (especially with fields or among multiple similar-sounding objects). Renaming them to more expressive alternatives like `clientProperties`, `producerProperties`, etc., greatly improves code readability and maintainability.
 **No other structural refactoring is required.**
+
+Compiles
+Tests pass

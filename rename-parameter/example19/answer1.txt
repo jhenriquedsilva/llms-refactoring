@@ -205,3 +205,6 @@ final class PulsarPropertiesMapper {
 
 **Conclusion:**
 There was opportunity for more expressive parameter names. The above code now more clearly distinguishes between different types of "properties" and between mappings, which both improves readability and reduces risk of confusion.
+
+Compiles
+Tests pass

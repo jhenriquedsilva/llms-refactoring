@@ -482,3 +482,5 @@ public class TestNMClient {
 ---
 
 **If you have a specific naming convention in mind for your codebase, let me know and I can apply that as well.**
+
+Compiles

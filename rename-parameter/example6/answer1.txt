@@ -1,40 +1,101 @@
-01-05-2025, 11:03
+08-07-2025, 13:30
 
-Below are the **rename parameter refactoring** opportunities found in your code. The goal is to enhance code readability by choosing more expressive, context-appropriate parameter names, especially in public or non-trivial methods. Here are places where better parameter names are possible:
+Certainly! After reviewing your code, here are some opportunities for **rename parameter refactoring** to improve clarity and readability:
 
-### Refactoring Opportunities
+### Issues Found
 
-#### 1. `runTest(Runnable test)`
-- **test** → **testLogic** (the name “test” is too generic and conflicts mentally with "test" as in a test case; “testLogic” makes it clear it's the logic to execute).
+Several methods use ambiguous parameter names such as `i`, `clc`, `exitCode`, `test`. These names, while common, can be improved:
 
-#### 2. `allocateContainers(AMRMClientImpl<ContainerRequest> client)`
-- **client** → **amrmClient** (more context specific).
+- `i` → `containerIndex` or `index` where it refers to the index of a container.
+- `clc` → `containerLaunchContext`.
+- `exitCode` (which actually is a list of exit statuses) → `exitStatuses` for clarity.
+- `test` (of type Runnable in `runTest`) → `testAction` or `testLogic`.
+- In `testReInitializeContainer`, parameters are fine given the context, but `clc` can be renamed similar to above.
+- The `size` variable in a loop could be improved to `containerCount`, though it's local and clear.
+- Arguments in listener methods (`op`) can be renamed to `containerImpl`, as `op` is not clear.
+- Return parameters (`client`, `containers`) can be more descriptive (`nmClientImpl`, `containerSet`), but the benefit is modest.
 
-#### 3. `testContainerManagement(NMClientImpl client, Set<Container> containers)`
-- **client** → **nmClientImpl** (more context specific).
+### Full Refactored Class
 
-#### 4. `testContainer(NMClientImpl client, int i, Container container, ContainerLaunchContext clc, List<Integer> exitCode)`
-- **client** → **nmClientImpl**
-- **i** → **containerIndex**
-- **exitCode** → **exitStatuses** (since it's List<Integer>)
-
-#### 5. `waitForContainerRunningTransitionCount(Container container, long transitions)`
-- **transitions** → **expectedTransitionCount** (makes it clear what the long parameter means).
-
-#### 6. `testGetContainerStatus(Container container, int index, ... )`
-- **index** → **containerIndex**
+Below you will find the **whole class** with these improvements, highlighted in the changes below for easier review. If you wish to accept only selected refactorings, you can adjust as you see fit.
 
 ---
 
-## Refactored Code
-
-Below is the whole class with the proposed rename parameter refactorings applied:
-
 ```java
-// ... [Imports unchanged]
+package org.apache.hadoop.yarn.client.api.impl;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.DataOutputBuffer;
+import org.apache.hadoop.security.Credentials;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.service.Service.STATE;
+import org.apache.hadoop.test.GenericTestUtils;
+import org.apache.hadoop.util.Shell;
+import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse;
+import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest;
+import org.apache.hadoop.yarn.api.records.ApplicationId;
+import org.apache.hadoop.yarn.api.records.ApplicationSubmissionContext;
+import org.apache.hadoop.yarn.api.records.Container;
+import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
+import org.apache.hadoop.yarn.api.records.ContainerState;
+import org.apache.hadoop.yarn.api.records.ContainerStatus;
+import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
+import org.apache.hadoop.yarn.api.records.NMToken;
+import org.apache.hadoop.yarn.api.records.NodeReport;
+import org.apache.hadoop.yarn.api.records.NodeState;
+import org.apache.hadoop.yarn.api.records.Priority;
+import org.apache.hadoop.yarn.api.records.Resource;
+import org.apache.hadoop.yarn.client.api.AMRMClient;
+import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
+import org.apache.hadoop.yarn.client.api.NMClient;
+import org.apache.hadoop.yarn.client.api.NMTokenCache;
+import org.apache.hadoop.yarn.client.api.YarnClient;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
+import org.apache.hadoop.yarn.exceptions.YarnException;
+import org.apache.hadoop.yarn.server.MiniYARNCluster;
+import org.apache.hadoop.yarn.server.nodemanager.ContainerStateTransitionListener;
+import org.apache.hadoop.yarn.server.nodemanager.Context;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerEvent;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptState;
+import org.apache.hadoop.yarn.util.Records;
+
+import org.junit.Test;
+import org.junit.function.ThrowingRunnable;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 public class TestNMClient {
-    // ... [Fields and constants unchanged]
+    private static final String IS_NOT_HANDLED_BY_THIS_NODEMANAGER =
+            "is not handled by this NodeManager";
+    private static final String UNKNOWN_CONTAINER =
+            "Unknown container";
+
+    private static final int NUMBER_OF_CONTAINERS = 5;
+    private Configuration conf;
+    private MiniYARNCluster yarnCluster;
+    private YarnClientImpl yarnClient;
+    private AMRMClientImpl<ContainerRequest> rmClient;
+    private NMClientImpl nmClient;
+    private List<NodeReport> nodeReports;
+    private NMTokenCache nmTokenCache;
+    private RMAppAttempt appAttempt;
 
     /**
      * Container State transition listener to track the number of times
@@ -43,9 +104,10 @@ public class TestNMClient {
     public static class DebugSumContainerStateListener implements ContainerStateTransitionListener {
         public static final Map<ContainerId, Integer> RUNNING_TRANSITIONS = new ConcurrentHashMap<>();
 
-        public void init(Context context) {}
+        public void init(Context context) {
+        }
 
-        public void preTransition(ContainerImpl op,
+        public void preTransition(ContainerImpl containerImpl,
                                   org.apache.hadoop.yarn.server.nodemanager
                                           .containermanager.container.ContainerState
                                           beforeState,
@@ -53,7 +115,7 @@ public class TestNMClient {
         }
 
         public void postTransition(
-                ContainerImpl op,
+                ContainerImpl containerImpl,
                 org.apache.hadoop.yarn.server.nodemanager.containermanager.container
                         .ContainerState beforeState,
                 org.apache.hadoop.yarn.server.nodemanager.containermanager.container
@@ -62,21 +124,116 @@ public class TestNMClient {
             if (beforeState != afterState &&
                     afterState == org.apache.hadoop.yarn.server.nodemanager.containermanager.container
                             .ContainerState.RUNNING) {
-                RUNNING_TRANSITIONS.compute(op.getContainerId(),
+                RUNNING_TRANSITIONS.compute(containerImpl.getContainerId(),
                         (containerId, counter) -> counter == null ? 1 : ++counter);
             }
         }
     }
 
-    // ... [setup, startYarnCluster, startYarnClient, startRMClient, startNMClient, tearDown, tests unchanged]
+    public void setup() throws YarnException, IOException, InterruptedException, TimeoutException {
+        conf = new YarnConfiguration();
+        conf.set(YarnConfiguration.NM_CONTAINER_STATE_TRANSITION_LISTENERS,
+                DebugSumContainerStateListener.class.getName());
+        startYarnCluster();
+        startYarnClient();
+        UserGroupInformation.setLoginUser(UserGroupInformation
+                .createRemoteUser(UserGroupInformation.getCurrentUser().getUserName()));
+        UserGroupInformation.getCurrentUser().addToken(appAttempt.getAMRMToken());
+        nmTokenCache = new NMTokenCache();
+        startRMClient();
+        startNMClient();
+    }
 
-    public void runTest(Runnable testLogic)
-            throws IOException, InterruptedException, YarnException, TimeoutException {
+
+    private void startYarnCluster() {
+        yarnCluster = new MiniYARNCluster(TestNMClient.class.getName(), 3, 1, 1);
+        yarnCluster.init(conf);
+        yarnCluster.start();
+        assertEquals(STATE.STARTED, yarnCluster.getServiceState());
+    }
+
+    private void startYarnClient()
+            throws IOException, YarnException, InterruptedException, TimeoutException {
+        yarnClient = (YarnClientImpl) YarnClient.createYarnClient();
+        yarnClient.init(conf);
+        yarnClient.start();
+        assertEquals(STATE.STARTED, yarnClient.getServiceState());
+        nodeReports = yarnClient.getNodeReports(NodeState.RUNNING);
+
+        ApplicationSubmissionContext appContext =
+                yarnClient.createApplication().getApplicationSubmissionContext();
+        ApplicationId appId = appContext.getApplicationId();
+        appContext.setApplicationName("Test");
+        Priority pri = Priority.newInstance(0);
+        appContext.setPriority(pri);
+        appContext.setQueue("default");
+        ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);
+        appContext.setAMContainerSpec(amContainer);
+        appContext.setUnmanagedAM(true);
+
+        SubmitApplicationRequest appRequest = Records.newRecord(SubmitApplicationRequest.class);
+        appRequest.setApplicationSubmissionContext(appContext);
+        yarnClient.submitApplication(appContext);
+        GenericTestUtils.waitFor(() -> yarnCluster.getResourceManager().getRMContext().getRMApps()
+                        .get(appId).getCurrentAppAttempt().getAppAttemptState() == RMAppAttemptState.LAUNCHED,
+                100, 30_000, "Failed to start app");
+        appAttempt = yarnCluster.getResourceManager().getRMContext().getRMApps()
+                .get(appId).getCurrentAppAttempt();
+    }
+
+    private void startRMClient() {
+        rmClient = (AMRMClientImpl<ContainerRequest>) AMRMClient.createAMRMClient();
+        rmClient.setNMTokenCache(nmTokenCache);
+        rmClient.init(conf);
+        rmClient.start();
+        assertEquals(STATE.STARTED, rmClient.getServiceState());
+    }
+
+    private void startNMClient() {
+        nmClient = (NMClientImpl) NMClient.createNMClient();
+        nmClient.setNMTokenCache(rmClient.getNMTokenCache());
+        nmClient.init(conf);
+        nmClient.start();
+        assertEquals(STATE.STARTED, nmClient.getServiceState());
+    }
+
+    public void tearDown() throws InterruptedException {
+        rmClient.stop();
+        yarnClient.stop();
+        yarnCluster.stop();
+    }
+
+    @Test (timeout = 180_000)
+    public void testNMClientNoCleanupOnStop()
+            throws YarnException, IOException, InterruptedException, TimeoutException {
+        runTest(() -> {
+            stopNmClient();
+            assertFalse(nmClient.startedContainers.isEmpty());
+            nmClient.cleanupRunningContainers();
+            assertEquals(0, nmClient.startedContainers.size());
+        });
+    }
+
+    @Test (timeout = 200_000)
+    public void testNMClient()
+            throws YarnException, IOException, InterruptedException, TimeoutException {
+        runTest(() -> {
+            // stop the running containers on close
+            assertFalse(nmClient.startedContainers.isEmpty());
+            nmClient.cleanupRunningContainersOnStop(true);
+            assertTrue(nmClient.getCleanupRunningContainers().get());
+            nmClient.stop();
+        });
+    }
+
+    public void runTest(
+            Runnable testAction
+    ) throws IOException, InterruptedException, YarnException, TimeoutException {
         setup();
         rmClient.registerApplicationMaster("Host", 10_000, "");
         testContainerManagement(nmClient, allocateContainers(rmClient));
         rmClient.unregisterApplicationMaster(FinalApplicationStatus.SUCCEEDED, null, null);
-        testLogic.run();
+        testAction.run();
         tearDown();
     }
 
@@ -91,10 +248,11 @@ public class TestNMClient {
         nmClient.stop();
     }
 
-    private Set<Container> allocateContainers(AMRMClientImpl<ContainerRequest> amrmClient)
-            throws YarnException, IOException {
-        for (int i = 0; i < NUMBER_OF_CONTAINERS; ++i) {
-            amrmClient.addContainerRequest(new ContainerRequest(
+    private Set<Container> allocateContainers(
+            AMRMClientImpl<ContainerRequest> rmClientImpl
+    ) throws YarnException, IOException {
+        for (int containerIndex = 0; containerIndex < NUMBER_OF_CONTAINERS; ++containerIndex) {
+            rmClientImpl.addContainerRequest(new ContainerRequest(
                     Resource.newInstance(1024, 0),
                     new String[] {nodeReports.get(0).getNodeId().getHost()},
                     new String[] {nodeReports.get(0).getRackName()},
@@ -103,10 +261,10 @@ public class TestNMClient {
         }
         Set<Container> allocatedContainers = new TreeSet<>();
         while (allocatedContainers.size() < NUMBER_OF_CONTAINERS) {
-            AllocateResponse allocResponse = amrmClient.allocate(0.1f);
+            AllocateResponse allocResponse = rmClientImpl.allocate(0.1f);
             allocatedContainers.addAll(allocResponse.getAllocatedContainers());
             for (NMToken token : allocResponse.getNMTokens()) {
-                amrmClient.getNMTokenCache().setToken(token.getNodeId().toString(), token.getToken());
+                rmClientImpl.getNMTokenCache().setToken(token.getNodeId().toString(), token.getToken());
             }
             if (allocatedContainers.size() < NUMBER_OF_CONTAINERS) {
                 sleep(100);
@@ -115,11 +273,12 @@ public class TestNMClient {
         return allocatedContainers;
     }
 
-    private void testContainerManagement(NMClientImpl nmClientImpl, Set<Container> containers)
-            throws YarnException, IOException {
-        int size = containers.size();
+    private void testContainerManagement(
+            NMClientImpl nmClientImpl, Set<Container> containerSet
+    ) throws YarnException, IOException {
+        int containerCount = containerSet.size();
         int containerIndex = 0;
-        for (Container container : containers) {
+        for (Container container : containerSet) {
             // getContainerStatus shouldn't be called before startContainer,
             // otherwise, NodeManager cannot find the container
             assertYarnException(
@@ -151,29 +310,28 @@ public class TestNMClient {
                     () -> nmClientImpl.stopContainer(container.getId(), container.getNodeId()),
                     IS_NOT_HANDLED_BY_THIS_NODEMANAGER);
 
-            Credentials ts = new Credentials();
-            DataOutputBuffer dob = new DataOutputBuffer();
-            ts.writeTokenStorageToStream(dob);
-            ByteBuffer securityTokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
-            ContainerLaunchContext clc = Records.newRecord(ContainerLaunchContext.class);
-            clc.setCommands(Shell.WINDOWS
+            Credentials credentials = new Credentials();
+            DataOutputBuffer dataOutputBuffer = new DataOutputBuffer();
+            credentials.writeTokenStorageToStream(dataOutputBuffer);
+            ByteBuffer securityTokens = ByteBuffer.wrap(dataOutputBuffer.getData(), 0, dataOutputBuffer.getLength());
+            ContainerLaunchContext containerLaunchContext = Records.newRecord(ContainerLaunchContext.class);
+            containerLaunchContext.setCommands(Shell.WINDOWS
                     ? Arrays.asList("ping", "-n", "10000000", "127.0.0.1", ">nul")
                     : Arrays.asList("sleep", "1000000")
             );
-            clc.setTokens(securityTokens);
-            nmClientImpl.startContainer(container, clc);
+            containerLaunchContext.setTokens(securityTokens);
+            nmClientImpl.startContainer(container, containerLaunchContext);
             List<Integer> exitStatuses = Arrays.asList(-1000, -105);
 
-            containerIndex++;
             // leave one container unclosed
-            if (containerIndex < size) {
-                testContainer(nmClientImpl, containerIndex, container, clc, exitStatuses);
+            if (++containerIndex < containerCount) {
+                testContainer(nmClientImpl, containerIndex, container, containerLaunchContext, exitStatuses);
             }
         }
     }
 
     private void testContainer(NMClientImpl nmClientImpl, int containerIndex, Container container,
-                               ContainerLaunchContext clc, List<Integer> exitStatuses)
+                               ContainerLaunchContext containerLaunchContext, List<Integer> exitStatuses)
             throws YarnException, IOException {
         testGetContainerStatus(container, containerIndex, ContainerState.RUNNING, "",
                 exitStatuses);
@@ -184,7 +342,7 @@ public class TestNMClient {
                 "will be Restarted", exitStatuses);
         waitForContainerRunningTransitionCount(container, 2);
         if (containerIndex % 2 == 0) {
-            testReInitializeContainer(container, clc, false);
+            testReInitializeContainer(container, containerLaunchContext, false);
             testGetContainerStatus(container, containerIndex, ContainerState.RUNNING,
                     "will be Re-initialized", exitStatuses);
             waitForContainerRunningTransitionCount(container, 3);
@@ -193,13 +351,13 @@ public class TestNMClient {
                     "will be Rolled-back", exitStatuses);
             waitForContainerRunningTransitionCount(container, 4);
             testContainerCommit(container, false);
-            testReInitializeContainer(container, clc, false);
+            testReInitializeContainer(container, containerLaunchContext, false);
             testGetContainerStatus(container, containerIndex, ContainerState.RUNNING,
                     "will be Re-initialized", exitStatuses);
             waitForContainerRunningTransitionCount(container, 5);
             testContainerCommit(container, true);
         } else {
-            testReInitializeContainer(container, clc, true);
+            testReInitializeContainer(container, containerLaunchContext, true);
             testGetContainerStatus(container, containerIndex, ContainerState.RUNNING,
                     "will be Re-initialized", exitStatuses);
             waitForContainerRunningTransitionCount(container, 3);
@@ -211,15 +369,16 @@ public class TestNMClient {
                 "killed by the ApplicationMaster", exitStatuses);
     }
 
-    private void waitForContainerRunningTransitionCount(Container container, long expectedTransitionCount) {
+    private void waitForContainerRunningTransitionCount(Container container, long transitions) {
         while (DebugSumContainerStateListener.RUNNING_TRANSITIONS
-                .getOrDefault(container.getId(), 0) != expectedTransitionCount) {
+                .getOrDefault(container.getId(), 0) != transitions) {
             sleep(500);
         }
     }
 
+
     private void testGetContainerStatus(Container container, int containerIndex,
-                                        ContainerState state, String diagnostics,
+                                        ContainerState expectedState, String diagnostics,
                                         List<Integer> exitStatuses)
             throws YarnException, IOException {
         while (true) {
@@ -228,7 +387,7 @@ public class TestNMClient {
                     container.getId(), container.getNodeId());
             // NodeManager may still need some time to get the stable
             // container status
-            if (status.getState() == state) {
+            if (status.getState() == expectedState) {
                 assertEquals(container.getId(), status.getContainerId());
                 assertTrue(containerIndex + ": " + status.getDiagnostics(),
                         status.getDiagnostics().contains(diagnostics));
@@ -242,16 +401,75 @@ public class TestNMClient {
         }
     }
 
-    // ... [Other methods unchanged]
+    @SuppressWarnings("deprecation")
+    private void testIncreaseContainerResource(Container container) {
+        assertYarnException(
+                () -> nmClient.increaseContainerResource(container),
+                container.getId() + " has update version ");
+    }
+
+    private void testRestartContainer(Container container) throws IOException, YarnException {
+        nmClient.restartContainer(container.getId());
+    }
+
+    private void testContainerRollback(Container container, boolean notRollbackable)
+            throws IOException, YarnException {
+        if (notRollbackable) {
+            nmClient.rollbackLastReInitialization(container.getId());
+        } else {
+            assertYarnException(
+                    () -> nmClient.rollbackLastReInitialization(container.getId()),
+                    "Nothing to rollback to");
+        }
+    }
+
+    private void testContainerCommit(Container container, boolean enabled)
+            throws IOException, YarnException {
+        if (enabled) {
+            nmClient.commitLastReInitialization(container.getId());
+        } else {
+            assertYarnException(
+                    () -> nmClient.commitLastReInitialization(container.getId()),
+                    "Nothing to Commit");
+        }
+    }
+
+    private void testReInitializeContainer(
+            Container container, ContainerLaunchContext containerLaunchContext, boolean autoCommit
+    ) throws IOException, YarnException {
+        nmClient.reInitializeContainer(container.getId(), containerLaunchContext, autoCommit);
+    }
+
+    private void assertYarnException(ThrowingRunnable runnable, String text) {
+        YarnException e = assertThrows(YarnException.class, runnable);
+        assertTrue(String.format("The thrown exception is not expected cause it has text [%s]"
+                + ", what not contains text [%s]", e.getMessage(), text), e.getMessage().contains(text));
+    }
+
+    private void sleep(int sleepTimeMs) {
+        try {
+            Thread.sleep(sleepTimeMs);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
 }
 ```
 
-## Summary
+---
 
-- **Parameter names are now more descriptive, context-specific, and eliminate ambiguity.**
-- No changes were made to method signatures where the names were already clear or to class/field names.
-- The functional logic is unchanged.
+**Summary of parameter renaming:**
+- `i` → `containerIndex`
+- `test` (`Runnable test`) → `testAction`
+- `clc` → `containerLaunchContext`
+- `exitCode` (list of Integer) → `exitStatuses`
+- Method locals for credentials/security tightened naming for clarity
+- Listener argument `op` → `containerImpl`
+- Minor tweaks in method arguments (set, client, etc.)
 
 ---
 
-**If you need a diff or further reasoning about each specific change, let me know!**
+Let me know if you want the **list of renamings** in a more explicit format, or want to know the reasoning behind any specific change in detail!
+
+Compiles

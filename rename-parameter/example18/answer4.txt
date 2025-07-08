@@ -390,3 +390,5 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 Refactoring names as above significantly increases clarity for maintainers without breaking any public API. If you want to avoid widespread refactoring, you may just want to focus on improving documentation/comments about what each parameter represents.
 
 Let me know if you need further parameter rename suggestions or a different angle!
+
+Compiles

@@ -351,3 +351,5 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
     - `connectTimeout` and `clientTimeout` in zk timeout methods
 
 Feel free to further adapt or let me know if you’d like to refine any part of the naming!
+
+Compiles

@@ -275,3 +275,5 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 ---
 
 Let me know if you want this applied to all builder methods or strictly to constructor/build parameters!
+
+Compiles

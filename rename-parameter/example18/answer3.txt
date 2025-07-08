@@ -294,3 +294,5 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 **If you wish to keep the public API unchanged, you should consider only updating the parameter names internally for clarity (without breaking backward compatibility for existing clients using the method names).**
 
 Let me know if you want a version retaining shortened ("zk") names for compatibility in the API but improving code clarity internally!
+
+Compiles

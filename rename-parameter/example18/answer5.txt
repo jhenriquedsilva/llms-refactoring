@@ -380,3 +380,5 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 
 ### **Rationale**
 These parameter renaming refactorings improve readability and maintainability, making it much easier for current and future maintainers to understand what values are to be supplied and what their purpose is.
+
+Compiles

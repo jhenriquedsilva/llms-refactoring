@@ -1,18 +1,3 @@
-28-05-2025, 19:41
-
-There **are** extract method refactoring opportunities in this code. Specifically, the repeated pattern of:
-
-```java
-try (ClosedInputStream cis = ...) {
-    assertEquals(EOF, cis.read()...);
-    ...
-}
-```
-can be extracted to helper methods for each type of test. This not only removes duplication but also clarifies intention and improves readability and maintainability.
-
-Below is the **refactored version** of the code with the duplicate logic moved into private helper methods:
-
-```java
 package org.apache.commons.io.input;
 
 import static org.apache.commons.io.IOUtils.EOF;
@@ -20,9 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
-/**
- * Tests {@link ClosedInputStream}.
- */
 public class ClosedInputStreamTest {
 
     @Test
@@ -42,16 +24,11 @@ public class ClosedInputStreamTest {
 
     @Test
     public void testSingleton() throws Exception {
-        // Deprecated singleton instance
-        try (@SuppressWarnings("deprecation")
-             ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
+        try (@SuppressWarnings("deprecation") ClosedInputStream cis = ClosedInputStream.CLOSED_INPUT_STREAM) {
             assertEquals(EOF, cis.read(), "read()");
         }
-        // Preferred singleton instance
         assertReadEqualsEof(ClosedInputStream.INSTANCE, "read()");
     }
-
-    // --- Extracted assertion helpers ---
 
     private void assertReadEqualsEof(ClosedInputStream cis, String message) throws Exception {
         try (ClosedInputStream ignored = cis) {
@@ -75,15 +52,3 @@ public class ClosedInputStreamTest {
         }
     }
 }
-```
-
-### **Summary of changes:**
-- Extracted assertion-and-resource-handling logic into `assertReadEqualsEof`, `assertReadArrayEqualsEof`, and `assertReadArrayIndexEqualsEof` private methods.
-- Calls to these helpers simplify the main test methods, improving readability.
-- The singleton test still handles `CLOSED_INPUT_STREAM` separately because of the deprecation suppression, but uses the helper for the non-deprecated `INSTANCE`.
-  
-If you'd like even further reduction (for example, even combining the resource management in single methods for singleton cases or more parameterization), just let me know!
-
-Levenshtein edit-distance: 934
-Compiles
-Tests pass

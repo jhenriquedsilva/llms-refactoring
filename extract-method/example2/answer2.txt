@@ -76,6 +76,6 @@ public class ClosedInputStreamTest {
 
 **This improves readability and reduces duplication without altering test semantics.**
 
-Levenshtein edit-distance: 420
+Levenshtein edit-distance: 392
 Does not compile
 Tests do not pass

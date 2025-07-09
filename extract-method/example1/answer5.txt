@@ -429,6 +429,6 @@ public class RegexpCheck extends AbstractCheck {
 **No other potential extract method opportunities** are apparent in this code.  
 If you need additional opportunities, please clarify!
 
-Levenshtein edit-distance: 199
+Levenshtein edit-distance: 73
 Compiles
 Tests pass

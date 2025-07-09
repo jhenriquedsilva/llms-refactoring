@@ -422,6 +422,6 @@ public class RegexpCheck extends AbstractCheck {
 
 If you need further refactorings or notice other duplicated logic, just let me know!
 
-Levenshtein edit-distance: 122
+Levenshtein edit-distance: 39
 Compiles
 Tests pass

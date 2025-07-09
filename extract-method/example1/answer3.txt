@@ -428,6 +428,6 @@ public class RegexpCheck extends AbstractCheck {
 - Centralizes message formatting logic.
 - Makes future changes to message logic safer and easier.
 
-Levenshtein edit-distance: 927
+Levenshtein edit-distance: 39
 Compiles
 Tests pass

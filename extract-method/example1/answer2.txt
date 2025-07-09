@@ -200,6 +200,6 @@ public class RegexpCheck extends AbstractCheck {
 
 **No behavior is changed**; only code cleanliness and reusability are improved.
 
-Levenshtein edit-distance: 7174
+Levenshtein edit-distance: 107
 Compiles
 Tests pass

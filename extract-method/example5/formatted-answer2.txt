@@ -1,17 +1,3 @@
-27-05-2025, 21:10
-
-**Yes, there are clear extract method refactoring opportunities** in the provided code. Particularly, the following blocks can be extracted into descriptive, reusable private methods:
-
-- The repetitive registration/creation of test source tables with sample data.
-- The repetitive creation of sink tables.
-- The repetitive modification of the JSON plan within lambdas to set state TTL per operator.
-- The complex, multi-step preparations in each test, such as data, table setup, and test execution.
-
-Below is the **refactored class** with these improvements, with all code otherwise unchanged. The refactorings are marked in the code as comments for clarity.
-
----
-
-```java
 package org.apache.flink.table.planner.runtime.stream.jsonplan;
 
 import org.apache.flink.table.api.TableException;
@@ -32,10 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Tests for configuring operator-level state TTL via {@link
- * org.apache.flink.table.api.CompiledPlan}.
- */
 class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 
     @Test
@@ -111,9 +93,6 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         };
     }
 
-    // ------ Refactored: extracted methods below ------
-
-    /** Registers the Orders table used in the first test, returns dataId. */
     private String registerOrdersTableWithSampleData() {
         List<GenericRowData> orders = Arrays.asList(
                 GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
@@ -128,7 +107,7 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         String dataId = TestValuesTableFactory.registerRowData(orders);
         createTestSourceTable(
                 "Orders",
-                new String[] {
+                new String[]{
                         "`order_id` INT", "`buyer` STRING", "`quantity` INT", "`amount` DOUBLE"
                 },
                 null,
@@ -136,7 +115,6 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         return dataId;
     }
 
-    /** Registers the left "Orders" table for join tests, returns dataId. */
     private String registerOrdersLeftTable() {
         List<GenericRowData> leftTable = Arrays.asList(
                 GenericRowData.of(1, 1000001),
@@ -148,13 +126,12 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         String dataId = TestValuesTableFactory.registerRowData(leftTable);
         createTestSourceTable(
                 "Orders",
-                new String[] {"`order_id` INT", "`line_order_id` INT"},
+                new String[]{"`order_id` INT", "`line_order_id` INT"},
                 null,
                 getProperties(dataId, 1, "2s"));
         return dataId;
     }
 
-    /** Registers the right "LineOrders" table for join tests, returns dataId. */
     private String registerLineOrdersTable() {
         List<GenericRowData> rightTable = Arrays.asList(
                 GenericRowData.of(2000001, StringData.fromString("TRUCK")),
@@ -166,13 +143,12 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         String dataId = TestValuesTableFactory.registerRowData(rightTable);
         createTestSourceTable(
                 "LineOrders",
-                new String[] {"`line_order_id` INT", "`ship_mode` STRING"},
+                new String[]{"`line_order_id` INT", "`ship_mode` STRING"},
                 null,
                 getProperties(dataId, 2, "4s"));
         return dataId;
     }
 
-    /** Returns a JSON plan transformer that adds deduplicate/group-aggregate TTL. */
     private static Function<String, String> addStateMetadataForAggregateAndDeduplicate() {
         return (Function<String, String>) json -> {
             try {
@@ -188,7 +164,6 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         };
     }
 
-    /** Returns a JSON plan transformer that sets left/right input TTL for join. */
     private static Function<String, String> addJoinOperatorStateMetadata() {
         return json -> {
             try {
@@ -203,21 +178,4 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
             }
         };
     }
-
 }
-```
-
----
-
-**Summary of improvements**:
-
-- Large data registration + table creation blocks are extracted with intention-revealing names.
-- The JSON plan transformation lambdas are extracted into named methods for clarity and reuse.
-- Test methods are now shorter and their intent clearer, delegating detail work.
-- No functional change.
-
-**This style will help long-term maintainability, readability, and test extensibility.**
-
-Levenshtein edit-distance: 4440
-Compiles
-Tests pass

@@ -1,18 +1,3 @@
-27-05-2025, 21:10
-
-This code contains **multiple refactoring opportunities** (Extract Method) to enhance readability and maintainability.
-
-### Main Extract Method Opportunities
-The following code blocks can (and should) be extracted into helper methods:
-1. The registration and creation of the Orders source table in both `testDifferentStateTtlForDifferentOneInputOperator` and in `innerTestRegularJoin`.
-2. The creation of the sink table (e.g., OrdersStats, OrdersShipInfo).
-3. The repeated block for handling the json plan transformation using `JsonTestUtils`, which appears (with slight differences) in test methods.
-
-Below is the refactored class with these opportunities addressed.
-
----
-
-```java
 package org.apache.flink.table.planner.runtime.stream.jsonplan;
 
 import org.apache.flink.table.api.TableException;
@@ -33,33 +18,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Tests for configuring operator-level state TTL via {@link
- * org.apache.flink.table.api.CompiledPlan}.
- */
 class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 
     @Test
     void testDifferentStateTtlForDifferentOneInputOperator() throws Exception {
-        registerOrdersSourceTableForStats();
-
-        createOrdersStatsSinkTable();
-
-        compileSqlAndExecutePlan("INSERT INTO OrdersStats \n"
+        innerTestDeduplicateAndGroupAggregate(
+                "INSERT INTO OrdersStats \n"
                         + "SELECT buyer, COUNT(1) AS ord_cnt, SUM(quantity) AS quantity_cnt, SUM(amount) AS total_amount FROM (\n"
                         + "SELECT *, ROW_NUMBER() OVER(PARTITION BY order_id, buyer, quantity, amount ORDER BY proctime() ASC) AS rk FROM Orders) tmp\n"
                         + "WHERE rk = 1\n"
-                        + "GROUP BY buyer", createDeduplicateAndGroupAggStateTtlTransformer()
-        ).await();
-
-        List<String> expected =
-                Arrays.asList(
-                        "+I[Tom, 2, 2, 229.8]",
-                        "+I[Jerry, 1, 2, 99.9]",
-                        "+I[Jerry, 1, 2, 99.9]",
-                        "+I[Olivia, 2, 4, 1100.0]",
-                        "+I[Michael, 1, 3, 599.9]");
-        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersStats"));
+                        + "GROUP BY buyer",
+                json -> {
+                    try {
+                        JsonNode target = JsonTestUtils.readFromString(json);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-deduplicate", 0, 6000L);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-group-aggregate", 0, 9000L);
+                        return JsonTestUtils.writeToString(target);
+                    } catch (IOException e) {
+                        throw new TableException("Cannot modify compiled json plan.", e);
+                    }
+                });
     }
 
     @Test
@@ -67,7 +47,18 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         innerTestRegularJoin(
                 "INSERT INTO OrdersShipInfo \n"
                         + "SELECT a.order_id, a.line_order_id, b.ship_mode FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id",
-                createJoinStateTtlTransformer());
+                json -> {
+                    try {
+                        JsonNode target = JsonTestUtils.readFromString(json);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-join", 0, 3000L);
+                        JsonTestUtils.setExecNodeStateMetadata(
+                                target, "stream-exec-join", 1, 9000L);
+                        return JsonTestUtils.writeToString(target);
+                    } catch (IOException e) {
+                        throw new TableException("Cannot modify compiled json plan.", e);
+                    }
+                });
     }
 
     @Test
@@ -80,24 +71,8 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                 json -> json);
     }
 
-    private void innerTestRegularJoin(String sql, Function<String, String> jsonPlanTransformer)
-            throws Exception {
-        registerOrdersSourceTableForJoin();
-        registerLineOrdersSourceTableForJoin();
-
-        createTestValuesSinkTable(
-                "OrdersShipInfo", "`order_id` INT", "`line_order_id` INT", "`ship_mode` STRING");
-        compileSqlAndExecutePlan(sql, jsonPlanTransformer).await();
-
-        List<String> expected =
-                Arrays.asList(
-                        "+I[1, 1000002, TRUCK]", "+I[1, 1000004, RAIL]", "+I[1, 1000005, AIR]");
-        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersShipInfo"));
-    }
-
-    // --------- Extracted Methods Below ---------
-
-    private void registerOrdersSourceTableForStats() {
+    private void innerTestDeduplicateAndGroupAggregate(
+            String sql, Function<String, String> jsonPlanTransformer) throws Exception {
         String dataId =
                 TestValuesTableFactory.registerRowData(
                         Arrays.asList(
@@ -112,23 +87,32 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                                 GenericRowData.of(6, StringData.fromString("Olivia"), 3, 1000d)));
         createTestSourceTable(
                 "Orders",
-                new String[] {
+                new String[]{
                         "`order_id` INT", "`buyer` STRING", "`quantity` INT", "`amount` DOUBLE"
                 },
                 null,
                 getProperties(dataId, 1, "2s"));
-    }
 
-    private void createOrdersStatsSinkTable() {
         createTestNonInsertOnlyValuesSinkTable(
                 "OrdersStats",
                 "`buyer` STRING",
                 "`ord_cnt` BIGINT",
                 "`quantity_cnt` BIGINT",
                 "`total_amount` DOUBLE");
+        compileSqlAndExecutePlan(sql, jsonPlanTransformer).await();
+
+        List<String> expected =
+                Arrays.asList(
+                        "+I[Tom, 2, 2, 229.8]",
+                        "+I[Jerry, 1, 2, 99.9]",
+                        "+I[Jerry, 1, 2, 99.9]",
+                        "+I[Olivia, 2, 4, 1100.0]",
+                        "+I[Michael, 1, 3, 599.9]");
+        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersStats"));
     }
 
-    private void registerOrdersSourceTableForJoin() {
+    private void innerTestRegularJoin(String sql, Function<String, String> jsonPlanTransformer)
+            throws Exception {
         String leftTableDataId =
                 TestValuesTableFactory.registerRowData(
                         Arrays.asList(
@@ -140,12 +124,10 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                                 GenericRowData.of(2, 2000001)));
         createTestSourceTable(
                 "Orders",
-                new String[] {"`order_id` INT", "`line_order_id` INT"},
+                new String[]{"`order_id` INT", "`line_order_id` INT"},
                 null,
                 getProperties(leftTableDataId, 1, "2s"));
-    }
 
-    private void registerLineOrdersSourceTableForJoin() {
         String rightTableDataId =
                 TestValuesTableFactory.registerRowData(
                         Arrays.asList(
@@ -157,39 +139,18 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
                                 GenericRowData.of(1000004, StringData.fromString("RAIL"))));
         createTestSourceTable(
                 "LineOrders",
-                new String[] {"`line_order_id` INT", "`ship_mode` STRING"},
+                new String[]{"`line_order_id` INT", "`ship_mode` STRING"},
                 null,
                 getProperties(rightTableDataId, 2, "4s"));
-    }
 
-    private static Function<String, String> createDeduplicateAndGroupAggStateTtlTransformer() {
-        return json -> {
-            try {
-                JsonNode target = JsonTestUtils.readFromString(json);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-deduplicate", 0, 6000L);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-group-aggregate", 0, 9000L);
-                return JsonTestUtils.writeToString(target);
-            } catch (IOException e) {
-                throw new TableException("Cannot modify compiled json plan.", e);
-            }
-        };
-    }
+        createTestValuesSinkTable(
+                "OrdersShipInfo", "`order_id` INT", "`line_order_id` INT", "`ship_mode` STRING");
+        compileSqlAndExecutePlan(sql, jsonPlanTransformer).await();
 
-    private static Function<String, String> createJoinStateTtlTransformer() {
-        return json -> {
-            try {
-                JsonNode target = JsonTestUtils.readFromString(json);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-join", 0, 3000L);
-                JsonTestUtils.setExecNodeStateMetadata(
-                        target, "stream-exec-join", 1, 9000L);
-                return JsonTestUtils.writeToString(target);
-            } catch (IOException e) {
-                throw new TableException("Cannot modify compiled json plan.", e);
-            }
-        };
+        List<String> expected =
+                Arrays.asList(
+                        "+I[1, 1000002, TRUCK]", "+I[1, 1000004, RAIL]", "+I[1, 1000005, AIR]");
+        assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersShipInfo"));
     }
 
     private static Map<String, String> getProperties(
@@ -206,15 +167,3 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         };
     }
 }
-```
-
----
-
-**Summary of changes:**
-- Extracted table registration and creation logic to `registerOrdersSourceTableForStats`, `createOrdersStatsSinkTable`, `registerOrdersSourceTableForJoin`, and `registerLineOrdersSourceTableForJoin`.
-- Extracted reusable JSON plan transformers for deduplicate/group-agg and join into `createDeduplicateAndGroupAggStateTtlTransformer` and `createJoinStateTtlTransformer`.
-- Reduced code duplication, improving readability and maintainability.
-
-Levenshtein edit-distance: 3282
-Compiles
-Tests pass

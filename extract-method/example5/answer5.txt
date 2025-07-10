@@ -226,6 +226,6 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 - Enhanced modularity.
 - Reduced code duplication.
 
-Levenshtein edit-distance: 6850
+Levenshtein edit-distance: 4292
 Compiles
 Tests pass

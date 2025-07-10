@@ -1,18 +1,3 @@
-27-05-2025, 21:10
-
-This code contains **multiple refactoring opportunities** (Extract Method) to enhance readability and maintainability.
-
-### Main Extract Method Opportunities
-The following code blocks can (and should) be extracted into helper methods:
-1. The registration and creation of the Orders source table in both `testDifferentStateTtlForDifferentOneInputOperator` and in `innerTestRegularJoin`.
-2. The creation of the sink table (e.g., OrdersStats, OrdersShipInfo).
-3. The repeated block for handling the json plan transformation using `JsonTestUtils`, which appears (with slight differences) in test methods.
-
-Below is the refactored class with these opportunities addressed.
-
----
-
-```java
 package org.apache.flink.table.planner.runtime.stream.jsonplan;
 
 import org.apache.flink.table.api.TableException;
@@ -33,24 +18,40 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Tests for configuring operator-level state TTL via {@link
- * org.apache.flink.table.api.CompiledPlan}.
- */
 class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 
     @Test
     void testDifferentStateTtlForDifferentOneInputOperator() throws Exception {
-        registerOrdersSourceTableForStats();
+        String dataId =
+                TestValuesTableFactory.registerRowData(
+                        Arrays.asList(
+                                GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
+                                GenericRowData.of(2, StringData.fromString("Jerry"), 2, 99.9d),
+                                GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
+                                GenericRowData.of(3, StringData.fromString("Tom"), 1, 29.9d),
+                                GenericRowData.of(4, StringData.fromString("Olivia"), 1, 100d),
+                                GenericRowData.of(4, StringData.fromString("Olivia"), 1, 100d),
+                                GenericRowData.of(2, StringData.fromString("Jerry"), 2, 99.9d),
+                                GenericRowData.of(5, StringData.fromString("Michael"), 3, 599.9d),
+                                GenericRowData.of(6, StringData.fromString("Olivia"), 3, 1000d)));
 
-        createOrdersStatsSinkTable();
+        createOrdersSourceTable(dataId);
 
-        compileSqlAndExecutePlan("INSERT INTO OrdersStats \n"
+        createTestNonInsertOnlyValuesSinkTable(
+                "OrdersStats",
+                "`buyer` STRING",
+                "`ord_cnt` BIGINT",
+                "`quantity_cnt` BIGINT",
+                "`total_amount` DOUBLE");
+
+        final String sql =
+                "INSERT INTO OrdersStats \n"
                         + "SELECT buyer, COUNT(1) AS ord_cnt, SUM(quantity) AS quantity_cnt, SUM(amount) AS total_amount FROM (\n"
                         + "SELECT *, ROW_NUMBER() OVER(PARTITION BY order_id, buyer, quantity, amount ORDER BY proctime() ASC) AS rk FROM Orders) tmp\n"
                         + "WHERE rk = 1\n"
-                        + "GROUP BY buyer", createDeduplicateAndGroupAggStateTtlTransformer()
-        ).await();
+                        + "GROUP BY buyer";
+
+        compileSqlAndExecutePlan(sql, getDeduplicateAndAggregateTtlJsonTransformer()).await();
 
         List<String> expected =
                 Arrays.asList(
@@ -67,7 +68,7 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         innerTestRegularJoin(
                 "INSERT INTO OrdersShipInfo \n"
                         + "SELECT a.order_id, a.line_order_id, b.ship_mode FROM Orders a JOIN LineOrders b ON a.line_order_id = b.line_order_id",
-                createJoinStateTtlTransformer());
+                getLeftRightJoinTtlJsonTransformer());
     }
 
     @Test
@@ -82,8 +83,27 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
 
     private void innerTestRegularJoin(String sql, Function<String, String> jsonPlanTransformer)
             throws Exception {
-        registerOrdersSourceTableForJoin();
-        registerLineOrdersSourceTableForJoin();
+        String leftTableDataId =
+                TestValuesTableFactory.registerRowData(
+                        Arrays.asList(
+                                GenericRowData.of(1, 1000001),
+                                GenericRowData.of(1, 1000002),
+                                GenericRowData.of(1, 1000003),
+                                GenericRowData.of(1, 1000004),
+                                GenericRowData.of(1, 1000005),
+                                GenericRowData.of(2, 2000001)));
+        createOrdersSourceTableForJoin(leftTableDataId);
+
+        String rightTableDataId =
+                TestValuesTableFactory.registerRowData(
+                        Arrays.asList(
+                                GenericRowData.of(2000001, StringData.fromString("TRUCK")),
+                                GenericRowData.of(1000005, StringData.fromString("AIR")),
+                                GenericRowData.of(1000001, StringData.fromString("SHIP")),
+                                GenericRowData.of(1000002, StringData.fromString("TRUCK")),
+                                GenericRowData.of(1000003, StringData.fromString("RAIL")),
+                                GenericRowData.of(1000004, StringData.fromString("RAIL"))));
+        createLineOrdersSourceTableForJoin(rightTableDataId);
 
         createTestValuesSinkTable(
                 "OrdersShipInfo", "`order_id` INT", "`line_order_id` INT", "`ship_mode` STRING");
@@ -95,75 +115,34 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         assertResult(expected, TestValuesTableFactory.getResultsAsStrings("OrdersShipInfo"));
     }
 
-    // --------- Extracted Methods Below ---------
-
-    private void registerOrdersSourceTableForStats() {
-        String dataId =
-                TestValuesTableFactory.registerRowData(
-                        Arrays.asList(
-                                GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
-                                GenericRowData.of(2, StringData.fromString("Jerry"), 2, 99.9d),
-                                GenericRowData.of(1, StringData.fromString("Tom"), 1, 199.9d),
-                                GenericRowData.of(3, StringData.fromString("Tom"), 1, 29.9d),
-                                GenericRowData.of(4, StringData.fromString("Olivia"), 1, 100d),
-                                GenericRowData.of(4, StringData.fromString("Olivia"), 1, 100d),
-                                GenericRowData.of(2, StringData.fromString("Jerry"), 2, 99.9d),
-                                GenericRowData.of(5, StringData.fromString("Michael"), 3, 599.9d),
-                                GenericRowData.of(6, StringData.fromString("Olivia"), 3, 1000d)));
+    private void createOrdersSourceTable(String dataId) {
         createTestSourceTable(
                 "Orders",
-                new String[] {
+                new String[]{
                         "`order_id` INT", "`buyer` STRING", "`quantity` INT", "`amount` DOUBLE"
                 },
                 null,
                 getProperties(dataId, 1, "2s"));
     }
 
-    private void createOrdersStatsSinkTable() {
-        createTestNonInsertOnlyValuesSinkTable(
-                "OrdersStats",
-                "`buyer` STRING",
-                "`ord_cnt` BIGINT",
-                "`quantity_cnt` BIGINT",
-                "`total_amount` DOUBLE");
-    }
-
-    private void registerOrdersSourceTableForJoin() {
-        String leftTableDataId =
-                TestValuesTableFactory.registerRowData(
-                        Arrays.asList(
-                                GenericRowData.of(1, 1000001),
-                                GenericRowData.of(1, 1000002),
-                                GenericRowData.of(1, 1000003),
-                                GenericRowData.of(1, 1000004),
-                                GenericRowData.of(1, 1000005),
-                                GenericRowData.of(2, 2000001)));
+    private void createOrdersSourceTableForJoin(String dataId) {
         createTestSourceTable(
                 "Orders",
-                new String[] {"`order_id` INT", "`line_order_id` INT"},
+                new String[]{"`order_id` INT", "`line_order_id` INT"},
                 null,
-                getProperties(leftTableDataId, 1, "2s"));
+                getProperties(dataId, 1, "2s"));
     }
 
-    private void registerLineOrdersSourceTableForJoin() {
-        String rightTableDataId =
-                TestValuesTableFactory.registerRowData(
-                        Arrays.asList(
-                                GenericRowData.of(2000001, StringData.fromString("TRUCK")),
-                                GenericRowData.of(1000005, StringData.fromString("AIR")),
-                                GenericRowData.of(1000001, StringData.fromString("SHIP")),
-                                GenericRowData.of(1000002, StringData.fromString("TRUCK")),
-                                GenericRowData.of(1000003, StringData.fromString("RAIL")),
-                                GenericRowData.of(1000004, StringData.fromString("RAIL"))));
+    private void createLineOrdersSourceTableForJoin(String dataId) {
         createTestSourceTable(
                 "LineOrders",
-                new String[] {"`line_order_id` INT", "`ship_mode` STRING"},
+                new String[]{"`line_order_id` INT", "`ship_mode` STRING"},
                 null,
-                getProperties(rightTableDataId, 2, "4s"));
+                getProperties(dataId, 2, "4s"));
     }
 
-    private static Function<String, String> createDeduplicateAndGroupAggStateTtlTransformer() {
-        return json -> {
+    private Function<String, String> getDeduplicateAndAggregateTtlJsonTransformer() {
+        return (Function<String, String>) json -> {
             try {
                 JsonNode target = JsonTestUtils.readFromString(json);
                 JsonTestUtils.setExecNodeStateMetadata(
@@ -177,7 +156,7 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         };
     }
 
-    private static Function<String, String> createJoinStateTtlTransformer() {
+    private Function<String, String> getLeftRightJoinTtlJsonTransformer() {
         return json -> {
             try {
                 JsonNode target = JsonTestUtils.readFromString(json);
@@ -206,15 +185,3 @@ class ConfigureOperatorLevelStateTtlJsonITCase extends JsonPlanTestBase {
         };
     }
 }
-```
-
----
-
-**Summary of changes:**
-- Extracted table registration and creation logic to `registerOrdersSourceTableForStats`, `createOrdersStatsSinkTable`, `registerOrdersSourceTableForJoin`, and `registerLineOrdersSourceTableForJoin`.
-- Extracted reusable JSON plan transformers for deduplicate/group-agg and join into `createDeduplicateAndGroupAggStateTtlTransformer` and `createJoinStateTtlTransformer`.
-- Reduced code duplication, improving readability and maintainability.
-
-Levenshtein edit-distance: 3282
-Compiles
-Tests pass

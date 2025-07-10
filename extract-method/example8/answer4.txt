@@ -92,5 +92,5 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 - Reduced code duplication.
 - Clearer intent for vector field configuration methods.
 
-Levenshtein edit-distance: 627
+Levenshtein edit-distance: 622
 Does not compile

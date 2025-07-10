@@ -91,5 +91,5 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 
 **If you have conventions to use method references instead of lambdas, this helper could be further enhanced, but for clarity and Java compatibility, the form above is preferred.**
 
-Levenshtein edit-distance: 558
+Levenshtein edit-distance: 505
 Does not compile

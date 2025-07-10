@@ -1,22 +1,7 @@
-26-04-2025, 09:24
-Yes, **extract method refactoring** can help here. Notice how multiple methods add a contributor to `fieldModelContributor` via patterns like:
-
-```java
-fieldModelContributor.add( c -> c.vectorTypeOptionsStep().XXX( arg ) );
-```
-
-And one method does:
-
-```java
-fieldModelContributor.add( c -> c.indexNullAs( indexNullAs ) );
-```
-
-To eliminate duplication, you can extract a private utility method for the repeated pattern. Here’s the **refactored code**:
-
----
-
-```java
 package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import org.hibernate.search.engine.backend.types.Projectable;
 import org.hibernate.search.engine.backend.types.Searchable;
@@ -27,10 +12,7 @@ import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadat
 import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
 import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
 
-import java.util.function.Consumer;
-
-class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
-        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl> implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
 
     PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
         super(parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep);
@@ -39,7 +21,7 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 
     @Override
     public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
-        addToVectorOptionsStep(c -> c.projectable(projectable));
+        addVectorTypeOptionsStep((ctx, value) -> ctx.projectable(value), projectable);
         return this;
     }
 
@@ -50,19 +32,19 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
 
     @Override
     public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
-        addToVectorOptionsStep(c -> c.vectorSimilarity(vectorSimilarity));
+        addVectorTypeOptionsStep((ctx, value) -> ctx.vectorSimilarity(value), vectorSimilarity);
         return this;
     }
 
     @Override
     public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
-        addToVectorOptionsStep(c -> c.beamWidth(beamWidth));
+        addVectorTypeOptionsStep((ctx, value) -> ctx.beamWidth(value), beamWidth);
         return this;
     }
 
     @Override
     public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
-        addToVectorOptionsStep(c -> c.maxConnections(maxConnections));
+        addVectorTypeOptionsStep((ctx, value) -> ctx.maxConnections(value), maxConnections);
         return this;
     }
 
@@ -72,21 +54,7 @@ class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOpt
         return this;
     }
 
-    // --- Extracted utility method to reduce duplication ---
-    private void addToVectorOptionsStep(Consumer<FieldModelContributorContext.VectorTypeOptionsStep> action) {
-        fieldModelContributor.add(c -> action.accept(c.vectorTypeOptionsStep()));
+    private <T> void addVectorTypeOptionsStep(BiConsumer<FieldModelContributorContext.VectorTypeOptionsStep, T> consumer, T value) {
+        fieldModelContributor.add(c -> consumer.accept(c.vectorTypeOptionsStep(), value));
     }
 }
-```
-
----
-
-### **Summary of Changes**
-- Introduced `addToVectorOptionsStep`, which accepts a lambda operating on the `VectorTypeOptionsStep`.
-- Methods dealing with `.vectorTypeOptionsStep().XXX()` now call this utility, improving DRYness, maintainability, and readability.
-- `indexNullAs` left as-is, since it does not fit the pattern.
-
-**This improves code clarity and maintainability by consolidating the repetitive pattern.**
-
-Levenshtein edit-distance: 371
-Does not compile

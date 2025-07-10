@@ -369,5 +369,5 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
 
 **This refactoring improves maintainability and readability by deduplicating cache eviction logic into a single, well-named method.**
 
-Levenshtein edit-distance: 2461
+Levenshtein edit-distance: 2010
 Compiles

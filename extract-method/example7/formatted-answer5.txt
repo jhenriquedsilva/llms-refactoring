@@ -1,49 +1,3 @@
-27-05-2025, 19:45
-Certainly! When reviewing this code for **extract method refactoring**, we're looking for repeated code blocks or complex, long methods that could be split into clearer, smaller helper methods to improve **readability** and **reusability**.
-
-### Observations
-
-Two refactoring opportunities stand out:
-
-1. **Logging Trace Information**:
-   - The following block (with minor variable changes) appears both in the `refresh` method under both branches (`entry == null` and `else`):
-
-     ```java
-     if (LOG.isTraceEnabled()) {
-         LOG.tracev(
-             "Refreshing transient {0}",
-             infoString(persister, id, source.getFactory())
-         );
-     }
-     ```
-     and
-     ```java
-     if (LOG.isTraceEnabled()) {
-         LOG.tracev(
-             "Refreshing ",
-             infoString(entry.getPersister(), entry.getId(), source.getFactory())
-         );
-     }
-     ```
-
-   - Both do a similar thing (log a refresh and dump formatted entity info), and can be wrapped into a helper.
-
-2. **Exception Throwing for Null or "Exists In Database" States**
-   - There are repeated exception throw patterns based on a set of checks (see `throw new TransientObjectException`, `throw new NonUniqueObjectException`, `throw new UnresolvableObjectException`). This isn't as clear a candidate for extraction since the exception types and logic are different, but you can still encapsulate the pattern *if* you want to enforce a consistent check and throw across the codebase.
-
-   - In this example, I’ll focus on the trace logging for clarity and maintainability.
-
----
-
-## Refactored Code
-
-Below, I've added a private helper method `logRefreshTrace(Object persisterOrEntry, Object id, SessionFactoryImplementor factory, boolean isTransient)` and replaced both relevant blocks with calls to this.
-
-**Other possible refactorings** (such as breaking the massive `refresh` into smaller steps) are optional due to their single-use complexity.
-
----
-
-```java
 package org.hibernate.event.internal;
 
 import org.hibernate.HibernateException;
@@ -81,12 +35,6 @@ import org.hibernate.type.Type;
 
 import static org.hibernate.pretty.MessageHelper.infoString;
 
-/**
- * Defines the default refresh event listener used by hibernate for refreshing entities
- * in response to generated refresh events.
- *
- * @author Steve Ebersole
- */
 public class DefaultRefreshEventListener implements RefreshEventListener {
     private static final CoreMessageLogger LOG = CoreLogging.messageLogger(DefaultRefreshEventListener.class);
 
@@ -94,28 +42,17 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
         onRefresh(event, RefreshContext.create());
     }
 
-    /**
-     * Handle the given refresh event.
-     *
-     * @param event The refresh event to be handled.
-     */
     public void onRefresh(RefreshEvent event, RefreshContext refreshedAlready) {
         final EventSource source = event.getSession();
         final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
         final Object object = event.getObject();
         if (persistenceContext.reassociateIfUninitializedProxy(object)) {
             final boolean isTransient = isTransient(event, source, object);
-
             final LazyInitializer lazyInitializer = HibernateProxy.extractLazyInitializer(object);
             final EntityPersister persister = source.getEntityPersister(lazyInitializer.getEntityName(), object);
             Object id = persister.getIdentifier(object, event.getSession());
-
-            final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
-                    CascadingFetchProfile.REFRESH,
-                    () -> doRefresh(event, source, null, null, persister, lazyInitializer, id, persistenceContext)
-            );
+            final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(CascadingFetchProfile.REFRESH, () -> doRefresh(event, source, null, null, persister, lazyInitializer, id, persistenceContext));
             UnresolvableObjectException.throwIfNull(result, id, persister.getEntityName());
-
             if (isTransient) {
                 source.setReadOnly(object, source.isDefaultReadOnly());
             }
@@ -138,42 +75,31 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
         final EventSource source = event.getSession();
         final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
         final EntityEntry entry = persistenceContext.getEntry(object);
-
         final EntityPersister persister;
         final Object id;
         if (entry == null) {
-            //refresh() does not pass an entityName
             persister = source.getEntityPersister(event.getEntityName(), object);
             id = persister.getIdentifier(object, event.getSession());
             if (id == null) {
                 throw new TransientObjectException("transient instance passed to refresh");
             }
-            logRefreshTrace(persister, id, source.getFactory(), true);
+            if (LOG.isTraceEnabled()) {
+                LOG.tracev("Refreshing transient {0}", infoString(persister, id, source.getFactory()));
+            }
             if (persistenceContext.getEntry(source.generateEntityKey(id, persister)) != null) {
                 throw new NonUniqueObjectException(id, persister.getEntityName());
             }
         } else {
-            logRefreshTrace(entry.getPersister(), entry.getId(), source.getFactory(), false);
+            if (LOG.isTraceEnabled()) {
+                LOG.tracev("Refreshing ", infoString(entry.getPersister(), entry.getId(), source.getFactory()));
+            }
             if (!entry.isExistsInDatabase()) {
-                throw new UnresolvableObjectException(
-                    entry.getId(),
-                    "this instance does not yet exist as a row in the database"
-                );
+                throw new UnresolvableObjectException(entry.getId(), "this instance does not yet exist as a row in the database");
             }
             persister = entry.getPersister();
             id = entry.getId();
         }
-
-        // cascade the refresh prior to refreshing this entity
-        Cascade.cascade(
-                CascadingActions.REFRESH,
-                CascadePoint.BEFORE_REFRESH,
-                source,
-                persister,
-                object,
-                refreshedAlready
-        );
-
+        Cascade.cascade(CascadingActions.REFRESH, CascadePoint.BEFORE_REFRESH, source, persister, object, refreshedAlready);
         if (entry != null) {
             final EntityKey key = source.generateEntityKey(id, persister);
             persistenceContext.removeEntity(key);
@@ -181,34 +107,10 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
                 new EvictVisitor(source, object).process(object, persister);
             }
         }
-
         evictEntity(object, persister, id, source);
         evictCachedCollections(persister, id, source);
-
-        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
-                CascadingFetchProfile.REFRESH,
-                () -> doRefresh(event, source, object, entry, persister, null, id, persistenceContext)
-        );
+        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(CascadingFetchProfile.REFRESH, () -> doRefresh(event, source, object, entry, persister, null, id, persistenceContext));
         UnresolvableObjectException.throwIfNull(result, id, persister.getEntityName());
-    }
-
-    /**
-     * Helper method to trim redundant trace-logging code blocks.
-     */
-    private static void logRefreshTrace(Object persisterOrEntry, Object id, SessionFactoryImplementor factory, boolean isTransient) {
-        if (LOG.isTraceEnabled()) {
-            if (isTransient) {
-                LOG.tracev(
-                    "Refreshing transient {0}",
-                    infoString(persisterOrEntry, id, factory)
-                );
-            } else {
-                LOG.tracev(
-                    "Refreshing ",
-                    infoString(persisterOrEntry, id, factory)
-                );
-            }
-        }
     }
 
     private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
@@ -218,27 +120,11 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
                 previousVersion = persister.getVersion(object);
             }
             final EntityDataAccess cache = persister.getCacheAccessStrategy();
-            final Object ck = cache.generateCacheKey(
-                    id,
-                    persister,
-                    source.getFactory(),
-                    source.getTenantIdentifier()
-            );
-            final SoftLock lock = cache.lockItem(source, ck, previousVersion);
-            cache.remove(source, ck);
-            source.getActionQueue().registerProcess((success, session) -> cache.unlockItem(session, ck, lock));
+            executeCacheEviction(cache, id, persister, source.getFactory(), source.getTenantIdentifier(), source, previousVersion, source.getActionQueue());
         }
     }
 
-    private static Object doRefresh(
-            RefreshEvent event,
-            EventSource source,
-            Object object,
-            EntityEntry entry,
-            EntityPersister persister,
-            LazyInitializer lazyInitializer,
-            Object id,
-            PersistenceContext persistenceContext) {
+    private static Object doRefresh(RefreshEvent event, EventSource source, Object object, EntityEntry entry, EntityPersister persister, LazyInitializer lazyInitializer, Object id, PersistenceContext persistenceContext) {
         LockOptions lockOptionsToUse = event.getLockOptions();
         final LockMode requestedLockMode = lockOptionsToUse.getLockMode();
         final LockMode postRefreshLockMode;
@@ -246,9 +132,7 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
             final LockMode currentLockMode = entry.getLockMode();
             if (currentLockMode.greaterThan(requestedLockMode)) {
                 lockOptionsToUse = event.getLockOptions().makeCopy();
-                if (currentLockMode == LockMode.WRITE
-                        || currentLockMode == LockMode.PESSIMISTIC_WRITE
-                        || currentLockMode == LockMode.PESSIMISTIC_READ) {
+                if (currentLockMode == LockMode.WRITE || currentLockMode == LockMode.PESSIMISTIC_WRITE || currentLockMode == LockMode.PESSIMISTIC_READ) {
                     lockOptionsToUse.setLockMode(LockMode.READ);
                     postRefreshLockMode = currentLockMode;
                 } else {
@@ -261,23 +145,17 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
         } else {
             postRefreshLockMode = null;
         }
-
         final Object result = persister.load(id, object, lockOptionsToUse, source);
         if (result != null) {
             if (postRefreshLockMode != null) {
                 persistenceContext.getEntry(result).setLockMode(postRefreshLockMode);
             }
-
             source.setReadOnly(result, isReadOnly(entry, persister, lazyInitializer, source));
         }
         return result;
     }
 
-    private static boolean isReadOnly(
-            EntityEntry entry,
-            EntityPersister persister,
-            LazyInitializer lazyInitializer,
-            EventSource source) {
+    private static boolean isReadOnly(EntityEntry entry, EntityPersister persister, LazyInitializer lazyInitializer, EventSource source) {
         if (!persister.isMutable()) {
             return true;
         } else if (entry != null) {
@@ -293,8 +171,7 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
         evictCachedCollections(persister.getPropertyTypes(), id, source);
     }
 
-    private static void evictCachedCollections(Type[] types, Object id, EventSource source)
-            throws HibernateException {
+    private static void evictCachedCollections(Type[] types, Object id, EventSource source) throws HibernateException {
         final ActionQueue actionQueue = source.getActionQueue();
         final SessionFactoryImplementor factory = source.getFactory();
         final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
@@ -304,15 +181,7 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
                 final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor(role);
                 if (collectionPersister.hasCache()) {
                     final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
-                    final Object ck = cache.generateCacheKey(
-                            id,
-                            collectionPersister,
-                            factory,
-                            source.getTenantIdentifier()
-                    );
-                    final SoftLock lock = cache.lockItem(source, ck, null);
-                    cache.remove(source, ck);
-                    actionQueue.registerProcess((success, session) -> cache.unlockItem(session, ck, lock));
+                    executeCacheEviction(cache, id, collectionPersister, factory, source.getTenantIdentifier(), source, null, actionQueue);
                 }
             } else if (type.isComponentType()) {
                 final CompositeType compositeType = (CompositeType) type;
@@ -320,17 +189,22 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
             }
         }
     }
+
+    private static void executeCacheEviction(Object cacheAccessStrategy, Object id, Object persister, SessionFactoryImplementor factory, String tenantIdentifier, EventSource source, Object version, ActionQueue actionQueue) {
+        Object cacheKey;
+        SoftLock lock;
+        if (cacheAccessStrategy instanceof EntityDataAccess) {
+            EntityDataAccess cache = (EntityDataAccess) cacheAccessStrategy;
+            cacheKey = cache.generateCacheKey(id, (EntityPersister) persister, factory, tenantIdentifier);
+            lock = cache.lockItem(source, cacheKey, version);
+            cache.remove(source, cacheKey);
+            actionQueue.registerProcess((success, session) -> cache.unlockItem(session, cacheKey, lock));
+        } else if (cacheAccessStrategy instanceof CollectionDataAccess) {
+            CollectionDataAccess cache = (CollectionDataAccess) cacheAccessStrategy;
+            cacheKey = cache.generateCacheKey(id, (CollectionPersister) persister, factory, tenantIdentifier);
+            lock = cache.lockItem(source, cacheKey, null);
+            cache.remove(source, cacheKey);
+            actionQueue.registerProcess((success, session) -> cache.unlockItem(session, cacheKey, lock));
+        }
+    }
 }
-```
-
-**Summary of changes:**
-- Added `logRefreshTrace` method for reusability and clarity.
-- Replaced the near-duplicate trace-log code blocks in `refresh()` with calls to the new helper.
-- No functionality changes, only code structure/readability improvements.
-
----
-
-**If you need further extract method suggestions** (for different logic chunks), let me know!
-
-Levenshtein edit-distance: 1017
-Does not compile

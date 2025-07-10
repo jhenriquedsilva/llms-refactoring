@@ -324,5 +324,5 @@ public class DefaultRefreshEventListener implements RefreshEventListener {
 **No other extract method refactorings are immediately or strongly needed in this code.**
 If you need further structural or extract-variable refactoring, please specify your focus!
 
-Levenshtein edit-distance: 3058
+Levenshtein edit-distance: 1523
 Does not compile

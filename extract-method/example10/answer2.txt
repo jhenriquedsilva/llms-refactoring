@@ -344,6 +344,6 @@ class FileChannelDataBlock implements CloseableDataBlock {
 
 **Feel free to ask further for Javadoc or code comments on the extracted methods if needed.**
 
-Levenshtein edit-distance: 1878
+Levenshtein edit-distance: 1617
 Compiles
 Pass tests

@@ -515,5 +515,5 @@ public abstract class QuicSession extends ContainerLifeCycle
 - **Yes, extract method refactoring can be applied here.**
 - See code above for the refactored solution.
 
-Levenshtein edit-distance: 2453
+Levenshtein edit-distance: 688
 Does not compile

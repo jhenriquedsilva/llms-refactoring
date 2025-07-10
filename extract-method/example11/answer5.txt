@@ -587,5 +587,5 @@ Other smaller code block repetitions are arguably not worth extracting due to th
 
 If you'd like other kinds of extract method refactorings, please specify further.
 
-Levenshtein edit-distance: 1271
+Levenshtein edit-distance: 976
 Does not compile

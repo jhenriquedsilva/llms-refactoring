@@ -545,5 +545,5 @@ Other areas remain unchanged, as most logic repetition is necessary due to QUIC 
 
 **This increases code clarity and reduces maintenance cost for listener notification logic.**
 
-Levenshtein edit-distance: 764
+Levenshtein edit-distance: 637
 Does not compile

@@ -69,6 +69,6 @@ public class GenericMaster {
 - Public methods remain concise and easily understandable.
 - Future changes to the generic type resolution logic only need to be made in one place.
 
-Levenshtein edit-distance: 93
+Levenshtein edit-distance: 83
 Compiles
 Tests pass

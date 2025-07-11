@@ -64,6 +64,6 @@ public class GenericMaster {
 - The shared logic is extracted into `private Class<?> extractGenericType(Type generic)`.
 - Duplication is eliminated, improving maintainability and readability.
 
-Levenshtein edit-distance: 93
+Levenshtein edit-distance: 81
 Compiles
 Tests pass

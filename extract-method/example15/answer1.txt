@@ -72,6 +72,6 @@ public class GenericMaster {
 - Updated the two public methods to delegate to this helper, removing duplication.
 - Improved code readability and maintainability.
 
-Levenshtein edit-distance: 335
+Levenshtein edit-distance: 100
 Compiles
 Tests pass

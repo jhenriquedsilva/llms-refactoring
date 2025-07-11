@@ -56,6 +56,6 @@ public class GenericMaster {
 - Extracted the duplicate logic to a private method `extractGenericType(Type generic)`.
 - Both public methods now delegate to this helper, reducing code repetition and improving maintainability.
 
-Levenshtein edit-distance: 208
+Levenshtein edit-distance: 81
 Compiles
 Tests pass

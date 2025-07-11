@@ -290,6 +290,6 @@ public final class BridgeMethodResolver {
 
 This makes the code more maintainable and clear!
 
-Levenshtein edit-distance: 801
+Levenshtein edit-distance: 689
 Compiles
 Tests pass

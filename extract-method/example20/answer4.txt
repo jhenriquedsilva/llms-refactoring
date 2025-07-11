@@ -296,6 +296,6 @@ public final class BridgeMethodResolver {
 
 This makes the code easier to maintain and ensures the two public APIs remain consistent and DRY.
 
-Levenshtein edit-distance: 703
+Levenshtein edit-distance: 362
 Compiles
 Tests pass

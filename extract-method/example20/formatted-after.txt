@@ -1,44 +1,3 @@
-26-04-2025, 15:54
-
-**Analysis of Refactoring Opportunities**
-
-Looking at the presented code, both `findBridgedMethod` and `getMostSpecificMethod` have the following block of code (only variable names differ):
-
-```java
-Object cacheKey = (localBridge ? method : new MethodClassKey(method, targetClass));
-Method bridgedMethod = cache.get(cacheKey);
-if (bridgedMethod == null) {
-    // Gather all methods with matching name and parameter size.
-    List<Method> candidateMethods = new ArrayList<>();
-    MethodFilter filter = (candidateMethod -> isBridgedCandidateFor(candidateMethod, method));
-    ReflectionUtils.doWithMethods(targetClass, candidateMethods::add, filter);
-    if (!candidateMethods.isEmpty()) {
-        bridgedMethod = (candidateMethods.size() == 1 ? candidateMethods.get(0) :
-                searchCandidates(candidateMethods, method, targetClass));
-    }
-    if (bridgedMethod == null) {
-        // A bridge method was passed in but we couldn't find the bridged method.
-        // Let's proceed with the passed-in method and hope for the best...
-        bridgedMethod = method;
-    }
-    cache.put(cacheKey, bridgedMethod);
-}
-return bridgedMethod;
-```
-
-This logic can be **extracted** into a new private static method, such as:
-
-```java
-private static Method resolveBridgedMethod(Method method, Class<?> targetClass, boolean localBridge) { ... }
-```
-
-This will eliminate duplication and improve maintainability.
-
----
-
-## **Refactored Class**
-
-```java
 package org.springframework.core;
 
 import java.lang.reflect.Method;
@@ -62,40 +21,30 @@ public final class BridgeMethodResolver {
     }
 
     public static Method findBridgedMethod(Method bridgeMethod) {
-        Class<?> targetClass = bridgeMethod.getDeclaringClass();
-        boolean localBridge = (targetClass == bridgeMethod.getDeclaringClass());
-        if (!bridgeMethod.isBridge() && localBridge) {
-            return bridgeMethod;
-        }
-        return resolveBridgedMethod(bridgeMethod, targetClass, localBridge);
+        return resolveBridgeMethod(bridgeMethod, bridgeMethod.getDeclaringClass());
     }
 
     public static Method getMostSpecificMethod(Method bridgeMethod, @Nullable Class<?> targetClass) {
         Method specificMethod = ClassUtils.getMostSpecificMethod(bridgeMethod, targetClass);
-        Class<?> effectiveTargetClass = (targetClass != null ? targetClass : specificMethod.getDeclaringClass());
-        boolean localBridge = (effectiveTargetClass == specificMethod.getDeclaringClass());
-        if (!specificMethod.isBridge() && localBridge) {
-            return specificMethod;
-        }
-        return resolveBridgedMethod(specificMethod, effectiveTargetClass, localBridge);
+        return resolveBridgeMethod(specificMethod, (targetClass != null ? targetClass : specificMethod.getDeclaringClass()));
     }
 
-    /**
-     * Extracted method for bridge method resolution and caching.
-     */
-    private static Method resolveBridgedMethod(Method method, Class<?> targetClass, boolean localBridge) {
-        Object cacheKey = (localBridge ? method : new MethodClassKey(method, targetClass));
+    private static Method resolveBridgeMethod(Method bridgeMethod, Class<?> targetClass) {
+        boolean localBridge = (targetClass == bridgeMethod.getDeclaringClass());
+        if (!bridgeMethod.isBridge() && localBridge) {
+            return bridgeMethod;
+        }
+        Object cacheKey = (localBridge ? bridgeMethod : new MethodClassKey(bridgeMethod, targetClass));
         Method bridgedMethod = cache.get(cacheKey);
         if (bridgedMethod == null) {
             List<Method> candidateMethods = new ArrayList<>();
-            MethodFilter filter = (candidateMethod -> isBridgedCandidateFor(candidateMethod, method));
+            MethodFilter filter = (candidateMethod -> isBridgedCandidateFor(candidateMethod, bridgeMethod));
             ReflectionUtils.doWithMethods(targetClass, candidateMethods::add, filter);
             if (!candidateMethods.isEmpty()) {
-                bridgedMethod = (candidateMethods.size() == 1 ? candidateMethods.get(0) :
-                        searchCandidates(candidateMethods, method, targetClass));
+                bridgedMethod = (candidateMethods.size() == 1 ? candidateMethods.get(0) : searchCandidates(candidateMethods, bridgeMethod, targetClass));
             }
             if (bridgedMethod == null) {
-                bridgedMethod = method;
+                bridgedMethod = bridgeMethod;
             }
             cache.put(cacheKey, bridgedMethod);
         }
@@ -103,9 +52,7 @@ public final class BridgeMethodResolver {
     }
 
     private static boolean isBridgedCandidateFor(Method candidateMethod, Method bridgeMethod) {
-        return (!candidateMethod.isBridge() &&
-                candidateMethod.getName().equals(bridgeMethod.getName()) &&
-                candidateMethod.getParameterCount() == bridgeMethod.getParameterCount());
+        return (!candidateMethod.isBridge() && candidateMethod.getName().equals(bridgeMethod.getName()) && candidateMethod.getParameterCount() == bridgeMethod.getParameterCount());
     }
 
     @Nullable
@@ -118,10 +65,8 @@ public final class BridgeMethodResolver {
         for (Method candidateMethod : candidateMethods) {
             if (isBridgeMethodFor(bridgeMethod, candidateMethod, targetClass)) {
                 return candidateMethod;
-            }
-            else if (previousMethod != null) {
-                sameSig = sameSig && Arrays.equals(
-                        candidateMethod.getGenericParameterTypes(), previousMethod.getGenericParameterTypes());
+            } else if (previousMethod != null) {
+                sameSig = sameSig && Arrays.equals(candidateMethod.getGenericParameterTypes(), previousMethod.getGenericParameterTypes());
             }
             previousMethod = candidateMethod;
         }
@@ -150,8 +95,7 @@ public final class BridgeMethodResolver {
                     return false;
                 }
             }
-            if (!ClassUtils.resolvePrimitiveIfNecessary(candidateParameter).equals(
-                    ClassUtils.resolvePrimitiveIfNecessary(genericParameter.toClass()))) {
+            if (!ClassUtils.resolvePrimitiveIfNecessary(candidateParameter).equals(ClassUtils.resolvePrimitiveIfNecessary(genericParameter.toClass()))) {
                 return false;
             }
         }
@@ -171,6 +115,7 @@ public final class BridgeMethodResolver {
             }
             superclass = superclass.getSuperclass();
         }
+
         Class<?>[] interfaces = ClassUtils.getAllInterfacesForClass(bridgeMethod.getDeclaringClass());
         return searchInterfaces(interfaces, bridgeMethod);
     }
@@ -181,8 +126,7 @@ public final class BridgeMethodResolver {
             Method method = searchForMatch(ifc, bridgeMethod);
             if (method != null && !method.isBridge()) {
                 return method;
-            }
-            else {
+            } else {
                 method = searchInterfaces(ifc.getInterfaces(), bridgeMethod);
                 if (method != null) {
                     return method;
@@ -196,8 +140,7 @@ public final class BridgeMethodResolver {
     private static Method searchForMatch(Class<?> type, Method bridgeMethod) {
         try {
             return type.getDeclaredMethod(bridgeMethod.getName(), bridgeMethod.getParameterTypes());
-        }
-        catch (NoSuchMethodException ex) {
+        } catch (NoSuchMethodException ex) {
             return null;
         }
     }
@@ -206,21 +149,6 @@ public final class BridgeMethodResolver {
         if (bridgeMethod == bridgedMethod) {
             return true;
         }
-        return (bridgeMethod.getReturnType().equals(bridgedMethod.getReturnType()) &&
-                bridgeMethod.getParameterCount() == bridgedMethod.getParameterCount() &&
-                Arrays.equals(bridgeMethod.getParameterTypes(), bridgedMethod.getParameterTypes()));
+        return (bridgeMethod.getReturnType().equals(bridgedMethod.getReturnType()) && bridgeMethod.getParameterCount() == bridgedMethod.getParameterCount() && Arrays.equals(bridgeMethod.getParameterTypes(), bridgedMethod.getParameterTypes()));
     }
 }
-```
-
-**Summary of the change**:
-- Introduced `private static Method resolveBridgedMethod(Method method, Class<?> targetClass, boolean localBridge)`.
-- Updated both `findBridgedMethod` and `getMostSpecificMethod` to use this method.
-
----
-
-**This refactoring removes duplicated logic, adheres to the DRY principle, and keeps the class easier to maintain.**
-
-Levenshtein edit-distance: 603
-Compiles
-Tests pass

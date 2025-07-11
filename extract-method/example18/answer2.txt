@@ -221,6 +221,6 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 
 This is a classic **extract method refactoring** opportunity!
 
-Levenshtein edit-distance: 946
+Levenshtein edit-distance: 707
 Compiles
 Tests pass

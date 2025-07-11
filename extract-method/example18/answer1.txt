@@ -215,6 +215,6 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 - Reduced duplicate code among `guessMimeType` overloads via an `extract method` pattern into `guessMimeTypeInternal`.
 - The public API stays unchanged; only the implementation is simplified and easier to maintain.
 
-Levenshtein edit-distance: 786
+Levenshtein edit-distance: 562
 Compiles
 Tests pass

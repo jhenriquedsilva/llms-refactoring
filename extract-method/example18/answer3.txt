@@ -207,6 +207,6 @@ public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
 
 This refactoring removes code duplication, making future changes related to mime type resolution easier and less error-prone.
 
-Levenshtein edit-distance: 765
+Levenshtein edit-distance: 707
 Compiles
 Tests pass

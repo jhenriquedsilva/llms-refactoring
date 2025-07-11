@@ -1,0 +1,106 @@
+package org.apache.solr.util;
+
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentInfoUtil;
+import com.j256.simplemagic.ContentType;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+import org.apache.solr.common.SolrException;
+
+public class FileTypeMagicUtil implements ContentInfoUtil.ErrorCallBack {
+    private final ContentInfoUtil util;
+    private static final Set<String> SKIP_FOLDERS = new HashSet<>(Arrays.asList(".", ".."));
+
+    public static FileTypeMagicUtil INSTANCE = new FileTypeMagicUtil();
+
+    FileTypeMagicUtil() {
+        try {
+            util = new ContentInfoUtil("/magic/executables", this);
+        } catch (IOException e) {
+            throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing magic file", e);
+        }
+    }
+
+    public static void assertConfigSetFolderLegal(Path confPath) throws IOException {
+        Files.walkFileTree(confPath, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (FileTypeMagicUtil.isFileForbiddenInConfigset(file)) {
+                    throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, String.format(Locale.ROOT, "Not uploading file %s to configset, as it matched the MAGIC signature of a forbidden mime type %s", file, FileTypeMagicUtil.INSTANCE.guessMimeType(file)));
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                if (SKIP_FOLDERS.contains(dir.getFileName().toString())) return FileVisitResult.SKIP_SUBTREE;
+
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    public String guessMimeType(Path file) {
+        try {
+            return guessMimeTypeInternal(util.findMatch(file.toFile()));
+        } catch (IOException e) {
+            throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
+        }
+    }
+
+    String guessMimeType(InputStream stream) {
+        try {
+            return guessMimeTypeInternal(util.findMatch(stream));
+        } catch (IOException e) {
+            throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
+        }
+    }
+
+    public String guessMimeType(byte[] bytes) {
+        return guessMimeTypeInternal(util.findMatch(bytes));
+    }
+
+    private String guessMimeTypeInternal(ContentInfo contentInfo) {
+        if (contentInfo == null) {
+            return ContentType.OTHER.getMimeType();
+        } else {
+            return contentInfo.getContentType().getMimeType();
+        }
+    }
+
+    @Override
+    public void error(String line, String details, Exception e) {
+        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, String.format(Locale.ROOT, "%s: %s", line, details), e);
+    }
+
+    public static boolean isFileForbiddenInConfigset(Path file) {
+        try (InputStream fileStream = Files.newInputStream(file)) {
+            return isFileForbiddenInConfigset(fileStream);
+        } catch (IOException e) {
+            throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, String.format(Locale.ROOT, "Error reading file %s", file), e);
+        }
+    }
+
+    static boolean isFileForbiddenInConfigset(InputStream fileStream) {
+        return forbiddenTypes.contains(FileTypeMagicUtil.INSTANCE.guessMimeType(fileStream));
+    }
+
+    public static boolean isFileForbiddenInConfigset(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return false;
+        return forbiddenTypes.contains(FileTypeMagicUtil.INSTANCE.guessMimeType(bytes));
+    }
+
+    private static final Set<String> forbiddenTypes = new HashSet<>(Arrays.asList(System.getProperty("solr.configset.upload.mimetypes.forbidden", "application/x-java-applet,application/zip,application/x-tar,text/x-shellscript").split(",")));
+
+}

@@ -1,21 +1,3 @@
-26-04-2025, 10:20
-
-Absolutely—there **are extract method refactoring opportunities** here. Several test methods share a repeated sequence:
-
-```java
-Class<?> testClass = ...;
-String msg = String.format(..., testClass.getCanonicalName());
-Events tests = executeTestsForClass(testClass).testEvents();
-assertFailingWithMessage(tests, msg);
-```
-
-To make the code DRY and more maintainable, we can **extract** this pattern into a helper method (e.g. `assertAutoCloseFailureWithMessage`). This will improve readability and future modifiability.
-
-Here is the **refactored** version of your class, with explanations **inline as comments**:
-
----
-
-```java
 package org.junit.jupiter.engine.extension;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
@@ -47,11 +29,6 @@ import org.junit.platform.testkit.engine.EngineExecutionResults;
 import org.junit.platform.testkit.engine.Events;
 import org.junit.platform.testkit.engine.Execution;
 
-/**
- * Integration tests for {@link AutoClose @AutoClose} and the {@link AutoCloseExtension}.
- *
- * @since 5.11
- */
 class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
     private static final List<String> recorder = new ArrayList<>();
@@ -65,40 +42,23 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
     @Test
     void blankCloseMethodName() {
-        assertAutoCloseFailureWithMessage(
-            BlankCloseMethodNameTestCase.class,
-            "@AutoClose on field %s.field must specify a method name."
-        );
+        assertAutoCloseFieldFailure(BlankCloseMethodNameTestCase.class, "@AutoClose on field %s.field must specify a method name.", "field");
     }
 
     @Test
     void primitiveTypeCannotBeClosed() {
-        assertAutoCloseFailureWithMessage(
-            PrimitiveFieldTestCase.class,
-            "@AutoClose is not supported on primitive field %s.x."
-        );
+        assertAutoCloseFieldFailure(PrimitiveFieldTestCase.class, "@AutoClose is not supported on primitive field %s.x.", "x");
     }
 
     @Test
     void arrayCannotBeClosed() {
-        assertAutoCloseFailureWithMessage(
-            ArrayFieldTestCase.class,
-            "@AutoClose is not supported on array field %s.x."
-        );
-    }
-
-    // Helper method to eliminate repetitive code in above three test methods
-    private void assertAutoCloseFailureWithMessage(Class<?> testClass, String messagePattern) {
-        String msg = String.format(messagePattern, testClass.getCanonicalName());
-        Events tests = executeTestsForClass(testClass).testEvents();
-        assertFailingWithMessage(tests, msg);
+        assertAutoCloseFieldFailure(ArrayFieldTestCase.class, "@AutoClose is not supported on array field %s.x.", "x");
     }
 
     @Test
     void nullCannotBeClosed(@TrackLogRecords LogRecordListener listener) {
         Class<?> testClass = NullCloseableFieldTestCase.class;
-        String msg = String.format("Cannot @AutoClose field %s.field because it is null.",
-                testClass.getCanonicalName());
+        String msg = String.format("Cannot @AutoClose field %s.field because it is null.", testClass.getCanonicalName());
         Events tests = executeTestsForClass(testClass).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(1).failed(0));
         assertThat(listener.stream(Level.WARNING)).map(LogRecord::getMessage).anyMatch(msg::equals);
@@ -114,15 +74,10 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         assertMissingCloseMethod(NoShutdownMethodTestCase.class, "shutdown");
     }
 
-    /**
-     * Tests prerequisites for the {@link AutoCloseSpy} implementation.
-     */
     @Test
     void spyPermitsOnlyASingleAction() {
         AutoCloseSpy spy = new AutoCloseSpy("preconditions");
-
         spy.close();
-
         assertThatIllegalStateException().isThrownBy(spy::run).withMessage("Already closed via close()");
         assertThatIllegalStateException().isThrownBy(spy::close).withMessage("Already closed via close()");
         assertThat(recorder).containsExactly("AutoCloseTests.preconditions.close()");
@@ -132,16 +87,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithInstancePerMethodTestClass() {
         Events tests = executeTestsForClass(InstancePerMethodTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                // test1()
-                "InstancePerMethodTestCase.runnable.run()", //
-                "InstancePerMethodTestCase.closable.close()", //
-                // test2()
-                "InstancePerMethodTestCase.runnable.run()", //
-                "InstancePerMethodTestCase.closable.close()", //
-                // Class-level cleanup
-                "InstancePerMethodTestCase.staticClosable.close()"//
-        );
+        assertThat(recorder).containsExactly("InstancePerMethodTestCase.runnable.run()", "InstancePerMethodTestCase.closable.close()", "InstancePerMethodTestCase.runnable.run()", "InstancePerMethodTestCase.closable.close()", "InstancePerMethodTestCase.staticClosable.close()");
     }
 
     @Test
@@ -155,46 +101,20 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithNestedTestClassesWithInstancePerMethod() {
         Events tests = executeTestsForClass(InstancePerMethodEnclosingTestCase.NestedTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(1));
-        assertThat(recorder).containsExactly(//
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()"//
-        );
-
-        // Reset tracking
+        assertThat(recorder).containsExactly("NestedTestCase.nestedClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedStaticClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()");
         resetTracking();
-
         tests = executeTestsForClass(InstancePerMethodEnclosingTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()" //
-        );
+        assertThat(recorder).containsExactly("InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedStaticClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()");
     }
 
     @Test
     void fieldsAreProperlyClosedWithNestedTestClassesWithInstancePerClass() {
-        // With test instance lifecycle "per class" mode, we actually expect the
-        // same behavior for the closing of all fields when the nested test class
-        // is run standalone AND when it's run along with its enclosing class.
-        String[] expected = { //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerClassEnclosingTestCase.enclosingStaticClosable.close()", //
-                "InstancePerClassEnclosingTestCase.enclosingClosable.close()" //
-        };
-
+        String[] expected = {"NestedTestCase.nestedStaticClosable.close()", "NestedTestCase.nestedClosable.close()", "InstancePerClassEnclosingTestCase.enclosingStaticClosable.close()", "InstancePerClassEnclosingTestCase.enclosingClosable.close()"};
         Events tests = executeTestsForClass(InstancePerClassEnclosingTestCase.NestedTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(1));
         assertThat(recorder).containsExactly(expected);
-
-        // Reset tracking
         resetTracking();
-
         tests = executeTestsForClass(InstancePerClassEnclosingTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(2));
         assertThat(recorder).containsExactly(expected);
@@ -204,30 +124,11 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithinTestClassHierarchy() {
         Events tests = executeTestsForClass(SuperTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(1));
-        assertThat(recorder).containsExactly(//
-                // superTest()
-                "SuperTestCase.superClosable.close()", //
-                // Class-level cleanup
-                "SuperTestCase.superStaticClosable.close()" //
-        );
-
-        // Reset tracking
+        assertThat(recorder).containsExactly("SuperTestCase.superClosable.close()", "SuperTestCase.superStaticClosable.close()");
         resetTracking();
-
         tests = executeTestsForClass(SubTestCase.class).testEvents();
         tests.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                // superTest()
-                "SubTestCase.subClosable.close()", //
-                "SuperTestCase.superClosable.close()", //
-                // subTest()
-                "SubTestCase.subClosable.close()", //
-                "SuperTestCase.superClosable.close()", //
-                // Class-level cleanup in subclass
-                "SubTestCase.subStaticClosable.close()", //
-                // Class-level cleanup in superclass
-                "SuperTestCase.superStaticClosable.close()" //
-        );
+        assertThat(recorder).containsExactly("SubTestCase.subClosable.close()", "SuperTestCase.superClosable.close()", "SubTestCase.subClosable.close()", "SuperTestCase.superClosable.close()", "SubTestCase.subStaticClosable.close()", "SuperTestCase.superStaticClosable.close()");
     }
 
     @Test
@@ -238,64 +139,37 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         String field1 = "field1";
         String field2 = "field2";
         String field3 = "field3";
-
-        // Prerequisites to ensure fields are "ordered" as expected (based on the hash codes for their names).
         assertThat(staticField1.hashCode()).isLessThan(staticField2.hashCode()).isLessThan(staticField3.hashCode());
         assertThat(field1.hashCode()).isLessThan(field2.hashCode()).isLessThan(field3.hashCode());
-
         Class<?> testClass = FailingFieldsTestCase.class;
         EngineExecutionResults allEvents = executeTestsForClass(testClass);
-
         Events tests = allEvents.testEvents();
         tests.assertStatistics(stats -> stats.succeeded(0).failed(1));
-        // Verify that ALL fields were closed.
-        assertThat(recorder).containsExactly(//
-                "FailingFieldsTestCase.field1.close()", //
-                "FailingFieldsTestCase.field2.close()", //
-                "FailingFieldsTestCase.field3.close()", //
-                "FailingFieldsTestCase.staticField1.close()", //
-                "FailingFieldsTestCase.staticField2.close()", //
-                "FailingFieldsTestCase.staticField3.close()" //
-        );
-
-        // Test-level failures
-        Throwable throwable = findExecution(tests, "test()")//
-                .getTerminationInfo().getExecutionResult().getThrowable().orElseThrow();
-        assertThat(throwable) //
-                .isExactlyInstanceOf(RuntimeException.class) //
-                .hasMessage("FailingFieldsTestCase.field1.close()")//
-                .hasNoCause()//
-                .hasSuppressedException(new RuntimeException("FailingFieldsTestCase.field2.close()"));
-
+        assertThat(recorder).containsExactly("FailingFieldsTestCase.field1.close()", "FailingFieldsTestCase.field2.close()", "FailingFieldsTestCase.field3.close()", "FailingFieldsTestCase.staticField1.close()", "FailingFieldsTestCase.staticField2.close()", "FailingFieldsTestCase.staticField3.close()");
+        Throwable throwable = findExecution(tests, "test()").getTerminationInfo().getExecutionResult().getThrowable().orElseThrow();
+        assertThat(throwable).isExactlyInstanceOf(RuntimeException.class).hasMessage("FailingFieldsTestCase.field1.close()").hasNoCause().hasSuppressedException(new RuntimeException("FailingFieldsTestCase.field2.close()"));
         Events containers = allEvents.containerEvents();
         containers.assertStatistics(stats -> stats.succeeded(1).failed(1));
+        throwable = findExecution(tests, testClass.getSimpleName()).getTerminationInfo().getExecutionResult().getThrowable().orElseThrow();
+        assertThat(throwable).isExactlyInstanceOf(RuntimeException.class).hasMessage("FailingFieldsTestCase.staticField1.close()").hasNoCause().hasSuppressedException(new RuntimeException("FailingFieldsTestCase.staticField2.close()"));
+    }
 
-        // Container-level failures
-        throwable = findExecution(tests, testClass.getSimpleName())//
-                .getTerminationInfo().getExecutionResult().getThrowable().orElseThrow();
-        assertThat(throwable)//
-                .getTerminationInfo().getExecutionResult().getThrowable().orElseThrow()) //
-                .isExactlyInstanceOf(RuntimeException.class) //
-                .hasMessage("FailingFieldsTestCase.staticField1.close()")//
-                .hasNoCause()//
-                .hasSuppressedException(new RuntimeException("FailingFieldsTestCase.staticField2.close()"));
+    private void assertAutoCloseFieldFailure(Class<?> testClass, String errorMessageFormat, String fieldName) {
+        String msg = String.format(errorMessageFormat, testClass.getCanonicalName());
+        Events tests = executeTestsForClass(testClass).testEvents();
+        assertFailingWithMessage(tests, msg);
     }
 
     private static Execution findExecution(Events events, String displayName) {
-        return events.executions()//
-                .filter(execution -> execution.getTestDescriptor().getDisplayName().contains(displayName))//
-                .findFirst().get();
+        return events.executions().filter(execution -> execution.getTestDescriptor().getDisplayName().contains(displayName)).findFirst().get();
     }
 
     private static void assertFailingWithMessage(Events testEvents, String msg) {
-        testEvents//
-                .assertStatistics(stats -> stats.failed(1))//
-                .assertThatEvents().haveExactly(1, finishedWithFailure(message(msg)));
+        testEvents.assertStatistics(stats -> stats.failed(1)).assertThatEvents().haveExactly(1, finishedWithFailure(message(msg)));
     }
 
     private void assertMissingCloseMethod(Class<?> testClass, String methodName) {
-        String msg = String.format("Cannot @AutoClose field %s.field because %s does not define method %s().",
-                testClass.getCanonicalName(), String.class.getName(), methodName);
+        String msg = String.format("Cannot @AutoClose field %s.field because %s does not define method %s().", testClass.getCanonicalName(), String.class.getName(), methodName);
         Events tests = executeTestsForClass(testClass).testEvents();
         assertFailingWithMessage(tests, msg);
     }
@@ -360,7 +234,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         @AutoClose
         private final AutoCloseable closable = new AutoCloseSpy("closable");
 
-        @AutoClose("   run      ") // intentionally contains extra whitespace.
+        @AutoClose("   run      ")
         private final Runnable runnable = new AutoCloseSpy("runnable");
 
         @AutoClose
@@ -470,8 +344,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         final AutoCloseable superClosable = new AutoCloseSpy("superClosable");
 
         @BeforeAll
-        // WARNING: if this method is named setup() AND the @BeforeAll method in
-        // SubTestCase is also named setup(), the latter will "hide" the former.
         static void superSetup() {
             superStaticClosable = new AutoCloseSpy("superStaticClosable");
         }
@@ -571,20 +443,4 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
             }
         }
     }
-
 }
-```
-
----
-
-### **Summary of Refactoring**
-- Added the `assertAutoCloseFailureWithMessage(Class<?> testClass, String messagePattern)` helper method.
-- Simplified `blankCloseMethodName`, `primitiveTypeCannotBeClosed`, and `arrayCannotBeClosed` tests to use this helper.
-- This makes these tests more concise and easy to extend/maintain.
-
-No further extract method opportunities stand out as obviously beneficial elsewhere in this class (such as for the `assertMissingCloseMethod` method, which is already DRY enough for clarity and reuse).
-
-**Let me know if you wish for even more radical refactorings!**
-
-Levenshtein edit-distance: 1767
-Does not compile

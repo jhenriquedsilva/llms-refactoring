@@ -578,5 +578,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - Applied this to three test methods to remove duplicated code snippets.
 - No behavior change; this is a pure refactoring for clarity and DRYness.
 
-Levenshtein edit-distance: 1570
+Levenshtein edit-distance: 2199
 Does not compile

@@ -648,5 +648,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 - No other strong candidates for meaningful extract method refactoring without resorting to less readable code.
 - Rest of the code remains untouched for clarity and test maintainability.
 
-Levenshtein edit-distance: 1055
+Levenshtein edit-distance: 1741
 Does not compile

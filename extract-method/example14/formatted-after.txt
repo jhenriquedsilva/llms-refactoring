@@ -1,100 +1,38 @@
-26-04-2025, 10:40
-
-### Code Review for Extract Method Refactoring Opportunities
-
-The given code snippet, `NFARunAutomaton`, is from the Lucene library and is quite lengthy. In such classes, extract method refactoring can greatly improve readability and maintainability by removing duplications and encapsulating logic.
-
-#### **Places With Repeated Code**
-
-Looking particularly for identical or near-identical code, focus on places like:
-
-- **Assignment of `min` and `max` in transitions:**
-  Both the `getNextTransition` and `getTransition` methods contain near-identical code related to assigning `t.min` and `t.max`.
-
-**Original (In Two Methods):**
-```java
-t.min = points[t.transitionUpto];
-if (t.transitionUpto == points.length - 1) {
-    t.max = alphabetSize - 1;
-} else {
-    t.max = points[t.transitionUpto + 1] - 1;
-}
-```
-
-This block is repeated. Extracting it will make the code DRY-er and clarify transition boundary computation.
-
----
-
-### **Refactored Version**
-
-**Refactoring:**
-- Extracted a new private method named `setTransitionMinMax` to encapsulate the assignment of `t.min` and `t.max`.
-- Updated both usages accordingly.
-
-**Here is your refactored class:**
-
-```java
 package org.apache.lucene.util.automaton;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.hppc.BitMixer;
 
-/**
- * A RunAutomaton that does not require DFA. It will lazily determinize on-demand, memorizing the
- * generated DFA states that has been explored. Note: the current implementation is NOT thread-safe
- *
- * <p>implemented based on: https://swtch.com/~rsc/regexp/regexp1.html
- *
- * @lucene.internal
- */
 public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
 
-    /** state ordinal of "no such state" */
     public static final int MISSING = -1;
 
     private static final int NOT_COMPUTED = -2;
 
     private final Automaton automaton;
     private final int[] points;
-    private final Map<DState, Integer> dStateToOrd = new HashMap<>(); // could init lazily?
+    private final Map<DState, Integer> dStateToOrd = new HashMap<>();
     private DState[] dStates;
     private final int alphabetSize;
-    final int[] classmap; // map from char number to class
+    final int[] classmap;
 
-    private final Operations.PointTransitionSet transitionSet =
-            new Operations.PointTransitionSet(); // reusable
-    private final StateSet statesSet = new StateSet(5); // reusable
+    private final Operations.PointTransitionSet transitionSet = new Operations.PointTransitionSet();
+    private final StateSet statesSet = new StateSet(5);
 
-    /**
-     * Constructor, assuming alphabet size is the whole Unicode code point space
-     *
-     * @param automaton incoming automaton, should be NFA, for DFA please use {@link RunAutomaton} for
-     *     better efficiency
-     */
     public NFARunAutomaton(Automaton automaton) {
         this(automaton, Character.MAX_CODE_POINT + 1);
     }
 
-    /**
-     * Constructor
-     *
-     * @param automaton incoming automaton, should be NFA, for DFA please use {@link RunAutomaton} *
-     *     for better efficiency
-     * @param alphabetSize alphabet size
-     */
     public NFARunAutomaton(Automaton automaton, int alphabetSize) {
         this.automaton = automaton;
         points = automaton.getStartPoints();
         this.alphabetSize = alphabetSize;
         dStates = new DState[10];
-        findDState(new DState(new int[] {0}));
-
-        /*
-         * Set alphabet table for optimal run performance.
-         */
+        findDState(new DState(new int[]{0}));
         classmap = new int[Math.min(256, alphabetSize)];
         int i = 0;
         for (int j = 0; j < classmap.length; j++) {
@@ -105,14 +43,6 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
         }
     }
 
-    /**
-     * For a given state and an incoming character (codepoint), return the next state
-     *
-     * @param state incoming state, should either be 0 or some state that is returned previously by
-     *     this function
-     * @param c codepoint
-     * @return the next state or {@link #MISSING} if the transition doesn't exist
-     */
     @Override
     public int step(int state, int c) {
         assert dStates[state] != null;
@@ -130,12 +60,6 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
         return dStates.length;
     }
 
-    /**
-     * Run through a given codepoint array, return accepted or not, should only be used in test
-     *
-     * @param s String represented by an int array
-     * @return accept or not
-     */
     boolean run(int[] s) {
         int p = 0;
         for (int c : s) {
@@ -145,20 +69,11 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
         return dStates[p].isAccept;
     }
 
-    /**
-     * From an existing DFA state, step to next DFA state given character c if the transition is
-     * previously tried then this operation will just use the cached result, otherwise it will call
-     * {@link DState#step(int)} to get the next state and cache the result
-     */
     private int step(DState dState, int c) {
         int charClass = getCharClass(c);
         return dState.nextState(charClass);
     }
 
-    /**
-     * return the ordinal of given DFA state, generate a new ordinal if the given DFA state is a new
-     * one
-     */
     private int findDState(DState dState) {
         if (dState == null) {
             return MISSING;
@@ -177,15 +92,11 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
         return ord;
     }
 
-    /** Gets character class of given codepoint */
     final int getCharClass(int c) {
         assert c < alphabetSize;
-
         if (c < classmap.length) {
             return classmap[c];
         }
-
-        // binary search
         int a = 0;
         int b = points.length;
         while (b - a > 1) {
@@ -208,13 +119,19 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
     public void getNextTransition(Transition t) {
         assert t.transitionUpto < points.length - 1 && t.transitionUpto >= -1;
         while (dStates[t.source].transitions[++t.transitionUpto] == MISSING) {
-            // this shouldn't throw AIOOBE as long as this function is only called
-            // numTransitions times
         }
         assert dStates[t.source].transitions[t.transitionUpto] != NOT_COMPUTED;
+        setTransitionAccordingly(t);
+    }
 
+    private void setTransitionAccordingly(Transition t) {
         t.dest = dStates[t.source].transitions[t.transitionUpto];
-        setTransitionMinMax(t);
+        t.min = points[t.transitionUpto];
+        if (t.transitionUpto == points.length - 1) {
+            t.max = alphabetSize - 1;
+        } else {
+            t.max = points[t.transitionUpto + 1] - 1;
+        }
     }
 
     @Override
@@ -235,26 +152,11 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
             }
         }
         assert outgoingTransitions == index;
-
-        t.dest = dStates[t.source].transitions[t.transitionUpto];
-        setTransitionMinMax(t);
-    }
-
-    /**
-     * Sets the min and max for the transition based on transitionUpto.
-     */
-    private void setTransitionMinMax(Transition t) {
-        t.min = points[t.transitionUpto];
-        if (t.transitionUpto == points.length - 1) {
-            t.max = alphabetSize - 1;
-        } else {
-            t.max = points[t.transitionUpto + 1] - 1;
-        }
+        setTransitionAccordingly(t);
     }
 
     private class DState {
         private final int[] nfaStates;
-        // this field is lazily init'd when first time caller wants to add a new transition
         private int[] transitions;
         private final int hashCode;
         private final boolean isAccept;
@@ -283,15 +185,12 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
             assert charClass < transitions.length;
             if (transitions[charClass] == NOT_COMPUTED) {
                 assignTransition(charClass, findDState(step(points[charClass])));
-                // we could potentially update more than one char classes
                 if (minimalTransition != null) {
-                    // to the left
                     int cls = charClass;
                     while (cls > 0 && points[--cls] >= minimalTransition.min) {
                         assert transitions[cls] == NOT_COMPUTED || transitions[cls] == transitions[charClass];
                         assignTransition(cls, transitions[charClass]);
                     }
-                    // to the right
                     cls = charClass;
                     while (cls < points.length - 1 && points[++cls] <= minimalTransition.max) {
                         assert transitions[cls] == NOT_COMPUTED || transitions[cls] == transitions[charClass];
@@ -313,17 +212,12 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
             }
         }
 
-        /**
-         * given a list of NFA states and a character c, compute the output list of NFA state which is
-         * wrapped as a DFA state
-         */
         private DState step(int c) {
-            statesSet.reset(); // TODO: fork IntHashSet from hppc instead?
+            statesSet.reset();
             int numTransitions;
             int left = -1, right = alphabetSize;
             for (int nfaState : nfaStates) {
                 numTransitions = automaton.initTransition(nfaState, stepTransition);
-                // TODO: binary search should be faster, since transitions are sorted
                 for (int i = 0; i < numTransitions; i++) {
                     automaton.getNextTransition(stepTransition);
                     if (stepTransition.min <= c && stepTransition.max >= c) {
@@ -336,7 +230,6 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
                     }
                     if (stepTransition.min > c) {
                         right = Math.min(stepTransition.min - 1, right);
-                        // transitions in automaton are sorted
                         break;
                     }
                 }
@@ -350,14 +243,11 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
             return new DState(statesSet.getArray());
         }
 
-        // determinize this state only
         private void determinize() {
             if (transitions != null && computedTransitions == transitions.length) {
-                // already determinized
                 return;
             }
             initTransitions();
-            // Mostly forked from Operations.determinize
             transitionSet.reset();
             for (int nfaState : nfaStates) {
                 int numTransitions = automaton.initTransition(nfaState, stepTransition);
@@ -367,15 +257,12 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
                 }
             }
             if (transitionSet.count == 0) {
-                // no outgoing transitions
                 Arrays.fill(transitions, MISSING);
                 computedTransitions = transitions.length;
                 return;
             }
 
-            transitionSet
-                    .sort(); // TODO: could use a PQ (heap) instead, since transitions for each state are
-            // sorted
+            transitionSet.sort();
             statesSet.reset();
             int lastPoint = -1;
             int charClass = 0;
@@ -392,12 +279,8 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
                         assert transitions[charClass] == NOT_COMPUTED || transitions[charClass] == ord;
                         assignTransition(charClass++, ord);
                     }
-                    assert (charClass == points.length && point == alphabetSize)
-                            || points[charClass] == point;
+                    assert (charClass == points.length && point == alphabetSize) || points[charClass] == point;
                 }
-
-                // process transitions that end on this point
-                // (closes an overlapping interval)
                 int[] transitions = transitionSet.points[i].ends.transitions;
                 int limit = transitionSet.points[i].ends.next;
                 for (int j = 0; j < limit; j += 3) {
@@ -405,27 +288,18 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
                     statesSet.decr(dest);
                 }
                 transitionSet.points[i].ends.next = 0;
-
-                // process transitions that start on this point
-                // (opens a new interval)
                 transitions = transitionSet.points[i].starts.transitions;
                 limit = transitionSet.points[i].starts.next;
                 for (int j = 0; j < limit; j += 3) {
                     int dest = transitions[j];
                     statesSet.incr(dest);
                 }
-
                 lastPoint = point;
                 transitionSet.points[i].starts.next = 0;
             }
             assert statesSet.size() == 0;
-            assert computedTransitions
-                    >= charClass; // it's also possible that some transitions after the charClass has already
-            // been explored
-            // no more outgoing transitions, set rest of transition to MISSING
-            assert charClass == transitions.length
-                    || transitions[charClass] == MISSING
-                    || transitions[charClass] == NOT_COMPUTED;
+            assert computedTransitions >= charClass;
+            assert charClass == transitions.length || transitions[charClass] == MISSING || transitions[charClass] == NOT_COMPUTED;
             Arrays.fill(transitions, charClass, transitions.length, MISSING);
             computedTransitions = transitions.length;
         }
@@ -451,13 +325,3 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
         }
     }
 }
-```
-
----
-
-#### **Conclusion**
-This is a minor but useful extract method refactoring for transition boundary logic. No other significant, repeated code blocks were found suitable for extract method refactoring. Let me know if you'd like even deeper structural refactors or extraction of miscellaneous utility logic!
-
-Levenshtein edit-distance: 632
-Compiles
-Tests pass

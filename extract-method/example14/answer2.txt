@@ -446,6 +446,6 @@ public class NFARunAutomaton implements ByteRunnable, TransitionAccessor {
 
 This makes the code more maintainable and readable.
 
-Levenshtein edit-distance: 766
+Levenshtein edit-distance: 743
 Compiles
 Tests pass

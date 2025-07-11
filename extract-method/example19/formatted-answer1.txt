@@ -1,17 +1,3 @@
-26-04-2025, 15:45
-
-Certainly! There **are several opportunities for extract method refactoring** in the given `PulsarPropertiesMapper` class to enhance readability, maintainability, and follow the single responsibility principle. Here are areas where logic is repetitious or where distinct responsibilities can be encapsulated in smaller methods:
-
-1. **Mapping timeouts and URLs** in `customizeClientBuilder` and `customizeAdminBuilder` can be extracted.
-2. **Serializing authentication parameters** in `customizeAuthentication` can be extracted.
-3. **Subscription customization** in both consumer builder and container can be shared.
-4. For each builder customization (`ProducerBuilder`, `ConsumerBuilder`, etc.), the mapping steps for properties can be extracted to their own helper methods.
-
-Below is the **refactored class with extract method refactorings applied**.
-
----
-
-```java
 package org.springframework.boot.autoconfigure.pulsar;
 
 import java.time.Duration;
@@ -35,12 +21,6 @@ import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 import org.springframework.util.StringUtils;
 
-/**
- * Helper class used to map {@link PulsarProperties} to various builder customizers.
- *
- * @author Chris Bono
- * @author Phillip Webb
- */
 final class PulsarPropertiesMapper {
 
     private final PulsarProperties properties;
@@ -52,7 +32,6 @@ final class PulsarPropertiesMapper {
     void customizeClientBuilder(ClientBuilder clientBuilder, PulsarConnectionDetails connectionDetails) {
         PulsarProperties.Client clientProps = this.properties.getClient();
         PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
-
         map.from(connectionDetails::getBrokerUrl).to(clientBuilder::serviceUrl);
         mapTimeoutsForClient(clientProps, map, clientBuilder);
         customizeAuthentication(clientBuilder::authentication, clientProps.getAuthentication());
@@ -67,7 +46,6 @@ final class PulsarPropertiesMapper {
     void customizeAdminBuilder(PulsarAdminBuilder adminBuilder, PulsarConnectionDetails connectionDetails) {
         PulsarProperties.Admin adminProps = this.properties.getAdmin();
         PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
-
         map.from(connectionDetails::getAdminUrl).to(adminBuilder::serviceHttpUrl);
         mapTimeoutsForAdmin(adminProps, map, adminBuilder);
         customizeAuthentication(adminBuilder::authentication, adminProps.getAuthentication());
@@ -84,8 +62,7 @@ final class PulsarPropertiesMapper {
             try {
                 String authParamString = getSortedAuthParamsString(properties.getParameters());
                 authentication.accept(properties.getPluginClassName(), authParamString);
-            }
-            catch (UnsupportedAuthenticationException ex) {
+            } catch (UnsupportedAuthenticationException ex) {
                 throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
             }
         }
@@ -95,8 +72,7 @@ final class PulsarPropertiesMapper {
         try {
             Map<String, String> sortedParams = new TreeMap<>(params);
             return ObjectMapperFactory.create().writeValueAsString(sortedParams);
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
         }
     }
@@ -195,17 +171,4 @@ final class PulsarPropertiesMapper {
     private interface AuthenticationConsumer {
         void accept(String authPluginClassName, String authParamString) throws UnsupportedAuthenticationException;
     }
-
 }
-```
-
-**Summary of improvements:**
-- **Extracted property mapping code** into `mapXXXProperties` methods, making the main customization methods (`customizeXXXBuilder`) easier to read and maintain.
-- **Authentication logic** for parameter sorting and stringification is delegated to a dedicated method.
-- All "repeat pattern" property mapping steps are now in single-responsibility methods.
-
-**This structure will facilitate future changes and extensions, as each method does exactly one thing.**
-
-Levenshtein edit-distance: 2193
-Does not compile
-Tests do not pass

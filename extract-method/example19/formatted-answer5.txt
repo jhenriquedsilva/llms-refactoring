@@ -1,18 +1,3 @@
-26-04-2025, 15:45
-
-Absolutely! The `PulsarPropertiesMapper` code snippet contains typical "property mapping" logic, and the `customize*Builder` methods are quite repetitive—they all follow a common pattern:
-
-- Get some `...Properties` object
-- Get a `PropertyMapper`
-- Apply a sequence of `map.from(...).to(...)`
-
-**Opportunity**: Most notably, there is a direct opportunity to extract common mapping blocks into private helper methods wherever the logic is repeated (e.g., for `PropertyMapper map = ...` and `map.from(...).to(...)` chains per builder type).
-
-Let’s walk through the refactoring, focusing on **extracting method** for the repeated mapping chains within `customizeProducerBuilder`, `customizeConsumerBuilder`, their subscriptions, and similar for admin/client/reader. Methods containing just a small handful of statements and mappings probably do not need further splitting, but blocks that are more than 3-4 lines may benefit.
-
-Here’s the **refactored code** with extractions for repeated mapping logic:
-
-```java
 package org.springframework.boot.autoconfigure.pulsar;
 
 import java.time.Duration;
@@ -36,12 +21,6 @@ import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 import org.springframework.util.StringUtils;
 
-/**
- * Helper class used to map {@link PulsarProperties} to various builder customizers.
- *
- * @author Chris Bono
- * @author Phillip Webb
- */
 final class PulsarPropertiesMapper {
 
     private final PulsarProperties properties;
@@ -70,26 +49,22 @@ final class PulsarPropertiesMapper {
         customizeAuthentication(adminBuilder::authentication, properties.getAuthentication());
     }
 
-    private void customizeAuthentication(AuthenticationConsumer authentication,
-                                         PulsarProperties.Authentication properties) {
+    private void customizeAuthentication(AuthenticationConsumer authentication, PulsarProperties.Authentication properties) {
         if (StringUtils.hasText(properties.getPluginClassName())) {
             try {
                 String authParamString = getAuthenticationParameterString(properties.getParams());
                 authentication.accept(properties.getPluginClassName(), authParamString);
-            }
-            catch (UnsupportedAuthenticationException ex) {
+            } catch (UnsupportedAuthenticationException ex) {
                 throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
             }
         }
     }
 
-    // EXTRACTED method for authentication param processing
     private String getAuthenticationParameterString(Map<String, String> params) {
         try {
             Map<String, String> sortedParams = new TreeMap<>(params);
             return ObjectMapperFactory.create().writeValueAsString(sortedParams);
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
         }
     }
@@ -100,7 +75,6 @@ final class PulsarPropertiesMapper {
         mapProducerBuilder(map, properties, producerBuilder);
     }
 
-    // EXTRACTED method for common Producer property mapping
     private <T> void mapProducerBuilder(PropertyMapper map, PulsarProperties.Producer properties, ProducerBuilder<T> producerBuilder) {
         map.from(properties::getName).to(producerBuilder::producerName);
         map.from(properties::getTopicName).to(producerBuilder::topic);
@@ -120,7 +94,6 @@ final class PulsarPropertiesMapper {
         customizeConsumerBuilderSubscription(consumerBuilder);
     }
 
-    // EXTRACTED method for common Consumer property mapping
     private <T> void mapConsumerBuilder(PropertyMapper map, PulsarProperties.Consumer properties, ConsumerBuilder<T> consumerBuilder) {
         map.from(properties::getName).to(consumerBuilder::consumerName);
         map.from(properties::getTopics).as(ArrayList::new).to(consumerBuilder::topics);
@@ -137,7 +110,6 @@ final class PulsarPropertiesMapper {
         mapConsumerSubscription(map, properties, consumerBuilder);
     }
 
-    // EXTRACTED method for subscription mapping
     private void mapConsumerSubscription(PropertyMapper map, PulsarProperties.Consumer.Subscription properties, ConsumerBuilder<?> consumerBuilder) {
         map.from(properties::getName).to(consumerBuilder::subscriptionName);
         map.from(properties::getInitialPosition).to(consumerBuilder::subscriptionInitialPosition);
@@ -157,7 +129,6 @@ final class PulsarPropertiesMapper {
         mapContainerConsumerSubscription(map, properties, containerProperties);
     }
 
-    // EXTRACTED: container subscription mapping
     private void mapContainerConsumerSubscription(PropertyMapper map, PulsarProperties.Consumer.Subscription properties, PulsarContainerProperties containerProperties) {
         map.from(properties::getType).to(containerProperties::setSubscriptionType);
     }
@@ -168,7 +139,6 @@ final class PulsarPropertiesMapper {
         mapContainerListener(map, properties, containerProperties);
     }
 
-    // EXTRACTED: container listener mapping
     private void mapContainerListener(PropertyMapper map, PulsarProperties.Listener properties, PulsarContainerProperties containerProperties) {
         map.from(properties::getSchemaType).to(containerProperties::setSchemaType);
         map.from(properties::isObservationEnabled).to(containerProperties::setObservationEnabled);
@@ -180,7 +150,6 @@ final class PulsarPropertiesMapper {
         mapReaderBuilder(map, properties, readerBuilder);
     }
 
-    // EXTRACTED: reader builder mapping
     private <T> void mapReaderBuilder(PropertyMapper map, PulsarProperties.Reader properties, ReaderBuilder<T> readerBuilder) {
         map.from(properties::getName).to(readerBuilder::readerName);
         map.from(properties::getTopics).to(readerBuilder::topics);
@@ -195,7 +164,6 @@ final class PulsarPropertiesMapper {
         mapReaderContainerProperties(map, properties, readerContainerProperties);
     }
 
-    // EXTRACTED: reader container property mapping
     private void mapReaderContainerProperties(PropertyMapper map, PulsarProperties.Reader properties, PulsarReaderContainerProperties readerContainerProperties) {
         map.from(properties::getTopics).to(readerContainerProperties::setTopics);
     }
@@ -209,33 +177,4 @@ final class PulsarPropertiesMapper {
         void accept(String authPluginClassName, String authParamString) throws UnsupportedAuthenticationException;
 
     }
-
 }
-```
-
----
-
-## **Summary of Changes**
-
-**Extracted methods:**
-- `getAuthenticationParameterString`
-- `mapProducerBuilder`
-- `mapConsumerBuilder`
-- `mapConsumerSubscription`
-- `mapContainerConsumerSubscription`
-- `mapContainerListener`
-- `mapReaderBuilder`
-- `mapReaderContainerProperties`
-
-This:
-- **Reduces duplication**
-- **Improves method readability** by focusing each method on a single responsibility
-- **Improves maintainability**—future property additions require changes in one place.
-
----
-
-**If you'd like more aggressive refactoring (e.g., dynamic property-to-method mappings), please specify.**
-
-Levenshtein edit-distance: 1826
-Does not compile
-Tests do not pass

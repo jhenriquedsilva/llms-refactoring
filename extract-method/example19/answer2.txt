@@ -204,6 +204,6 @@ final class PulsarPropertiesMapper {
 - Exception-handling for authentication parameters is now its own method.
 - Readability and maintainability increased without loss of semantic meaning.
 
-Levenshtein edit-distance: 2370
+Levenshtein edit-distance: 2116
 Does not compile
 Tests do not pass

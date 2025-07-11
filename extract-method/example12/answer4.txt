@@ -263,6 +263,6 @@ public class FileBasedConfig extends StoredConfig {
 
 If you have any specific method you want further extracted or reasoned about, let me know!
 
-Levenshtein edit-distance: 2661
+Levenshtein edit-distance: 1217
 Compiles
 Pass tests

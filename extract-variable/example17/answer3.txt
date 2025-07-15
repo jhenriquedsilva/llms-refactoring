@@ -285,4 +285,5 @@ public final class ASTModifierList extends AbstractJavaNode {
 
 **No other refactoring changes are necessary** since all other repeated or complex expressions are in separate contexts or not repeated enough to warrant further extraction.
 
+Levenshtein edit-distance: 386
 Compiles

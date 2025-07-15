@@ -1,19 +1,3 @@
-01-05-2025, 09:46
-
-Certainly! Let's look for opportunities for **extract variable refactoring** in your code. This type of refactoring is intended to remove repeated expressions (especially method calls or complex expressions) and assign them to a temporary variable to improve readability and sometimes performance.
-
-### Candidates for Extract Variable
-Here are some patterns I noticed:
-
-- The expression `Arrays.asList(mods)` appears in both `hasAll` and `hasAllExplicitly`.
-- The calls to `getEffectiveModifiers()` and `getExplicitModifiers()` are repeated within the same method, but are already assigned to `actual`.
-- The expressions `Arrays.stream(mods).anyMatch(actual::contains)` in `hasAny` and `hasAnyExplicitly` are virtually identical. But extracting part of this expression into a variable could improve clarity.
-
-However, there are no long or complex sub-expressions being *repeated multiple times* within a method that would strongly benefit from extracting to a variable. The code is already quite clean, but for demonstration and clarity, we can extract `Arrays.asList(mods)` to a variable in the relevant methods, and similarly for the stream expression.
-
-### Refactored Code:
-
-```java
 package net.sourceforge.pmd.lang.java.ast;
 
 import static net.sourceforge.pmd.lang.java.ast.JModifier.ABSTRACT;
@@ -27,16 +11,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
-import java.util.List;
 
 public final class ASTModifierList extends AbstractJavaNode {
 
-    /** Might as well share it. */
     static final Set<JModifier> JUST_FINAL = Collections.singleton(FINAL);
-
     private Set<JModifier> explicitModifiers;
     private Set<JModifier> effectiveModifiers;
-
 
     ASTModifierList(int id) {
         super(id);
@@ -47,150 +27,82 @@ public final class ASTModifierList extends AbstractJavaNode {
         return visitor.visit(this, data);
     }
 
-
     void setDeclaredModifiers(Set<JModifier> explicit) {
         this.explicitModifiers = explicit;
     }
 
-    /**
-     * Returns the set of modifiers written out in the source explicitly.
-     * The returned set is unmodifiable.
-     */
     public Set<JModifier> getExplicitModifiers() {
         assert explicitModifiers != null : "Parser should have set the explicit modifiers";
         return Collections.unmodifiableSet(explicitModifiers);
     }
 
-    /**
-     * Returns the {@linkplain #getExplicitModifiers() declared modifiers},
-     * plus the modifiers that are implicitly bestowed by the context or
-     * the type of this declaration. E.g. an interface is implicitly abstract,
-     * while an interface field is implicitly static.
-     * The returned set is unmodifiable.
-     */
     public Set<JModifier> getEffectiveModifiers() {
         assert explicitModifiers != null : "Parser should have set the explicit modifiers";
-
         if (effectiveModifiers == null) {
-
-            Set<JModifier> mods =
-                    explicitModifiers.isEmpty()
-                            ? EnumSet.noneOf(JModifier.class)
-                            : EnumSet.copyOf(explicitModifiers);
-
+            Set<JModifier> mods = explicitModifiers.isEmpty() ? EnumSet.noneOf(JModifier.class) : EnumSet.copyOf(explicitModifiers);
             getOwner().acceptVisitor(EffectiveModifierVisitor.INSTANCE, mods);
-
             this.effectiveModifiers = Collections.unmodifiableSet(mods);
-
         }
-
         return effectiveModifiers;
     }
 
-    /** Returns the node owning this modifier list. */
     public Annotatable getOwner() {
-        return (Annotatable) getParent(); // TODO
+        return (Annotatable) getParent();
     }
 
-    /**
-     * Returns true if the effective modifiers contain all of the mentioned
-     * modifiers.
-     *
-     * @param mod1 First mod
-     * @param mods Other mods
-     */
     public boolean hasAll(JModifier mod1, JModifier... mods) {
         Set<JModifier> actual = getEffectiveModifiers();
-        List<JModifier> modsList = Arrays.asList(mods);
+        java.util.List<JModifier> modsList = Arrays.asList(mods);
         return actual.contains(mod1) && (mods.length == 0 || actual.containsAll(modsList));
     }
 
-    /**
-     * Returns true if the explicit modifiers contain all of the mentioned
-     * modifiers.
-     *
-     * @param mod1 First mod
-     * @param mods Other mods
-     */
     public boolean hasAllExplicitly(JModifier mod1, JModifier... mods) {
         Set<JModifier> actual = getExplicitModifiers();
-        List<JModifier> modsList = Arrays.asList(mods);
+        java.util.List<JModifier> modsList = Arrays.asList(mods);
         return actual.contains(mod1) && (mods.length == 0 || actual.containsAll(modsList));
     }
 
-
-    /**
-     * Returns true if the effective modifiers contain any of the mentioned
-     * modifiers.
-     *
-     * @param mod1 First mod
-     * @param mods Other mods
-     */
     public boolean hasAny(JModifier mod1, JModifier... mods) {
         Set<JModifier> actual = getEffectiveModifiers();
-        boolean anyMatch = Arrays.stream(mods).anyMatch(actual::contains);
-        return actual.contains(mod1) || anyMatch;
+        boolean anyOther = Arrays.stream(mods).anyMatch(actual::contains);
+        return actual.contains(mod1) || anyOther;
     }
 
-
-    /**
-     * Returns true if the explicit modifiers contain any of the mentioned
-     * modifiers.
-     *
-     * @param mod1 First mod
-     * @param mods Other mods
-     */
     public boolean hasAnyExplicitly(JModifier mod1, JModifier... mods) {
         Set<JModifier> actual = getExplicitModifiers();
-        boolean anyMatch = Arrays.stream(mods).anyMatch(actual::contains);
-        return actual.contains(mod1) || anyMatch;
+        boolean anyOther = Arrays.stream(mods).anyMatch(actual::contains);
+        return actual.contains(mod1) || anyOther;
     }
 
-    /**
-     * Populates effective modifiers from the declared ones.
-     */
     private static final class EffectiveModifierVisitor extends JavaVisitorBase<Set<JModifier>, Void> {
-
 
         private static final EffectiveModifierVisitor INSTANCE = new EffectiveModifierVisitor();
 
-        // TODO strictfp modifier is also implicitly given to descendants
-        // TODO final modifier is implicitly given to direct subclasses of sealed interface/class
-
-
         @Override
         public Void visitJavaNode(JavaNode node, Set<JModifier> data) {
-            return null; // default, don't recurse, no special modifiers.
+            return null;
         }
 
         @Override
         public Void visitTypeDecl(ASTAnyTypeDeclaration node, Set<JModifier> effective) {
-
             ASTAnyTypeDeclaration enclosing = node.getEnclosingType();
             if (enclosing != null && enclosing.isInterface()) {
                 effective.add(PUBLIC);
                 effective.add(STATIC);
             }
-
             if (node.isInterface() || node.isAnnotation()) {
                 effective.add(ABSTRACT);
                 if (!node.isTopLevel()) {
                     effective.add(STATIC);
                 }
-            } else if (!node.isTopLevel()
-                    && (node instanceof ASTEnumDeclaration || node instanceof ASTRecordDeclaration)) {
+            } else if (!node.isTopLevel() && (node instanceof ASTEnumDeclaration || node instanceof ASTRecordDeclaration)) {
                 effective.add(STATIC);
             }
-
-            if (node instanceof ASTEnumDeclaration
-                    && node.getEnumConstants().none(ASTEnumConstant::isAnonymousClass)
-                    || node instanceof ASTRecordDeclaration) {
+            if (node instanceof ASTEnumDeclaration && node.getEnumConstants().none(ASTEnumConstant::isAnonymousClass) || node instanceof ASTRecordDeclaration) {
                 effective.add(FINAL);
             }
-
             return null;
         }
-
 
         @Override
         public Void visit(ASTFieldDeclaration node, Set<JModifier> effective) {
@@ -204,7 +116,6 @@ public final class ASTModifierList extends AbstractJavaNode {
 
         @Override
         public Void visit(ASTLocalVariableDeclaration node, Set<JModifier> effective) {
-            // resources are implicitly final
             if (node.getParent() instanceof ASTResource) {
                 effective.add(FINAL);
             }
@@ -221,7 +132,7 @@ public final class ASTModifierList extends AbstractJavaNode {
 
         @Override
         public Void visit(ASTRecordComponent node, Set<JModifier> effective) {
-            effective.add(PRIVATE); // field is private, an accessor method is generated
+            effective.add(PRIVATE);
             effective.add(FINAL);
             return null;
         }
@@ -229,15 +140,11 @@ public final class ASTModifierList extends AbstractJavaNode {
         @Override
         public Void visit(ASTAnonymousClassDeclaration node, Set<JModifier> effective) {
             ASTBodyDeclaration enclosing = node.ancestors(ASTBodyDeclaration.class).first();
-
-            assert enclosing != null && !(enclosing instanceof ASTAnyTypeDeclaration)
-                    : "Weird position for an anonymous class " + enclosing;
-
+            assert enclosing != null && !(enclosing instanceof ASTAnyTypeDeclaration) : "Weird position for an anonymous class " + enclosing;
             if (enclosing instanceof ASTEnumConstant) {
                 effective.add(STATIC);
             } else {
-                if (enclosing instanceof AccessNode && ((AccessNode) enclosing).hasModifiers(STATIC)
-                        || enclosing instanceof ASTInitializer && ((ASTInitializer) enclosing).isStatic()) {
+                if (enclosing instanceof AccessNode && ((AccessNode) enclosing).hasModifiers(STATIC) || enclosing instanceof ASTInitializer && ((ASTInitializer) enclosing).isStatic()) {
                     effective.add(STATIC);
                 }
             }
@@ -256,9 +163,7 @@ public final class ASTModifierList extends AbstractJavaNode {
         public Void visit(ASTMethodDeclaration node, Set<JModifier> effective) {
             ASTAnyTypeDeclaration enclosingType = node.getEnclosingType();
             if (enclosingType != null && enclosingType.isInterface()) {
-
                 Set<JModifier> declared = node.getModifiers().explicitModifiers;
-
                 if (!declared.contains(PRIVATE)) {
                     effective.add(PUBLIC);
                 }
@@ -266,22 +171,7 @@ public final class ASTModifierList extends AbstractJavaNode {
                     effective.add(ABSTRACT);
                 }
             }
-
             return null;
         }
     }
 }
-```
-
-### Summary of Refactoring
-- Introduced a local variable `modsList` in `hasAll` and `hasAllExplicitly` for `Arrays.asList(mods)`.
-- Introduced a local variable `anyMatch` for the stream expression in `hasAny` and `hasAnyExplicitly`.
-
-**This improves clarity and prevents the repeated creation of the same list/stream within these methods.**
-
----
-
-**If you have any other specific expressions or patterns in mind, let me know!**
-
-Levenshtein edit-distance: 389
-Compiles

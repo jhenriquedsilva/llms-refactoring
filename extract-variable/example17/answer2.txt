@@ -275,4 +275,5 @@ public final class ASTModifierList extends AbstractJavaNode {
 
 This makes the intent clearer, avoids repetition, and aligns well with best practices regarding extract variable refactoring.
 
+Levenshtein edit-distance: 415
 Compiles

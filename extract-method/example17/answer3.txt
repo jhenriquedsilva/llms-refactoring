@@ -591,6 +591,6 @@ public final class IOUtil {
 
 **If you need further decomposition or to isolate anonymous classes into their own types, let me know!**
 
-Levenshtein edit-distance: 2913
+Levenshtein edit-distance: 2423
 Compiles
 Tests pass

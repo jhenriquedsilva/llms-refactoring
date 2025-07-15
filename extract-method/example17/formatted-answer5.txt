@@ -1,28 +1,3 @@
-26-04-2025, 14:38
-
-Absolutely! Let’s review the code for **extract method** refactoring opportunities. The refactoring opportunity is usually found where some method does "too much" (multiple steps, long code, or encapsulates distinct responsibilities).
-
-### High-Impact Candidates
-
-Within the provided class, two main areas stand out for possible extract method refactoring:
-
-#### 1. `createWriter(Charset, String)`
-This method contains two distinct "branches":
--  One for writing to `stdout`
--  One for writing to a `file`
-
-Both are big enough to benefit from being moved to well-named private helpers.
-
-#### 2. `BomAwareInputStream.determineBom()`
-This method features much logic for recognizing and returning byte-order-marks. Each branch is a bit subtle, and extraction will improve readability.
-
----
-
-# Refactored Code
-
-Below is your **refactored class** with the corresponding methods extracted and invoked for clarity/maintenance.
-
-```java
 package net.sourceforge.pmd.internal.util;
 
 import java.io.Closeable;
@@ -55,41 +30,18 @@ import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-/**
- *
- * @author Brian Remedios
- */
 public final class IOUtil {
-    /**
-     * Unicode BOM character. Replaces commons io ByteOrderMark.
-     */
     public static final char UTF_BOM = '﻿';
-    /** Conventional return value for readers. */
     public static final int EOF = -1;
     private static final int BUFFER_SIZE = 8192;
 
     private IOUtil() {
     }
 
-    /**
-     * Creates a writer that writes to stdout using the system default charset.
-     *
-     * @return a writer, never null
-     *
-     * @see #createWriter(String)
-     * @see #createWriter(Charset, String)
-     */
     public static Writer createWriter() {
         return createWriter(null);
     }
 
-    /**
-     * Gets the current default charset.
-     *
-     * <p>In contrast to {@link Charset#defaultCharset()}, the result is not cached,
-     * so that in unit tests, the charset can be changed.
-     * @return
-     */
     private static Charset getDefaultCharset() {
         String csn = AccessController.doPrivileged(new PrivilegedAction<String>() {
             @Override
@@ -104,75 +56,43 @@ public final class IOUtil {
         }
     }
 
-    /**
-     * Creates a writer that writes to the given file or to stdout.
-     * The file is created if it does not exist.
-     *
-     * <p>Warning: This writer always uses the system default charset.
-     *
-     * @param reportFile the file name (optional)
-     *
-     * @return the writer, never null
-     */
     public static Writer createWriter(String reportFile) {
         return createWriter(getDefaultCharset(), reportFile);
     }
 
-    /**
-     * Creates a writer that writes to the given file or to stdout.
-     * The file is created if it does not exist.
-     *
-     * <p>Unlike {@link #createWriter(String)}, this method always uses
-     * the given charset. Even for writing to stdout. It never
-     * falls back to the default charset.</p>
-     *
-     * @param charset the charset to be used (required)
-     * @param reportFile the file name (optional)
-     * @return
-     */
     public static Writer createWriter(Charset charset, String reportFile) {
         try {
             if (StringUtils.isBlank(reportFile)) {
                 return createStdoutWriter(charset);
             }
-            return createFileWriter(reportFile, charset);
+            return createFileWriter(charset, reportFile);
         } catch (IOException e) {
             throw new IllegalArgumentException(e);
         }
     }
 
-    // === Extracted methods for createWriter(Charset, String) ===
-
     private static Writer createStdoutWriter(Charset charset) {
         return new OutputStreamWriter(new FilterOutputStream(System.out) {
             @Override
             public void close() {
-                // avoid closing stdout, simply flush
                 try {
                     out.flush();
                 } catch (IOException ignored) {
-                    // Nothing left to do
                 }
             }
 
             @Override
             public void write(byte[] b, int off, int len) throws IOException {
-                /*
-                 * FilterOutputStream iterates over each byte, asking subclasses to provide more efficient implementations
-                 * It therefore negates any such optimizations that the underlying stream actually may implement.
-                 */
                 out.write(b, off, len);
             }
         }, charset);
     }
 
-    private static Writer createFileWriter(String reportFile, Charset charset) throws IOException {
+    private static Writer createFileWriter(Charset charset, String reportFile) throws IOException {
         Path path = new File(reportFile).toPath().toAbsolutePath();
-        Files.createDirectories(path.getParent()); // ensure parent dir exists
-        // this will create the file if it doesn't exist
+        Files.createDirectories(path.getParent());
         return Files.newBufferedWriter(path, charset);
     }
-    // === End of extracted methods ===
 
     public static void tryCloseClassLoader(ClassLoader classLoader) {
         if (classLoader instanceof Closeable) {
@@ -180,16 +100,7 @@ public final class IOUtil {
         }
     }
 
-    /**
-     * Close all closeable resources in order. If any exception occurs,
-     * it is saved and returned. If more than one exception occurs, the
-     * following are accumulated as suppressed exceptions in the first.
-     *
-     * @param closeables Resources to close
-     *
-     * @return An exception, or null if no 'close' routine threw
-     */
-    @SuppressWarnings("PMD.CloseResource") // false-positive
+    @SuppressWarnings("PMD.CloseResource")
     public static Exception closeAll(Collection<? extends AutoCloseable> closeables) {
         Exception composed = null;
         for (AutoCloseable it : closeables) {
@@ -206,31 +117,18 @@ public final class IOUtil {
         return composed;
     }
 
-    /**
-     * Ensure that the closeables are closed. In the end, throws the
-     * pending exception if not null, or the exception retuned by {@link #closeAll(Collection)}
-     * if not null. If both are non-null, adds one of them to the suppress
-     * list of the other, and throws that one.
-     */
-    public static void ensureClosed(List<? extends AutoCloseable> toClose,
-                                    @Nullable Exception pendingException) throws Exception {
+    public static void ensureClosed(List<? extends AutoCloseable> toClose, @Nullable Exception pendingException) throws Exception {
         Exception closeException = closeAll(toClose);
         if (closeException != null) {
             if (pendingException != null) {
                 closeException.addSuppressed(pendingException);
                 throw closeException;
             }
-            // else no exception at all
         } else if (pendingException != null) {
             throw pendingException;
         }
     }
 
-    /**
-     * Close the given closeable. If it fails with an exception,
-     * either return that one or suppress it (if the parameter
-     * exception is already non-null).
-     */
     public static @Nullable Exception closeAndAccumulate(AutoCloseable closeable, @Nullable Exception pending) {
         try {
             closeable.close();
@@ -244,18 +142,10 @@ public final class IOUtil {
         return pending;
     }
 
-    // The following methods are taken from Apache Commons IO.
-    // The dependency was removed from PMD 6 because it had a security issue,
-    // and upgrading was not possible without upgrading to Java 8.
-    // See https://github.com/pmd/pmd/pull/3968
-    // TODO PMD 7: consider bringing back commons-io and cleaning this class up.
-
-
     public static void closeQuietly(Closeable closeable) {
         try {
             closeable.close();
         } catch (IOException ignored) {
-            // ignored
         }
     }
 
@@ -277,13 +167,11 @@ public final class IOUtil {
         if (n < 0) {
             throw new IllegalArgumentException();
         }
-
         long bytesToSkip = n;
         byte[] buffer = new byte[(int) Math.min(BUFFER_SIZE, bytesToSkip)];
         while (bytesToSkip > 0) {
             int count = stream.read(buffer, 0, (int) Math.min(BUFFER_SIZE, bytesToSkip));
             if (count < 0) {
-                // reached eof
                 break;
             }
             bytesToSkip -= count;
@@ -372,17 +260,14 @@ public final class IOUtil {
             private final CharBuffer charBuffer = CharBuffer.allocate(BUFFER_SIZE);
             private final ByteBuffer byteBuffer = ByteBuffer.allocate(BUFFER_SIZE);
             private final CharsetEncoder encoder;
-
             private boolean eof;
 
             ReaderInputStream(Reader reader) {
                 this.reader = reader;
-                encoder = Charset.defaultCharset().newEncoder()
-                        .onMalformedInput(CodingErrorAction.REPLACE)
-                        .onUnmappableCharacter(CodingErrorAction.REPLACE);
+                encoder = Charset.defaultCharset().newEncoder().onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE);
                 charBuffer.clear();
                 byteBuffer.clear();
-                byteBuffer.flip(); // byte buffer is empty at the beginning, no bytes read yet
+                byteBuffer.flip();
             }
 
             @Override
@@ -398,11 +283,9 @@ public final class IOUtil {
                     byteBuffer.flip();
                     charBuffer.compact();
                 }
-
                 if (byteBuffer.hasRemaining()) {
                     return byteBuffer.get();
                 }
-
                 return -1;
             }
 
@@ -416,7 +299,6 @@ public final class IOUtil {
                 reader.close();
             }
         }
-
         return new ReaderInputStream(reader);
     }
 
@@ -430,9 +312,7 @@ public final class IOUtil {
             WriterOutputStream(Writer writer, String encoding) throws UnsupportedCharsetException {
                 this.writer = writer;
                 Charset charset = Charset.forName(encoding);
-                decoder = charset.newDecoder()
-                        .onMalformedInput(CodingErrorAction.REPLACE)
-                        .onUnmappableCharacter(CodingErrorAction.REPLACE);
+                decoder = charset.newDecoder().onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE);
                 byteBuffer.clear();
                 charBuffer.clear();
             }
@@ -466,22 +346,9 @@ public final class IOUtil {
                 writer.close();
             }
         }
-
         return new WriterOutputStream(writer, encoding);
     }
 
-    /**
-     * <p>
-     * Input stream that skips an optional byte order mark at the beginning
-     * of the stream. Whether the stream had a byte order mark (encoded in either UTF-8,
-     * UTF-16LE or UTF-16BE) can be checked with {@link #hasBom()}. The corresponding
-     * charset can be retrieved with {@link #getBomCharsetName()}.
-     * </p>
-     *
-     * <p>
-     * If the stream didn't had a BOM, then no bytes are skipped.
-     * </p>
-     */
     public static class BomAwareInputStream extends FilterInputStream {
 
         private byte[] begin;
@@ -495,69 +362,55 @@ public final class IOUtil {
         }
 
         private byte[] determineBom() {
-            byte[] bytes = readBomBytes();
-            int count = bytes.length;
-
-            if (isUtf8Bom(bytes, count)) {
-                charset = StandardCharsets.UTF_8.name();
-                return new byte[0]; // skip all 3 bytes
-            } else if (isUtf16BEBom(bytes, count)) {
-                charset = StandardCharsets.UTF_16BE.name();
-                return new byte[] { bytes[2] };
-            } else if (isUtf16LEBom(bytes, count)) {
-                charset = StandardCharsets.UTF_16LE.name();
-                return new byte[] { bytes[2] };
-            } else if (count == 3) {
-                return bytes;
-            }
-
-            if (count < 0) {
-                return new byte[0];
-            }
-
-            return copyPartialBytes(bytes, count);
-        }
-
-        // === Extracted helper methods for determineBom ===
-
-        private byte[] readBomBytes() {
             byte[] bytes = new byte[3];
             try {
                 int count = in.read(bytes);
-                if (count == -1) {
-                    return new byte[0];
-                } else if (count < 3) {
-                    byte[] read = new byte[count];
-                    System.arraycopy(bytes, 0, read, 0, count);
-                    return read;
+                if (isUTF8Bom(bytes, count)) {
+                    charset = StandardCharsets.UTF_8.name();
+                    return new byte[0]; // skip all 3 bytes
+                } else if (isUTF16BEBom(bytes, count)) {
+                    charset = StandardCharsets.UTF_16BE.name();
+                    return extractRemainingBytesForUtf16Be(bytes, count);
+                } else if (isUTF16LEBom(bytes, count)) {
+                    charset = StandardCharsets.UTF_16LE.name();
+                    return extractRemainingBytesForUtf16Le(bytes, count);
+                } else if (count == 3) {
+                    return bytes;
                 }
-                return bytes;
+                if (count < 0) {
+                    return new byte[0];
+                }
+                return extractReadBytes(bytes, count);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
 
-        private boolean isUtf8Bom(byte[] bytes, int count) {
+        private boolean isUTF8Bom(byte[] bytes, int count) {
             return count == 3 && bytes[0] == (byte) 0xef && bytes[1] == (byte) 0xbb && bytes[2] == (byte) 0xbf;
         }
 
-        private boolean isUtf16BEBom(byte[] bytes, int count) {
+        private boolean isUTF16BEBom(byte[] bytes, int count) {
             return count >= 2 && bytes[0] == (byte) 0xfe && bytes[1] == (byte) 0xff;
         }
 
-        private boolean isUtf16LEBom(byte[] bytes, int count) {
+        private boolean isUTF16LEBom(byte[] bytes, int count) {
             return count >= 2 && bytes[0] == (byte) 0xff && bytes[1] == (byte) 0xfe;
         }
 
-        private byte[] copyPartialBytes(byte[] bytes, int count) {
-            byte[] read = new byte[count];
-            for (int i = 0; i < count; i++) {
-                read[i] = bytes[i];
-            }
-            return read;
+        private byte[] extractRemainingBytesForUtf16Be(byte[] bytes, int count) {
+            return new byte[]{bytes[2]};
         }
 
-        // === End of extracted helper methods ===
+        private byte[] extractRemainingBytesForUtf16Le(byte[] bytes, int count) {
+            return new byte[]{bytes[2]};
+        }
+
+        private byte[] extractReadBytes(byte[] bytes, int count) {
+            byte[] read = new byte[count];
+            System.arraycopy(bytes, 0, read, 0, count);
+            return read;
+        }
 
         @Override
         public int read() throws IOException {
@@ -589,21 +442,3 @@ public final class IOUtil {
         }
     }
 }
-```
-
----
-
-# **Summary of changes**
-1. **`createWriter(Charset, String)`** :
-   - Extracted logic to `createStdoutWriter(Charset)` and `createFileWriter(String, Charset)`.
-
-2. **`BomAwareInputStream.determineBom()`** :
-   - Extracted and replaced complex inline code (reading BOM, checking type, copying arrays) with clear, named private methods: `readBomBytes`, `isUtf8Bom`, `isUtf16BEBom`, `isUtf16LEBom`, `copyPartialBytes`.
-
----
-
-This improves **readability, separation of concerns, and future maintainability**. Let me know if you wish to continue with more detailed extractions elsewhere!
-
-Levenshtein edit-distance: 2038
-Compiles
-Tests pass

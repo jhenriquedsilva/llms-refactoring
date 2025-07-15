@@ -110,4 +110,5 @@ public final class IdeaProjectLoaderUtil {
 
 Let me know if you would like even further refactoring or refactoring of any helper methods!
 
+Levenshtein edit-distance: 612
 Compiles

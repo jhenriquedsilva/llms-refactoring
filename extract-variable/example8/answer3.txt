@@ -129,5 +129,5 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 
 No other obvious repeated complex expressions benefit significantly from extract variable refactoring in this snippet.
 
-Levenshtein edit-distance: 257
+Levenshtein edit-distance: 252
 Compiles

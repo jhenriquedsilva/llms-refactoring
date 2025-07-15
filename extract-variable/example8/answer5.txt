@@ -134,5 +134,5 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 
 This improves readability and reduces duplication per standard extract variable refactoring best practices.
 
-Levenshtein edit-distance: 303
+Levenshtein edit-distance: 254
 Compiles

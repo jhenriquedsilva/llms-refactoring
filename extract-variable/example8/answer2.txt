@@ -154,5 +154,5 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 
 **These refactorings improve readability and, in the case of complex conditionals, maintainability of the code.**
 
-Levenshtein edit-distance: 478
+Levenshtein edit-distance: 252
 Compiles

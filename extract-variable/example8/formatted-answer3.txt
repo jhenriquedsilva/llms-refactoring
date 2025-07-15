@@ -1,22 +1,3 @@
-29-04-2025, 21:51
-
-## Analysis
-
-Yes, there **are opportunities for extract variable refactoring** in your code. A frequently repeated expression that reduces readability is:
-
-```java
-filter == null ? null : filter.toQuery(context)
-```
-
-This ternary expression appears **twice** (once for KnnByteVectorQuery, once for KnnFloatVectorQuery). Extracting it to a variable makes the intent clearer and avoids duplication.
-
-Let me perform this refactoring for you.
-
----
-
-## Refactored Code
-
-```java
 package org.hibernate.search.backend.lucene.search.predicate.impl;
 
 import java.lang.invoke.MethodHandles;
@@ -39,14 +20,14 @@ import org.apache.lucene.search.Query;
 
 public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate implements LuceneSearchPredicate {
 
-    private static final Log log = LoggerFactory.make( Log.class, MethodHandles.lookup() );
+    private static final Log log = LoggerFactory.make(Log.class, MethodHandles.lookup());
 
     private final int k;
     private final Object vector;
     private final LuceneSearchPredicate filter;
 
     private LuceneKnnPredicate(Builder<?> builder) {
-        super( builder );
+        super(builder);
         this.k = builder.k;
         this.vector = builder.vector;
         this.filter = builder.filter;
@@ -54,25 +35,20 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 
     @Override
     protected Query doToQuery(PredicateRequestContext context) {
-        Query filterQuery = (filter == null ? null : filter.toQuery(context));
-        if ( vector instanceof byte[] ) {
-            return new KnnByteVectorQuery(
-                    absoluteFieldPath, (byte[]) vector, k, filterQuery );
+        Query filterQuery = filter == null ? null : filter.toQuery(context);
+        if (vector instanceof byte[]) {
+            return new KnnByteVectorQuery(absoluteFieldPath, (byte[]) vector, k, filterQuery);
         }
-        if ( vector instanceof float[] ) {
-            return new KnnFloatVectorQuery(
-                    absoluteFieldPath, (float[]) vector, k, filterQuery );
+        if (vector instanceof float[]) {
+            return new KnnFloatVectorQuery(absoluteFieldPath, (float[]) vector, k, filterQuery);
         }
-
-        throw new UnsupportedOperationException(
-                "Unknown vector type " + vector.getClass() + ". only byte[] and float[] vectors are supported." );
+        throw new UnsupportedOperationException("Unknown vector type " + vector.getClass() + ". only byte[] and float[] vectors are supported.");
     }
 
-    public static class DefaultFactory<F>
-            extends AbstractLuceneValueFieldSearchQueryElementFactory<KnnPredicateBuilder, F> {
+    public static class DefaultFactory<F> extends AbstractLuceneValueFieldSearchQueryElementFactory<KnnPredicateBuilder, F> {
         @Override
         public KnnPredicateBuilder create(LuceneSearchIndexScope<?> scope, LuceneSearchIndexValueFieldContext<F> field) {
-            return new Builder<>( scope, field );
+            return new Builder<>(scope, field);
         }
     }
 
@@ -84,16 +60,13 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
         private LuceneSearchPredicate filter;
 
         private Builder(LuceneSearchIndexScope<?> scope, LuceneSearchIndexValueFieldContext<F> field) {
-            super( scope, field );
-
+            super(scope, field);
             LuceneFieldCodec<F> codec = field.type().codec();
-            if ( codec instanceof LuceneVectorFieldCodec ) {
+            if (codec instanceof LuceneVectorFieldCodec) {
                 vectorElementsType = ((LuceneVectorFieldCodec<F>) codec).vectorElementsType();
                 indexedVectorsDimension = ((LuceneVectorFieldCodec<F>) codec).getConfiguredDimensions();
-            }
-            else {
-                // shouldn't really happen as if someone tries this it should fail on `queryElementFactory` lookup.
-                throw new AssertionFailure( "Attempting to use a knn predicate on a non-vector field." );
+            } else {
+                throw new AssertionFailure("Attempting to use a knn predicate on a non-vector field.");
             }
         }
 
@@ -104,38 +77,26 @@ public class LuceneKnnPredicate extends AbstractLuceneSingleFieldPredicate imple
 
         @Override
         public void vector(Object vector) {
-            if ( !vector.getClass().isArray() ) {
-                throw new IllegalArgumentException( "Vector can only be either a float or a byte array (float[], byte[])." );
+            if (!vector.getClass().isArray()) {
+                throw new IllegalArgumentException("Vector can only be either a float or a byte array (float[], byte[]).");
             }
-            if ( !vectorElementsType.equals( vector.getClass().getComponentType() ) ) {
-                throw log.vectorKnnMatchVectorTypeDiffersFromField( absoluteFieldPath, vectorElementsType,
-                        vector.getClass().getComponentType() );
+            if (!vectorElementsType.equals(vector.getClass().getComponentType())) {
+                throw log.vectorKnnMatchVectorTypeDiffersFromField(absoluteFieldPath, vectorElementsType, vector.getClass().getComponentType());
             }
-            if ( Array.getLength( vector ) != indexedVectorsDimension ) {
-                throw log.vectorKnnMatchVectorDimensionDiffersFromField( absoluteFieldPath, indexedVectorsDimension,
-                        Array.getLength( vector )
-                );
+            if (Array.getLength(vector) != indexedVectorsDimension) {
+                throw log.vectorKnnMatchVectorDimensionDiffersFromField(absoluteFieldPath, indexedVectorsDimension, Array.getLength(vector));
             }
             this.vector = vector;
         }
 
         @Override
         public void filter(SearchPredicate filter) {
-            this.filter = LuceneSearchPredicate.from( scope, filter );
+            this.filter = LuceneSearchPredicate.from(scope, filter);
         }
 
         @Override
         public SearchPredicate build() {
-            return new LuceneKnnPredicate( this );
+            return new LuceneKnnPredicate(this);
         }
     }
 }
-```
-
-**Summary:**
-- **`filter == null ? null : filter.toQuery(context)`** is now extracted to `filterQuery` for use in both vector type branches.
-
-This improves code readability, reduces duplication, and helps maintenance.
-
-Levenshtein edit-distance: 254
-Compiles

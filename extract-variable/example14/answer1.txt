@@ -267,5 +267,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
 **Let me know if you need any further refactorings or explanations!**
 
-Levenshtein edit-distance: 413
+Levenshtein edit-distance: 124
 Compiles

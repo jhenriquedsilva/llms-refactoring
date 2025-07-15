@@ -285,5 +285,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 **Result:**
 These changes make the loops and string handling much clearer and more efficient, addressing extract variable refactoring opportunities. If you need a different style or more aggressive refactoring, let me know!
 
-Levenshtein edit-distance: 543
+Levenshtein edit-distance: 516
 Compiles

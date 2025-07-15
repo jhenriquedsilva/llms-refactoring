@@ -190,7 +190,7 @@ public abstract class HttpChannel implements CyclicTimeouts.Expirable
 - Refactored `associate(HttpExchange exchange)` by extracting `exchange.getRequest()` to `var request`.
 - No other significant extract variable opportunities within this code, as the rest of it is already clear and non-repetitive.
 
-Levenshtein edit-distance: 82
+Levenshtein edit-distance: 11
 
 Compiles
 Tests pass

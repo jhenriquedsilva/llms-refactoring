@@ -105,5 +105,5 @@ public class UndertowServletWebServer extends UndertowWebServer {
 - In `createHttpHandler`, extracted the result of the `Handlers.path().addPrefixPath(...)` call to `handlerWithContextPath` before assignment.
 
 **These refactorings** help clarify the logic by breaking up complex or nested expressions, making each step more readable and maintainable.
-
+Levenshtein edit-distance: 210
 Compiles

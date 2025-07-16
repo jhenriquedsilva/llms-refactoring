@@ -418,6 +418,6 @@ final class SerializableTypeWrapper {
 
 **This improves both the readability and maintainability of the code, aligning with best practices for extract variable refactoring.**
 
-Levenshtein edit-distance: 748
+Levenshtein edit-distance: 646
 Compiles
 Tests pass

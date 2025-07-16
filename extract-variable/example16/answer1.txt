@@ -388,6 +388,6 @@ final class SerializableTypeWrapper {
 
 **If you have another example or wish to see further refactorings, let me know!**
 
-Levenshtein edit-distance: 416
+Levenshtein edit-distance: 414
 Compiles
 Tests pass

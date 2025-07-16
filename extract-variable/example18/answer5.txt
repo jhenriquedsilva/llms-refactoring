@@ -103,5 +103,5 @@ public class UploadConfigSetFileAPI extends ConfigSetAPIBase {
 
 This style improves code **readability** and **reusability** while also fixing a likely bug concerning the reuse of input streams.
 
-Levenshtein edit-distance: 576
+Levenshtein edit-distance: 483
 Compiles

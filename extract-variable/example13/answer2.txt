@@ -540,5 +540,5 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
 There is no behavioral change—only improved readability, maintainability, and reduced repetition.
 
-Levenshtein edit-distance: 1835
+Levenshtein edit-distance: 1125
 Does not compile

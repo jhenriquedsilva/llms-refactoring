@@ -1,31 +1,3 @@
-29-04-2025, 21:15
-
-Yes, **several extract variable refactoring opportunities** can be applied to this code. The two most apparent ones are:
-
-1. Repeated construction of the failure message using `toFailureMessage(locale, ...)`
-2. Lexical duplication of several method calls such as
-   - `LocaleUtils.isLanguageUndetermined(locale)`
-   - `LocaleUtils.isAvailableLocale(locale)`
-
-But the most impactful opportunities (for readability and maintainability) are:
-
-- **Repeated creation of frequently used values** within loops or methods. For example:
-  - `Objects.requireNonNull(locale, "locale");`
-  - The construction of `toFailureMessage(locale, ...)` for lambdas.
-  - The string `"z"` as the date format.
-  - The repeated invocations to check undetermined and available locale status.
-
-#### Let's refactor the code:
-
-- For the **assumeFalse/assumeTrue with lambdas**, make the message variable once per method call.
-- Extract repeated `"z"` string as a constant.
-- For methods with repeated `Objects.requireNonNull(locale, "locale");`, extract as a variable (not much gain, but for consistency).
-- For `SystemUtils.IS_JAVA_17 && Arrays.binarySearch(FAILS_ON_GH_JAVA_17, locale.toString()) > 0`, extract the condition into a variable for clarity.
-- For zone string sorting or ID sorting, optionally extract the sorting as variables for clarity.
-
-### Here is the **refactored code**, applying the above suggestions:
-
-```java
 package org.apache.commons.lang3.time;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -57,18 +29,19 @@ import org.junitpioneer.jupiter.DefaultTimeZone;
 import org.junitpioneer.jupiter.ReadsDefaultLocale;
 import org.junitpioneer.jupiter.ReadsDefaultTimeZone;
 
-/* make test reproducible */ @DefaultLocale(language = "en")
-/* make test reproducible */ @DefaultTimeZone(TimeZones.GMT_ID)
-/* make test reproducible */ @ReadsDefaultLocale
-/* make test reproducible */ @ReadsDefaultTimeZone
+/* make test reproducible */
+@DefaultLocale(language = "en")
+/* make test reproducible */
+@DefaultTimeZone(TimeZones.GMT_ID)
+/* make test reproducible */
+@ReadsDefaultLocale
+/* make test reproducible */
+@ReadsDefaultTimeZone
 public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 
-    private static final String[] FAILS_ON_GH_JAVA_17 = { "zh_HK", "zh_HK_#Hans", "zh_MO_#Hans", "nn", "nn_NO_#Latn", "nn_NO", "pt_AO", "pt_CV", "pt_GW",
-            "pt_LU", "pt_PT", "pt_TL", "es_AR", "es_BZ", "es_BR", "es_CL", "es_CO", "es_CR", "es_CU", "es_EC", "es_SV", "es_GT", "es_HN", "es_419", "es_MX",
-            "es_NI", "es_PA", "es_PY", "es_PE", "es_PR", "es_UY", "es_VE", "sv_SE_#Latn", "sv_SE" };
-
+    private static final String[] FAILS_ON_GH_JAVA_17 = {"zh_HK", "zh_HK_#Hans", "zh_MO_#Hans", "nn", "nn_NO_#Latn", "nn_NO", "pt_AO", "pt_CV", "pt_GW", "pt_LU", "pt_PT", "pt_TL", "es_AR", "es_BZ", "es_BR", "es_CL", "es_CO", "es_CR", "es_CU", "es_EC", "es_SV", "es_GT", "es_HN", "es_419", "es_MX", "es_NI", "es_PA", "es_PY", "es_PE", "es_PR", "es_UY", "es_VE", "sv_SE_#Latn", "sv_SE"};
     private static final List<Locale> Java17Failures = new ArrayList<>();
-    private static final String ZONE_FORMAT = "z";  // Extracted "z"
+    private static final String ZONE_FORMAT = "z";
 
     static {
         Arrays.sort(FAILS_ON_GH_JAVA_17);
@@ -109,7 +82,6 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
     private void testTimeZoneStrategyPattern(final String languageTag, final String source) throws ParseException {
         final Locale locale = Locale.forLanguageTag(languageTag);
         final String failureMessage = toFailureMessage(locale, languageTag);
-
         assumeFalse(LocaleUtils.isLanguageUndetermined(locale), () -> failureMessage);
         assumeTrue(LocaleUtils.isAvailableLocale(locale), () -> failureMessage);
         final TimeZone tzDefault = TimeZone.getTimeZone("Etc/UTC");
@@ -120,18 +92,12 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 
     private void testTimeZoneStrategyPattern_DateFormatSymbols_getZoneStrings(final Locale locale) {
         Objects.requireNonNull(locale, "locale");
-
         final String failureMessage = toFailureMessage(locale, null);
         final boolean isLanguageUndetermined = LocaleUtils.isLanguageUndetermined(locale);
         final boolean isAvailableLocale = LocaleUtils.isAvailableLocale(locale);
-
         assumeFalse(isLanguageUndetermined, () -> failureMessage);
         assumeTrue(isAvailableLocale, () -> failureMessage);
-
-        final String[][] zones = ArraySorter.sort(
-            DateFormatSymbols.getInstance(locale).getZoneStrings(),
-            Comparator.comparing(array -> array[0])
-        );
+        final String[][] zones = ArraySorter.sort(DateFormatSymbols.getInstance(locale).getZoneStrings(), Comparator.comparing(array -> array[0]));
         for (final String[] zone : zones) {
             for (int zIndex = 1; zIndex < zone.length; ++zIndex) {
                 final String tzDisplay = zone[zIndex];
@@ -143,39 +109,27 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
                 try {
                     parser.parse(tzDisplay);
                 } catch (ParseException e) {
-                    boolean isExpectedJava17Failure =
-                        SystemUtils.IS_JAVA_17 &&
-                        Arrays.binarySearch(FAILS_ON_GH_JAVA_17, locale.toString()) > 0;
+                    boolean isExpectedJava17Failure = SystemUtils.IS_JAVA_17 && Arrays.binarySearch(FAILS_ON_GH_JAVA_17, locale.toString()) > 0;
                     if (isExpectedJava17Failure) {
                         Java17Failures.add(locale);
-                        // Mark as an assumption failure instead of a hard fail
                         System.err.println("Java 17 - Mark as an assumption failure instead of a hard fail: " + locale.toString());
                         assumeTrue(false, locale.toString());
                         continue;
                     }
-                    final String msg = String.format("%s: with locale = %s, zIndex = %,d, tzDisplay = '%s', parser = '%s'",
-                             e, locale, zIndex, tzDisplay, parser.toString());
+                    final String msg = String.format("%s: with locale = %s, zIndex = %,d, tzDisplay = '%s', parser = '%s'", e, locale, zIndex, tzDisplay, parser.toString());
                     fail(msg, e);
                 }
             }
         }
     }
 
-    /**
-     * Breaks randomly on GitHub for Locale "pt_PT", TimeZone "Etc/UTC" if we do not check if the Locale's language is "undetermined".
-     *
-     * @throws ParseException
-     */
     private void testTimeZoneStrategyPattern_TimeZone_getAvailableIDs(final Locale locale) {
         Objects.requireNonNull(locale, "locale");
-
         final String failureMessage = toFailureMessage(locale, null);
         final boolean isLanguageUndetermined = LocaleUtils.isLanguageUndetermined(locale);
         final boolean isAvailableLocale = LocaleUtils.isAvailableLocale(locale);
-
         assumeFalse(isLanguageUndetermined, () -> failureMessage);
         assumeTrue(isAvailableLocale, () -> failureMessage);
-
         for (final String id : ArraySorter.sort(TimeZone.getAvailableIDs())) {
             final TimeZone timeZone = TimeZone.getTimeZone(id);
             final FastDateParser parser = new FastDateParser(ZONE_FORMAT, timeZone, locale);
@@ -183,77 +137,22 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
             try {
                 parser.parse(displayName);
             } catch (ParseException e) {
-                fail(
-                    String.format(
-                        "%s: with locale = %s, id = '%s', timeZone = %s, displayName = '%s', parser = '%s'",
-                        e, locale, id, timeZone, displayName, parser.toStringAll()
-                    ),
-                    e
-                );
+                fail(String.format("%s: with locale = %s, id = '%s', timeZone = %s, displayName = '%s', parser = '%s'", e, locale, id, timeZone, displayName, parser.toStringAll()), e);
             }
         }
     }
 
-    /**
-     * Breaks randomly on GitHub for Locale "pt_PT", TimeZone "Etc/UTC" if we do not check if the Locale's language is "undetermined".
-     *
-     * <pre>{@code
-     * java.text.ParseException: Unparseable date: Horário do Meridiano de Greenwich: with tzDefault =
-     * sun.util.calendar.ZoneInfo[id="Etc/UTC",offset=0,dstSavings=0,useDaylight=false,transitions=0,lastRule=null], locale = pt_LU, zones[][] size = '601',
-     * zone[] size = '7', zIndex = 3, tzDisplay = 'Horário do Meridiano de Greenwich'
-     * }</pre>
-     *
-     * @throws ParseException Test failure
-     */
     @Test
     public void testTimeZoneStrategyPatternPortugal() throws ParseException {
         testTimeZoneStrategyPattern("pt_PT", "Horário do Meridiano de Greenwich");
     }
 
-    /**
-     * Breaks randomly on GitHub for Locale "sr_ME_#Cyrl", TimeZone "Etc/UTC" if we do not check if the Locale's language is "undetermined".
-     *
-     * <pre>{@code
-     * java.text.ParseException: Unparseable date: Srednje vreme po Griniču: with tzDefault = sun.util.calendar.ZoneInfo[id="Etc/UTC",
-     * offset=0,dstSavings=0,useDaylight=false,transitions=0,lastRule=null], locale = sr_ME_#Cyrl, zones[][] size = '601',
-     * zone[] size = '7', zIndex = 3, tzDisplay = 'Srednje vreme po Griniču'
-     * }</pre>
-     *
-     * @throws ParseException Test failure
-     */
     @Test
     public void testTimeZoneStrategyPatternSuriname() throws ParseException {
         testTimeZoneStrategyPattern("sr_ME_#Cyrl", "Srednje vreme po Griniču");
     }
 
     private String toFailureMessage(final Locale locale, final String languageTag) {
-        return String.format("locale = %s, languageTag = '%s', isAvailableLocale = %s, isLanguageUndetermined = %s",
-            languageTag, locale,
-            LocaleUtils.isAvailableLocale(locale),
-            LocaleUtils.isLanguageUndetermined(locale));
+        return String.format("locale = %s, languageTag = '%s', isAvailableLocale = %s, isLanguageUndetermined = %s", languageTag, locale, LocaleUtils.isAvailableLocale(locale), LocaleUtils.isLanguageUndetermined(locale));
     }
 }
-```
-
----
-
-## **Key Changes & Extracted Variables**:
-
-- **`private static final String ZONE_FORMAT = "z";`**
-  Reduces repeated string literals.
-
-- **`final String failureMessage = toFailureMessage(...);`**
-  So lambdas and assumptions are more readable.
-
-- **`final boolean isLanguageUndetermined = ...` / `isAvailableLocale = ...`**
-  Avoids recomputation & clarifies usage in assumption checks.
-
-- **Extracted Java 17 failure condition** as `isExpectedJava17Failure` variable inside catch block.
-
----
-
-These changes improve clarity, reduce repetition, and make the code easier to read and maintain.
-
-Levenshtein edit-distance: 801
-Compiles
-Tests pass

@@ -250,6 +250,6 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 ---
 **If you have further refactoring goals (like more aggressive DRY for loops/constructions), let me know!**
 
-Levenshtein edit-distance: 925
+Levenshtein edit-distance: 868
 Compiles
 Tests pass

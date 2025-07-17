@@ -231,6 +231,6 @@ public class FastDateParser_TimeZoneStrategyTest extends AbstractLangTest {
 
 **These changes make the code easier to maintain, improve readability, and help ensure repeated logic is always consistent.**
 
-Levenshtein edit-distance: 885
+Levenshtein edit-distance: 564
 Compiles
 Tests pass

@@ -450,6 +450,6 @@ class ExponentialDelayRestartBackoffTimeStrategyTest {
 
 If you need tighter refactoring (e.g., common constants as static fields), specify your requirements further!
 
-Levenshtein edit-distance: 2831
+Levenshtein edit-distance: 2179
 Compiles
 Passes 10 out of 11

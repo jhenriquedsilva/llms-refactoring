@@ -416,6 +416,6 @@ class ExponentialDelayRestartBackoffTimeStrategyTest {
 
 This refactoring improves maintainability and clarity without affecting functionality or logic.
 
-Levenshtein edit-distance: 1848
+Levenshtein edit-distance: 1830
 Compiles
 Passes 10 out of 11

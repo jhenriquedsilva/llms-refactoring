@@ -436,6 +436,6 @@ class ExponentialDelayRestartBackoffTimeStrategyTest {
 
 Let me know if you want more aggressive consolidation into helper methods or fields!
 
-Levenshtein edit-distance: 2199
+Levenshtein edit-distance: 2148
 Compiles
 Passes 10 out of 11

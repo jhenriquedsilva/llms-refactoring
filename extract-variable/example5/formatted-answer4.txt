@@ -1,0 +1,245 @@
+package org.apache.flink.runtime.executiongraph.failover;
+
+import org.apache.flink.runtime.executiongraph.failover.ExponentialDelayRestartBackoffTimeStrategy.ExponentialDelayRestartBackoffTimeStrategyFactory;
+import org.apache.flink.util.clock.ManualClock;
+
+import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ExponentialDelayRestartBackoffTimeStrategyTest {
+
+    private static final int DEFAULT_MAX_ATTEMPTS = Integer.MAX_VALUE;
+    private static final double DEFAULT_BACKOFF_MULTIPLIER = 2.0;
+    private static final double DEFAULT_JITTER_FACTOR = 0.25;
+    private static final long DEFAULT_RESET_BACKOFF_THRESHOLD_MS = 8L;
+
+    private final Exception failure = new Exception();
+
+    @Test
+    void testMaxAttempts() {
+        int maxAttempts = 13;
+        long maxBackoffMS = 3L;
+        long initialBackoffMS = 1L;
+        double backoffMultiplier = 1.2;
+        long resetBackoffThresholdMS = 10L;
+        double jitterFactor = 0.25;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(new ManualClock(), initialBackoffMS, maxBackoffMS, backoffMultiplier, resetBackoffThresholdMS, jitterFactor, maxAttempts);
+        Duration advanceTime = Duration.ofMillis(maxBackoffMS + 1);
+        for (int i = 0; i <= maxAttempts; i++) {
+            assertThat(restartStrategy.canRestart()).isTrue();
+            restartStrategy.notifyFailure(failure);
+            new ManualClock().advanceTime(advanceTime);
+        }
+        assertThat(restartStrategy.canRestart()).isFalse();
+    }
+
+    @Test
+    void testNotCallNotifyFailure() {
+        long initialBackoffMS = 42L;
+        long maxBackoffMS = 45L;
+        double backoffMultiplier = 2.0;
+        double jitterFactor = 0.0;
+        int maxAttempts = 10;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(new ManualClock(), initialBackoffMS, maxBackoffMS, backoffMultiplier, 8L, jitterFactor, maxAttempts);
+        assertThatThrownBy(restartStrategy::getBackoffTime).isInstanceOf(IllegalStateException.class).hasMessage("Please call notifyFailure first.");
+    }
+
+    @Test
+    void testInitialBackoff() {
+        long initialBackoffMS = 42L;
+        long maxBackoffMS = 45L;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(new ManualClock(), initialBackoffMS, maxBackoffMS, DEFAULT_BACKOFF_MULTIPLIER, 8L, 0, DEFAULT_MAX_ATTEMPTS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(initialBackoffMS);
+    }
+
+    @Test
+    void testMaxBackoff() {
+        final long maxBackoffMS = 6L;
+        final long initialBackoffMS = 1L;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(new ManualClock(), initialBackoffMS, maxBackoffMS, DEFAULT_BACKOFF_MULTIPLIER, 8L, DEFAULT_JITTER_FACTOR, DEFAULT_MAX_ATTEMPTS);
+        for (int i = 0; i < 10; i++) {
+            restartStrategy.notifyFailure(failure);
+            assertThat(restartStrategy.getBackoffTime()).isLessThanOrEqualTo(maxBackoffMS);
+        }
+    }
+
+    @Test
+    void testResetBackoff() {
+        final long initialBackoffMS = 1L;
+        final long maxBackoffMS = 5L;
+        final ManualClock clock = new ManualClock();
+        final long resetBackoffThresholdMS = 8L;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(clock, initialBackoffMS, maxBackoffMS, DEFAULT_BACKOFF_MULTIPLIER, resetBackoffThresholdMS, DEFAULT_JITTER_FACTOR, DEFAULT_MAX_ATTEMPTS);
+        restartStrategy.notifyFailure(failure);
+        clock.advanceTime(resetBackoffThresholdMS + restartStrategy.getBackoffTime() - 1, TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).as("Backoff should be increased").isEqualTo(2L);
+        clock.advanceTime(resetBackoffThresholdMS + restartStrategy.getBackoffTime(), TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).as("Backoff should be reset").isEqualTo(initialBackoffMS);
+    }
+
+    @Test
+    void testBackoffMultiplier() {
+        long initialBackoffMS = 4L;
+        double jitterFactor = 0;
+        double backoffMultiplier = 2.3;
+        long maxBackoffMS = 300L;
+        ManualClock clock = new ManualClock();
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, DEFAULT_MAX_ATTEMPTS, jitterFactor, 10);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(4L);
+        clock.advanceTime(Duration.ofMillis(maxBackoffMS + 1));
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(9L);
+        clock.advanceTime(Duration.ofMillis(maxBackoffMS + 1));
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(21L);
+        clock.advanceTime(Duration.ofMillis(maxBackoffMS + 1));
+    }
+
+    @Test
+    void testJitter() throws Exception {
+        final long initialBackoffMS = 2L;
+        final long maxBackoffMS = 7L;
+        final double backoffMultiplier = 2.0;
+        final int maxAttempts = DEFAULT_MAX_ATTEMPTS;
+        final double jitterFactor = 0.25;
+        ManualClock clock = new ManualClock();
+        final ExponentialDelayRestartBackoffTimeStrategyFactory restartStrategyFactory = new ExponentialDelayRestartBackoffTimeStrategyFactory(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, maxAttempts, jitterFactor, maxAttempts);
+        long advanceMsEachFailure = maxBackoffMS + 1;
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 2, 3L, 4L, 5L);
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 3, 6L, 7L);
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 4, 7L);
+    }
+
+    @Test
+    void testJitterNoHigherThanMax() throws Exception {
+        double jitterFactor = 1;
+        long maxBackoffMS = 7L;
+        long initialBackoffMS = 1L;
+        final double backoffMultiplier = 2.0;
+        final int maxAttempts = DEFAULT_MAX_ATTEMPTS;
+        ManualClock clock = new ManualClock();
+        final ExponentialDelayRestartBackoffTimeStrategyFactory restartStrategyFactory = new ExponentialDelayRestartBackoffTimeStrategyFactory(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, maxAttempts, jitterFactor, maxAttempts);
+        long advanceMsEachFailure = maxBackoffMS + 1;
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 1, 1L, 2L);
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 2, 1L, 2L, 3L, 4L);
+        assertCorrectRandomRangeWithFailureCount(restartStrategyFactory, clock, advanceMsEachFailure, 3, 1L, 2L, 3L, 4L, 5L, 6L, 7L);
+    }
+
+    private void assertCorrectRandomRangeWithFailureCount(ExponentialDelayRestartBackoffTimeStrategyFactory factory, ManualClock clock, long advanceMsEachFailure, int failureCount, Long... expectedNumbers) throws Exception {
+        assertCorrectRandomRange(() -> {
+            RestartBackoffTimeStrategy restartStrategy = factory.create();
+            for (int i = 0; i < failureCount; i++) {
+                clock.advanceTime(Duration.ofMillis(advanceMsEachFailure));
+                restartStrategy.notifyFailure(failure);
+            }
+            return restartStrategy.getBackoffTime();
+        }, expectedNumbers);
+    }
+
+    @Test
+    void testMultipleSettings() {
+        ManualClock clock = new ManualClock();
+        final long initialBackoffMS = 1L;
+        final long maxBackoffMS = 9L;
+        double backoffMultiplier = 2.0;
+        final long resetBackoffThresholdMS = 80L;
+        double jitterFactor = 0.25;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, resetBackoffThresholdMS, jitterFactor, DEFAULT_MAX_ATTEMPTS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isTrue();
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(initialBackoffMS);
+        clock.advanceTime(resetBackoffThresholdMS + 1, TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isTrue();
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(initialBackoffMS);
+        clock.advanceTime(4, TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isTrue();
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(2L);
+        clock.advanceTime(resetBackoffThresholdMS + 9 + 1, TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isTrue();
+        assertThat(restartStrategy.getBackoffTime()).isOne();
+        clock.advanceTime(Duration.ofMillis(maxBackoffMS + 1));
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isTrue();
+        assertThat(restartStrategy.getBackoffTime()).isEqualTo(2L);
+    }
+
+    @Test
+    void testMergeMultipleExceptionsIntoOneAttempt() {
+        ManualClock clock = new ManualClock();
+        long initialBackoffMS = 2L;
+        double backoffMultiplier = 2.0d;
+        final long maxBackoffMS = 6L;
+        final long resetBackoffThresholdMS = 80L;
+        int maxAttempts = 3;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, resetBackoffThresholdMS, 0.d, maxAttempts);
+        long currentBackOffMs = initialBackoffMS;
+        checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+        clock.advanceTime(1, TimeUnit.MILLISECONDS);
+        currentBackOffMs *= backoffMultiplier;
+        checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+        clock.advanceTime(1, TimeUnit.MILLISECONDS);
+        currentBackOffMs = maxBackoffMS;
+        checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+        clock.advanceTime(1, TimeUnit.MILLISECONDS);
+        restartStrategy.notifyFailure(failure);
+        assertThat(restartStrategy.canRestart()).isFalse();
+    }
+
+    @Test
+    void testMergingExceptionsWorksWithResetting() {
+        ManualClock clock = new ManualClock();
+        long initialBackoffMS = 2L;
+        double backoffMultiplier = 2.0d;
+        final long maxBackoffMS = 6L;
+        final long resetBackoffThresholdMS = 80L;
+        int maxAttempts = 3;
+        final ExponentialDelayRestartBackoffTimeStrategy restartStrategy = new ExponentialDelayRestartBackoffTimeStrategy(clock, initialBackoffMS, maxBackoffMS, backoffMultiplier, resetBackoffThresholdMS, 0.d, maxAttempts);
+        for (int i = 0; i < 10; i++) {
+            long currentBackOffMs = initialBackoffMS;
+            checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+            clock.advanceTime(1, TimeUnit.MILLISECONDS);
+            currentBackOffMs *= backoffMultiplier;
+            checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+            clock.advanceTime(1, TimeUnit.MILLISECONDS);
+            currentBackOffMs = maxBackoffMS;
+            checkMultipleExceptionsAreMerged(clock, currentBackOffMs, restartStrategy);
+            clock.advanceTime(resetBackoffThresholdMS, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void checkMultipleExceptionsAreMerged(ManualClock clock, long expectedBackoffMS, ExponentialDelayRestartBackoffTimeStrategy restartStrategy) {
+        for (int advanceMs = 0; advanceMs < expectedBackoffMS; advanceMs++) {
+            for (int i = 0; i < 10; i++) {
+                restartStrategy.notifyFailure(failure);
+                assertThat(restartStrategy.canRestart()).isTrue();
+                assertThat(restartStrategy.getBackoffTime()).isEqualTo(expectedBackoffMS - advanceMs);
+            }
+            clock.advanceTime(1, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void assertCorrectRandomRange(Callable<Long> numberGenerator, Long... expectedNumbers) throws Exception {
+        Set<Long> generatedNumbers = new HashSet<>();
+        for (int i = 0; i < 1000; i++) {
+            long generatedNumber = numberGenerator.call();
+            generatedNumbers.add(generatedNumber);
+        }
+        assertThat(generatedNumbers).isEqualTo(new HashSet<>(Arrays.asList(expectedNumbers)));
+    }
+}

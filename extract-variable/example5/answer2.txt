@@ -404,6 +404,6 @@ class ExponentialDelayRestartBackoffTimeStrategyTest {
 
 If more aggressive refactoring (e.g., creating helper methods for repeated strategy instantiations) is desired, let me know. For now, the code is clearer, more maintainable, and less error-prone.
 
-Levenshtein edit-distance: 1424
+Levenshtein edit-distance: 1414
 Compiles
 Pass tests

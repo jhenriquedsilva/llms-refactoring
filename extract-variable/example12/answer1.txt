@@ -590,6 +590,6 @@ public class CommitGraphWriter {
 
 These minor refactorings aid readability, maintainability, and ease future changes.
 
-Levenshtein edit-distance: 1497
+Levenshtein edit-distance: 1138
 Compiles
 Tests pass

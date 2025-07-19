@@ -742,5 +742,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
 
 If you need extract variable refactoring to also include more granular locals for lengthy or compound expressions inside individual methods, please specify so (the above covers the primary repeating pattern).
 
+Levenshtein edit-distance:
 Does not compile
 Tests do not pass

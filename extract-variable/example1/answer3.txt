@@ -674,5 +674,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
 **Conclusion:**
 This refactoring opportunity improves readability and maintainability by removing repeated expressions and expressing intention more clearly.
 
+Levenshtein edit-distance: 369
 Compiles
 Tests pass

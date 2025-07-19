@@ -677,5 +677,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
 **Summary of change:**
 All repeated instances of `CommonUtil.relativizeAndNormalizePath(basedir, fileName)` have been replaced with calls to a new private method `getStrippedFileName(String fileName)`, improving maintainability and readability.
 
+Levenshtein edit-distance: 368
 Compiles
 Tests pass

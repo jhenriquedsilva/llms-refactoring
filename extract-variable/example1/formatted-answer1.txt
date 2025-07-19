@@ -1,25 +1,3 @@
-29-04-2025, 21:02
-
-Yes, there **are extract variable refactoring opportunities** in your class.
-
-## Main Spot(s) for Refactoring
-
-### 1. Usage of `CommonUtil.relativizeAndNormalizePath(basedir, fileName)`
-This exact expression is repeated **at least four times** in the class:
-- `acceptFileStarted`
-- `fireFileStarted`
-- `fireErrors`
-- `fireFileFinished`
-
-This is a good candidate for extract variable (or even extract method) refactoring. For this answer, per your instruction, I’ll **extract a local variable for each occurrence**.
-
----
-
-## Refactored Class
-
-Below is the full class with the extract variable refactoring applied. Only the relevant methods that contain the repeated expression are changed (all other code remains the same, to preserve context):
-
-```java
 package com.puppycrawl.tools.checkstyle;
 
 import java.io.File;
@@ -62,114 +40,64 @@ import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
 
 public class Checker extends AbstractAutomaticBean implements MessageDispatcher, RootModule {
 
-    /** Message to use when an exception occurs and should be printed as a violation. */
     public static final String EXCEPTION_MSG = "general.exception";
 
-    /** The extension separator. */
     private static final String EXTENSION_SEPARATOR = ".";
 
-    /** Logger for Checker. */
     private final Log log;
 
-    /** Maintains error count. */
-    private final SeverityLevelCounter counter = new SeverityLevelCounter(
-            SeverityLevel.ERROR);
+    private final SeverityLevelCounter counter = new SeverityLevelCounter(SeverityLevel.ERROR);
 
-    /** Vector of listeners. */
     private final List<AuditListener> listeners = new ArrayList<>();
 
-    /** Vector of fileset checks. */
     private final List<FileSetCheck> fileSetChecks = new ArrayList<>();
 
-    /** The audit event before execution file filters. */
-    private final BeforeExecutionFileFilterSet beforeExecutionFileFilters =
-            new BeforeExecutionFileFilterSet();
+    private final BeforeExecutionFileFilterSet beforeExecutionFileFilters = new BeforeExecutionFileFilterSet();
 
-    /** The audit event filters. */
     private final FilterSet filters = new FilterSet();
 
-    /** The basedir to strip off in file names. */
     private String basedir;
 
-    /** Locale country to report messages . **/
     @XdocsPropertyType(PropertyType.LOCALE_COUNTRY)
     private String localeCountry = Locale.getDefault().getCountry();
-    /** Locale language to report messages . **/
+
     @XdocsPropertyType(PropertyType.LOCALE_LANGUAGE)
     private String localeLanguage = Locale.getDefault().getLanguage();
 
-    /** The factory for instantiating submodules. */
     private ModuleFactory moduleFactory;
 
-    /** The classloader used for loading Checkstyle module classes. */
     private ClassLoader moduleClassLoader;
 
-    /** The context of all child components. */
     private Context childContext;
 
-    /** The file extensions that are accepted. */
     private String[] fileExtensions;
 
-    /**
-     * The severity level of any violations found by submodules.
-     * The value of this property is passed to submodules via
-     * contextualize().
-     *
-     * <p>Note: Since the Checker is merely a container for modules
-     * it does not make sense to implement logging functionality
-     * here. Consequently, Checker does not extend AbstractViolationReporter,
-     * leading to a bit of duplicated code for severity level setting.
-     */
     private SeverityLevel severity = SeverityLevel.ERROR;
 
-    /** Name of a charset. */
     private String charset = StandardCharsets.UTF_8.name();
 
-    /** Cache file. **/
     @XdocsPropertyType(PropertyType.FILE)
     private PropertyCacheFile cacheFile;
 
-    /** Controls whether exceptions should halt execution or not. */
     private boolean haltOnException = true;
 
-    /** The tab width for column reporting. */
     private int tabWidth = CommonUtil.DEFAULT_TAB_WIDTH;
 
-    /**
-     * Creates a new {@code Checker} instance.
-     * The instance needs to be contextualized and configured.
-     */
     public Checker() {
         addListener(counter);
         log = LogFactory.getLog(Checker.class);
     }
 
-    /**
-     * Sets cache file.
-     *
-     * @param fileName the cache file.
-     * @throws IOException if there are some problems with file loading.
-     */
     public void setCacheFile(String fileName) throws IOException {
         final Configuration configuration = getConfiguration();
         cacheFile = new PropertyCacheFile(configuration, fileName);
         cacheFile.load();
     }
 
-    /**
-     * Removes before execution file filter.
-     *
-     * @param filter before execution file filter to remove.
-     */
     public void removeBeforeExecutionFileFilter(BeforeExecutionFileFilter filter) {
         beforeExecutionFileFilters.removeBeforeExecutionFileFilter(filter);
     }
 
-    /**
-     * Removes filter.
-     *
-     * @param filter filter to remove.
-     */
     public void removeFilter(Filter filter) {
         filters.removeFilter(filter);
     }
@@ -183,27 +111,16 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         if (cacheFile != null) {
             try {
                 cacheFile.persist();
-            }
-            catch (IOException ex) {
+            } catch (IOException ex) {
                 throw new IllegalStateException("Unable to persist cache file.", ex);
             }
         }
     }
 
-    /**
-     * Removes a given listener.
-     *
-     * @param listener a listener to remove
-     */
     public void removeListener(AuditListener listener) {
         listeners.remove(listener);
     }
 
-    /**
-     * Sets base directory.
-     *
-     * @param basedir the base directory to strip off in file names
-     */
     public void setBasedir(String basedir) {
         this.basedir = basedir;
     }
@@ -213,48 +130,25 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         if (cacheFile != null) {
             cacheFile.putExternalResources(getExternalResourceLocations());
         }
-
-        // Prepare to start
         fireAuditStarted();
         for (final FileSetCheck fsc : fileSetChecks) {
             fsc.beginProcessing(charset);
         }
-
-        final List<File> targetFiles = files.stream()
-                .filter(file -> CommonUtil.matchesFileExtension(file, fileExtensions))
-                .collect(Collectors.toList());
+        final List<File> targetFiles = files.stream().filter(file -> CommonUtil.matchesFileExtension(file, fileExtensions)).collect(Collectors.toList());
         processFiles(targetFiles);
-
-        // Finish up
-        // It may also log!!!
         fileSetChecks.forEach(FileSetCheck::finishProcessing);
-
-        // It may also log!!!
         fileSetChecks.forEach(FileSetCheck::destroy);
-
         final int errorCount = counter.getCount();
         fireAuditFinished();
         return errorCount;
     }
 
-    /**
-     * Returns a set of external configuration resource locations which are used by all file set
-     * checks and filters.
-     *
-     * @return a set of external configuration resource locations which are used by all file set
-     *         checks and filters.
-     */
     private Set<String> getExternalResourceLocations() {
-        return Stream.concat(fileSetChecks.stream(), filters.getFilters().stream())
-                .filter(ExternalResourceHolder.class::isInstance)
-                .flatMap(resource -> {
-                    return ((ExternalResourceHolder) resource)
-                            .getExternalResourceLocations().stream();
-                })
-                .collect(Collectors.toSet());
+        return Stream.concat(fileSetChecks.stream(), filters.getFilters().stream()).filter(ExternalResourceHolder.class::isInstance).flatMap(resource -> {
+            return ((ExternalResourceHolder) resource).getExternalResourceLocations().stream();
+        }).collect(Collectors.toSet());
     }
 
-    /** Notify all listeners about the audit start. */
     private void fireAuditStarted() {
         final AuditEvent event = new AuditEvent(this);
         for (final AuditListener listener : listeners) {
@@ -262,7 +156,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         }
     }
 
-    /** Notify all listeners about the audit end. */
     private void fireAuditFinished() {
         final AuditEvent event = new AuditEvent(this);
         for (final AuditListener listener : listeners) {
@@ -270,25 +163,13 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         }
     }
 
-    /**
-     * Processes a list of files with all FileSetChecks.
-     *
-     * @param files a list of files to process.
-     * @throws CheckstyleException if error condition within Checkstyle occurs.
-     * @throws Error wraps any java.lang.Error happened during execution
-     * @noinspection ProhibitedExceptionThrown
-     * @noinspectionreason ProhibitedExceptionThrown - There is no other way to
-     *      deliver filename that was under processing.
-     */
-    // -@cs[CyclomaticComplexity] no easy way to split this logic of processing the file
     private void processFiles(List<File> files) throws CheckstyleException {
         for (final File file : files) {
             String fileName = null;
             try {
                 fileName = file.getAbsolutePath();
                 final long timestamp = file.lastModified();
-                if (cacheFile != null && cacheFile.isInCache(fileName, timestamp)
-                        || !acceptFileStarted(fileName)) {
+                if (cacheFile != null && cacheFile.isInCache(fileName, timestamp) || !acceptFileStarted(fileName)) {
                     continue;
                 }
                 if (cacheFile != null) {
@@ -299,38 +180,22 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
                 fireErrors(fileName, fileMessages);
                 fireFileFinished(fileName);
             }
-            // -@cs[IllegalCatch] There is no other way to deliver filename that was under
-            // processing. See https://github.com/checkstyle/checkstyle/issues/2285
             catch (Exception ex) {
                 if (fileName != null && cacheFile != null) {
                     cacheFile.remove(fileName);
                 }
-
-                // We need to catch all exceptions to put a reason failure (file name) in exception
-                throw new CheckstyleException("Exception was thrown while processing "
-                        + file.getPath(), ex);
-            }
-            catch (Error error) {
+                final String exceptionMessage = "Exception was thrown while processing " + file.getPath();
+                throw new CheckstyleException(exceptionMessage, ex);
+            } catch (Error error) {
                 if (fileName != null && cacheFile != null) {
                     cacheFile.remove(fileName);
                 }
-
-                // We need to catch all errors to put a reason failure (file name) in error
-                throw new Error("Error was thrown while processing " + file.getPath(), error);
+                final String errorMessage = "Error was thrown while processing " + file.getPath();
+                throw new Error(errorMessage, error);
             }
         }
     }
 
-    /**
-     * Processes a file with all FileSetChecks.
-     *
-     * @param file a file to process.
-     * @return a sorted set of violations to be logged.
-     * @throws CheckstyleException if error condition within Checkstyle occurs.
-     * @noinspection ProhibitedExceptionThrown
-     * @noinspectionreason ProhibitedExceptionThrown - there is no other way to obey
-     *      haltOnException field
-     */
     private SortedSet<Violation> processFile(File file) throws CheckstyleException {
         final SortedSet<Violation> fileMessages = new TreeSet<>();
         try {
@@ -338,71 +203,44 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
             for (final FileSetCheck fsc : fileSetChecks) {
                 fileMessages.addAll(fsc.process(file, theText));
             }
-        }
-        catch (final IOException ioe) {
+        } catch (final IOException ioe) {
             log.debug("IOException occurred.", ioe);
-            fileMessages.add(new Violation(1,
-                    Definitions.CHECKSTYLE_BUNDLE, EXCEPTION_MSG,
-                    new String[] {ioe.getMessage()}, null, getClass(), null));
+            fileMessages.add(new Violation(1, Definitions.CHECKSTYLE_BUNDLE, EXCEPTION_MSG, new String[]{ioe.getMessage()}, null, getClass(), null));
         }
-        // -@cs[IllegalCatch] There is no other way to obey haltOnException field
         catch (Exception ex) {
             if (haltOnException) {
                 throw ex;
             }
-
             log.debug("Exception occurred.", ex);
-
             final StringWriter sw = new StringWriter();
             final PrintWriter pw = new PrintWriter(sw, true);
-
             ex.printStackTrace(pw);
-
-            fileMessages.add(new Violation(1,
-                    Definitions.CHECKSTYLE_BUNDLE, EXCEPTION_MSG,
-                    new String[] {sw.getBuffer().toString()},
-                    null, getClass(), null));
+            final String violationMsg = sw.getBuffer().toString();
+            fileMessages.add(new Violation(1, Definitions.CHECKSTYLE_BUNDLE, EXCEPTION_MSG, new String[]{violationMsg}, null, getClass(), null));
         }
         return fileMessages;
     }
 
-    /**
-     * Check if all before execution file filters accept starting the file.
-     *
-     * @param fileName the file to be audited
-     * @return {@code true} if the file is accepted.
-     */
     private boolean acceptFileStarted(String fileName) {
-        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
-        return beforeExecutionFileFilters.accept(stripped);
+        final String strippedFileName = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+        return beforeExecutionFileFilters.accept(strippedFileName);
     }
 
-    /**
-     * Notify all listeners about the beginning of a file audit.
-     *
-     * @param fileName the file to be audited
-     */
     @Override
     public void fireFileStarted(String fileName) {
-        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
-        final AuditEvent event = new AuditEvent(this, stripped);
+        final String strippedFileName = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+        final AuditEvent event = new AuditEvent(this, strippedFileName);
         for (final AuditListener listener : listeners) {
             listener.fileStarted(event);
         }
     }
 
-    /**
-     * Notify all listeners about the errors in a file.
-     *
-     * @param fileName the audited file
-     * @param errors the audit errors from the file
-     */
     @Override
     public void fireErrors(String fileName, SortedSet<Violation> errors) {
-        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
+        final String strippedFileName = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
         boolean hasNonFilteredViolations = false;
         for (final Violation element : errors) {
-            final AuditEvent event = new AuditEvent(this, stripped, element);
+            final AuditEvent event = new AuditEvent(this, strippedFileName, element);
             if (filters.accept(event)) {
                 hasNonFilteredViolations = true;
                 for (final AuditListener listener : listeners) {
@@ -415,15 +253,10 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         }
     }
 
-    /**
-     * Notify all listeners about the end of a file audit.
-     *
-     * @param fileName the audited file
-     */
     @Override
     public void fireFileFinished(String fileName) {
-        final String stripped = CommonUtil.relativizeAndNormalizePath(basedir, fileName); // <== extracted
-        final AuditEvent event = new AuditEvent(this, stripped);
+        final String strippedFileName = CommonUtil.relativizeAndNormalizePath(basedir, fileName);
+        final AuditEvent event = new AuditEvent(this, strippedFileName);
         for (final AuditListener listener : listeners) {
             listener.fileFinished(event);
         }
@@ -433,20 +266,13 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
     protected void finishLocalSetup() throws CheckstyleException {
         final Locale locale = new Locale(localeLanguage, localeCountry);
         LocalizedMessage.setLocale(locale);
-
         if (moduleFactory == null) {
             if (moduleClassLoader == null) {
-                throw new CheckstyleException(
-                        "if no custom moduleFactory is set, "
-                                + "moduleClassLoader must be specified");
+                throw new CheckstyleException("if no custom moduleFactory is set, " + "moduleClassLoader must be specified");
             }
-
-            final Set<String> packageNames = PackageNamesLoader
-                    .getPackageNames(moduleClassLoader);
-            moduleFactory = new PackageObjectFactory(packageNames,
-                    moduleClassLoader);
+            final Set<String> packageNames = PackageNamesLoader.getPackageNames(moduleClassLoader);
+            moduleFactory = new PackageObjectFactory(packageNames, moduleClassLoader);
         }
-
         final DefaultContext context = new DefaultContext();
         context.add("charset", charset);
         context.add("moduleFactory", moduleFactory);
@@ -456,79 +282,47 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         childContext = context;
     }
 
-    /**
-     * {@inheritDoc} Creates child module.
-     *
-     * @noinspection ChainOfInstanceofChecks
-     * @noinspectionreason ChainOfInstanceofChecks - we treat checks and filters differently
-     */
     @Override
-    protected void setupChild(Configuration childConf)
-            throws CheckstyleException {
+    protected void setupChild(Configuration childConf) throws CheckstyleException {
         final String name = childConf.getName();
         final Object child;
-
         try {
             child = moduleFactory.createModule(name);
-
             if (child instanceof AbstractAutomaticBean) {
                 final AbstractAutomaticBean bean = (AbstractAutomaticBean) child;
                 bean.contextualize(childContext);
                 bean.configure(childConf);
             }
-        }
-        catch (final CheckstyleException ex) {
-            throw new CheckstyleException("cannot initialize module " + name
-                    + " - " + ex.getMessage(), ex);
+        } catch (final CheckstyleException ex) {
+            throw new CheckstyleException("cannot initialize module " + name + " - " + ex.getMessage(), ex);
         }
         if (child instanceof FileSetCheck) {
             final FileSetCheck fsc = (FileSetCheck) child;
             fsc.init();
             addFileSetCheck(fsc);
-        }
-        else if (child instanceof BeforeExecutionFileFilter) {
+        } else if (child instanceof BeforeExecutionFileFilter) {
             final BeforeExecutionFileFilter filter = (BeforeExecutionFileFilter) child;
             addBeforeExecutionFileFilter(filter);
-        }
-        else if (child instanceof Filter) {
+        } else if (child instanceof Filter) {
             final Filter filter = (Filter) child;
             addFilter(filter);
-        }
-        else if (child instanceof AuditListener) {
+        } else if (child instanceof AuditListener) {
             final AuditListener listener = (AuditListener) child;
             addListener(listener);
-        }
-        else {
-            throw new CheckstyleException(name
-                    + " is not allowed as a child in Checker");
+        } else {
+            throw new CheckstyleException(name + " is not allowed as a child in Checker");
         }
     }
 
-    /**
-     * Adds a FileSetCheck to the list of FileSetChecks
-     * that is executed in process().
-     *
-     * @param fileSetCheck the additional FileSetCheck
-     */
     public void addFileSetCheck(FileSetCheck fileSetCheck) {
         fileSetCheck.setMessageDispatcher(this);
         fileSetChecks.add(fileSetCheck);
     }
 
-    /**
-     * Adds a before execution file filter to the end of the event chain.
-     *
-     * @param filter the additional filter
-     */
     public void addBeforeExecutionFileFilter(BeforeExecutionFileFilter filter) {
         beforeExecutionFileFilters.addBeforeExecutionFileFilter(filter);
     }
 
-    /**
-     * Adds a filter to the end of the audit event filter chain.
-     *
-     * @param filter the additional filter
-     */
     public void addFilter(Filter filter) {
         filters.addFilter(filter);
     }
@@ -538,13 +332,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         listeners.add(listener);
     }
 
-    /**
-     * Sets the file extensions that identify the files that pass the
-     * filter of this FileSetCheck.
-     *
-     * @param extensions the set of file extensions. A missing
-     *     initial '.' character of an extension is automatically added.
-     */
     public final void setFileExtensions(String... extensions) {
         if (extensions != null) {
             fileExtensions = new String[extensions.length];
@@ -552,48 +339,25 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
                 final String extension = extensions[i];
                 if (extension.startsWith(EXTENSION_SEPARATOR)) {
                     fileExtensions[i] = extension;
-                }
-                else {
+                } else {
                     fileExtensions[i] = EXTENSION_SEPARATOR + extension;
                 }
             }
         }
     }
 
-    /**
-     * Sets the factory for creating submodules.
-     *
-     * @param moduleFactory the factory for creating FileSetChecks
-     */
     public void setModuleFactory(ModuleFactory moduleFactory) {
         this.moduleFactory = moduleFactory;
     }
 
-    /**
-     * Sets locale country.
-     *
-     * @param localeCountry the country to report messages
-     */
     public void setLocaleCountry(String localeCountry) {
         this.localeCountry = localeCountry;
     }
 
-    /**
-     * Sets locale language.
-     *
-     * @param localeLanguage the language to report messages
-     */
     public void setLocaleLanguage(String localeLanguage) {
         this.localeLanguage = localeLanguage;
     }
 
-    /**
-     * Sets the severity level.  The string should be one of the names
-     * defined in the {@code SeverityLevel} class.
-     *
-     * @param severity  The new severity level
-     * @see SeverityLevel
-     */
     public final void setSeverity(String severity) {
         this.severity = SeverityLevel.getInstance(severity);
     }
@@ -603,14 +367,7 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         this.moduleClassLoader = moduleClassLoader;
     }
 
-    /**
-     * Sets a named charset.
-     *
-     * @param charset the name of a charset
-     * @throws UnsupportedEncodingException if charset is unsupported.
-     */
-    public void setCharset(String charset)
-            throws UnsupportedEncodingException {
+    public void setCharset(String charset) throws UnsupportedEncodingException {
         if (!Charset.isSupported(charset)) {
             final String message = "unsupported charset: '" + charset + "'";
             throw new UnsupportedEncodingException(message);
@@ -618,48 +375,17 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
         this.charset = charset;
     }
 
-    /**
-     * Sets the field haltOnException.
-     *
-     * @param haltOnException the new value.
-     */
     public void setHaltOnException(boolean haltOnException) {
         this.haltOnException = haltOnException;
     }
 
-    /**
-     * Set the tab width to report audit events with.
-     *
-     * @param tabWidth an {@code int} value
-     */
     public final void setTabWidth(int tabWidth) {
         this.tabWidth = tabWidth;
     }
 
-    /**
-     * Clears the cache.
-     */
     public void clearCache() {
         if (cacheFile != null) {
             cacheFile.reset();
         }
     }
-
 }
-```
-
----
-
-### Notes
-
-1. **No logic is changed**; only the repeated expression is extracted to a variable in each method.
-2. If your team prefers **extract method** refactoring (e.g., a `private String getStrippedFileName(String fileName)` helper method), that’s also a common pattern, but your question specifically asks for extract variable refactoring.
-3. This improves readability and maintainability, as it prevents duplicated expressions, and clearly labels the "stripped" value.
-
----
-
-**If you’d like to see an extract method refactoring example, let me know!**
-
-Levenshtein edit-distance: 85
-Compiles
-Tests pass

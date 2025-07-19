@@ -665,5 +665,6 @@ public class Checker extends AbstractAutomaticBean implements MessageDispatcher,
 
 If you want further refactoring (e.g., merging common code in similar methods), let me know!
 
+Levenshtein edit-distance: 378
 Compiles
 Test pass

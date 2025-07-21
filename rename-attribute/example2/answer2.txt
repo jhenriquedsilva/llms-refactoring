@@ -407,5 +407,6 @@ If you want the *minimum* diff (e.g., keep deprecated methods as-is), you could 
 
 **Let me know if you want the diff or minimal changes only!**
 
+Levenshtein edit-distance: 133
 Compiles
 Tests do not pass

@@ -1,0 +1,167 @@
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.build.AbstractStreamBuilder;
+
+public class BoundedInputStream extends ProxyInputStream {
+
+    public static class Builder extends AbstractStreamBuilder<BoundedInputStream, Builder> {
+
+        private long maxCount = EOF;
+
+        private boolean propagateClose = true;
+
+        @SuppressWarnings("resource")
+        @Override
+        public BoundedInputStream get() throws IOException {
+            return new BoundedInputStream(getInputStream(), maxCount, propagateClose);
+        }
+
+        public Builder setMaxCount(final long maxCount) {
+            this.maxCount = maxCount;
+            return this;
+        }
+
+        public Builder setPropagateClose(final boolean propagateClose) {
+            this.propagateClose = propagateClose;
+            return this;
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    private final long maxCount;
+
+    private boolean propagateClose = true;
+
+    @Deprecated
+    public BoundedInputStream(final InputStream in) {
+        this(in, EOF);
+    }
+
+    @Deprecated
+    public BoundedInputStream(final InputStream inputStream, final long maxCount) {
+        this(inputStream, maxCount, true);
+    }
+
+    @SuppressWarnings("resource")
+    private BoundedInputStream(final InputStream inputStream, final long maxCount, final boolean propagateClose) {
+        super(new CountingInputStream(inputStream));
+        this.maxCount = maxCount;
+        this.propagateClose = propagateClose;
+    }
+
+    private CountingInputStream getCountingInputStream() {
+        return (CountingInputStream) in;
+    }
+
+    @Override
+    public int available() throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return 0;
+        }
+        return in.available();
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (propagateClose) {
+            in.close();
+        }
+    }
+
+    @SuppressWarnings("resource")
+    public long getCount() {
+        return getCountingInputStream().getByteCount();
+    }
+
+    public long getMaxCount() {
+        return maxCount;
+    }
+
+    @Deprecated
+    public long getMaxLength() {
+        return maxCount;
+    }
+
+    public long getRemaining() {
+        return getMaxCount() - getCount();
+    }
+
+    private boolean isMaxCount() {
+        return maxCount >= 0 && getCount() >= maxCount;
+    }
+
+    public boolean isPropagateClose() {
+        return propagateClose;
+    }
+
+    @Override
+    public synchronized void mark(final int readLimit) {
+        in.mark(readLimit);
+    }
+
+    @Override
+    public boolean markSupported() {
+        return in.markSupported();
+    }
+
+    @SuppressWarnings("unused")
+    protected void onMaxLength(final long maxLength, final long count) throws IOException {
+    }
+
+    @Override
+    public int read() throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return EOF;
+        }
+        return super.read();
+    }
+
+    @Override
+    public int read(final byte[] b) throws IOException {
+        return read(b, 0, b.length);
+    }
+
+    @Override
+    public int read(final byte[] b, final int off, final int len) throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return EOF;
+        }
+        return super.read(b, off, (int) toReadLen(len));
+    }
+
+    @Override
+    public synchronized void reset() throws IOException {
+        in.reset();
+    }
+
+    @Deprecated
+    public void setPropagateClose(final boolean propagateClose) {
+        this.propagateClose = propagateClose;
+    }
+
+    @Override
+    public long skip(final long n) throws IOException {
+        return super.skip(toReadLen(n));
+    }
+
+    private long toReadLen(final long len) {
+        return maxCount >= 0 ? Math.min(len, maxCount - getCount()) : len;
+    }
+
+    @Override
+    public String toString() {
+        return in.toString();
+    }
+}

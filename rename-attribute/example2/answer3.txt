@@ -391,5 +391,6 @@ No semantics changed; only renamings for clarity and consistency.
 
 **This improves the clarity and maintainability of the code.**
 
+Levenshtein edit-distance: 25
 Compiles
 Tests do not pass

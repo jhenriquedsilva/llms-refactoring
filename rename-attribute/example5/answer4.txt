@@ -469,4 +469,5 @@ public class StreamMockEnvironment implements Environment {
 **Summary:**
 The fields `jobID` → `jobInfo`, `memManager` → `memoryManager`, and `bcVarManager` → `broadcastVariableManager` were refactored to be more descriptive, improving code readability and maintainability. All relevant references were updated accordingly.
 
+Levenshtein edit-distance: 33
 Compiles

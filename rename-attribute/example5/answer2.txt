@@ -491,4 +491,5 @@ All constructor parameters and method usages have been updated for consistency w
 **Conclusion:**
 There were several attribute names that did not clearly represent their types or used abbreviations. The above full class shows the results of this "rename attribute" refactoring to improve clarity and maintainability.
 
+Levenshtein edit-distance: 128
 Compiles

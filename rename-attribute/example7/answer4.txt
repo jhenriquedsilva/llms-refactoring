@@ -129,4 +129,5 @@ public class UniqueKeySelectingDelegate extends AbstractSelectingDelegate {
 If you prefer "uniqueKeyTypes" for brevity, that's reasonable too, but "uniqueKeyPropertyTypes" is more explicit for review/audit.
 Let me know if you want to discuss further or need other parts of the code updated!
 
+Levenshtein edit-distance: 144
 Compiles

@@ -122,4 +122,5 @@ public class UniqueKeySelectingDelegate extends AbstractSelectingDelegate {
 
 No other attributes in this class require renaming for clarity or improved readability.
 
+Levenshtein edit-distance: 60
 Compiles

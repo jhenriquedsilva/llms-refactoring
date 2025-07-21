@@ -132,4 +132,5 @@ All usages of `idSelectString` have been replaced by `uniqueKeySelectSql`.
 **Summary:**
 Refactoring `idSelectString` to `uniqueKeySelectSql` improves the attribute's clarity, making the code easier to understand and maintain. No further attribute renaming is necessary.
 
+Levenshtein edit-distance: 60
 Compiles

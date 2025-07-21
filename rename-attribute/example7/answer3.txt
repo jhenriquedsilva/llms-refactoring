@@ -144,4 +144,5 @@ If you'd like an even more conservative refactor, only rename `idSelectString` t
 
 **Let me know if you'd like additional suggestions or explanation!**
 
+Levenshtein edit-distance: 100
 Compiles

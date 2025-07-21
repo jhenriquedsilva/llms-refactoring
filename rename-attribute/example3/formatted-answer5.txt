@@ -1,20 +1,3 @@
-02-05-2025, 08:54
-
-There **are indeed rename attribute refactoring opportunities** in the presented code to improve readability and code quality. The attribute names `lhs`, `rhs`, `leftS`, and `rightS` are especially problematic and non-idiomatic. In Java, clear and descriptive variable names are preferred.
-
-### **Identified Issues**
-
-- **lhs**/**rhs**: Abbreviations for "left hand side"/"right hand side" are not immediately clear to all developers. Rename to `left` and `right`.
-- **leftS**/**rightS**: These are suppliers for left and right. Better names are `leftSupplier` and `rightSupplier`.
-- You may also consider changing `diffs` to `differences` for better clarity, but it is fairly standard in the context.
-
-The main change is to rename all `lhs` to `left`, `rhs` to `right`, `leftS` to `leftSupplier`, and `rightS` to `rightSupplier`.
-
----
-
-Below is the **fully refactored class** with these improved attribute names:
-
-```java
 package org.apache.commons.lang3.builder;
 
 import java.util.ArrayList;
@@ -51,8 +34,8 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         }
 
     }
-    static final String TO_STRING_FORMAT = "%s differs from %s";
 
+    static final String TO_STRING_FORMAT = "%s differs from %s";
     private final List<Diff<?>> diffs;
     private final boolean objectsEquals;
     private final T left;
@@ -70,7 +53,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         this.diffs = new ArrayList<>();
         this.toStringFormat = DiffBuilder.TO_STRING_FORMAT;
         this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;
-        // Don't compare any fields if objects equal
         this.objectsEquals = testObjectsEquals && Objects.equals(left, right);
     }
 
@@ -113,8 +95,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final double left, final double right) {
-        return objectsEquals || Double.doubleToLongBits(left) == Double.doubleToLongBits(right) ? this
-                : add(fieldName, () -> Double.valueOf(left), () -> Double.valueOf(right), Double.class);
+        return objectsEquals || Double.doubleToLongBits(left) == Double.doubleToLongBits(right) ? this : add(fieldName, () -> Double.valueOf(left), () -> Double.valueOf(right), Double.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final double[] left, final double[] right) {
@@ -122,8 +103,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final float left, final float right) {
-        return objectsEquals || Float.floatToIntBits(left) == Float.floatToIntBits(right) ? this
-                : add(fieldName, () -> Float.valueOf(left), () -> Float.valueOf(right), Float.class);
+        return objectsEquals || Float.floatToIntBits(left) == Float.floatToIntBits(right) ? this : add(fieldName, () -> Float.valueOf(left), () -> Float.valueOf(right), Float.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final float[] left, final float[] right) {
@@ -150,7 +130,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         if (objectsEquals || left == right) {
             return this;
         }
-        // right cannot be null, as left != right
         final Object objectToTest = left != null ? left : right;
         if (ObjectUtils.isArray(objectToTest)) {
             if (objectToTest instanceof boolean[]) {
@@ -179,7 +158,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
             }
             return append(fieldName, (Object[]) left, (Object[]) right);
         }
-        // Not array type
         if (Objects.equals(left, right)) {
             return this;
         }
@@ -203,21 +181,4 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     public DiffResult<T> build() {
         return new DiffResult<>(left, right, diffs, style, toStringFormat);
     }
-
 }
-```
-
----
-
-**Summary:**
-Refactorings applied include:
-- Rename `lhs` → `left`
-- Rename `rhs` → `right`
-- Rename `leftS`, `rightS` → `leftSupplier`, `rightSupplier`
-- All usages and constructor parameters updated accordingly for clarity and readability.
-
-Let me know if you'd like even more detailed naming improvements!
-
-Levenshtein edit-distance: 647
-Compiles
-Tests pass

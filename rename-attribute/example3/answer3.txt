@@ -241,5 +241,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
 
 If you have any questions or would like further refactorings (for example, method renames), let me know!
 
+Levenshtein edit-distance: 333
 Compiles
 Tests pass

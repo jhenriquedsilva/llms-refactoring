@@ -1,33 +1,3 @@
-02-05-2025, 08:54
-
-Below are detailed observations and recommended rename-attribute (rename-field) refactorings for improving identifier readability in the provided class. The focus is on fields and variables whose names are unnecessarily abbreviated or inconsistent.
-
----
-
-### Observations and Candidate Refactorings
-
-#### 1. SDiff class fields:
-- `leftS` and `rightS` are non-descriptive abbreviations. "S" appears to stand for "Supplier".
-- **Proposed new names:**
-  - `leftSupplier` instead of `leftS`
-  - `rightSupplier` instead of `rightS`
-
-#### 2. SDiff constructor:
-- Update parameter names to be consistent.
-
-#### 3. DiffBuilder class fields:
-- `diffs` is clear.
-- `objectsEquals` could be improved to `objectsAreEqual` for better readability.
-- `left`, `right`, `style`, and `toStringFormat` are fine.
-
-#### 4. General consistency:
-- `lhs` and `rhs` for 'left hand side' and 'right hand side' are common and acceptable as parameter names.
-
----
-
-## Refactored Code
-
-```java
 package org.apache.commons.lang3.builder;
 
 import java.util.ArrayList;
@@ -63,8 +33,8 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
             return rightSupplier.get();
         }
     }
-    static final String TO_STRING_FORMAT = "%s differs from %s";
 
+    static final String TO_STRING_FORMAT = "%s differs from %s";
     private final List<Diff<?>> diffs;
     private final boolean objectsAreEqual;
     private final T left;
@@ -72,67 +42,16 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     private final ToStringStyle style;
     private final String toStringFormat;
 
-    /**
-     * Constructs a builder for the specified objects with the specified style.
-     *
-     * <p>
-     * If {@code lhs == rhs} or {@code lhs.equals(rhs)} then the builder will
-     * not evaluate any calls to {@code append(...)} and will return an empty
-     * {@link DiffResult} when {@link #build()} is executed.
-     * </p>
-     *
-     * <p>
-     * This delegates to {@link #DiffBuilder(Object, Object, ToStringStyle, boolean)}
-     * with the testTriviallyEqual flag enabled.
-     * </p>
-     *
-     * @param lhs
-     *            {@code this} object
-     * @param rhs
-     *            the object to diff against
-     * @param style
-     *            the style will use when outputting the objects, {@code null}
-     *            uses the default
-     * @throws NullPointerException
-     *             if {@code lhs} or {@code rhs} is {@code null}
-     */
     public DiffBuilder(final T lhs, final T rhs, final ToStringStyle style) {
         this(lhs, rhs, style, true);
     }
 
-    /**
-     * Constructs a builder for the specified objects with the specified style.
-     *
-     * <p>
-     * If {@code lhs == rhs} or {@code lhs.equals(rhs)} then the builder will
-     * not evaluate any calls to {@code append(...)} and will return an empty
-     * {@link DiffResult} when {@link #build()} is executed.
-     * </p>
-     *
-     * @param lhs
-     *            {@code this} object
-     * @param rhs
-     *            the object to diff against
-     * @param style
-     *            the style will use when outputting the objects, {@code null}
-     *            uses the default
-     * @param testObjectsEquals
-     *            If true, this will test if lhs and rhs are the same or equal.
-     *            All of the append(fieldName, lhs, rhs) methods will abort
-     *            without creating a field {@link Diff} if the trivially equal
-     *            test is enabled and returns true.  The result of this test
-     *            is never changed throughout the life of this {@link DiffBuilder}.
-     * @throws NullPointerException
-     *             if {@code lhs} or {@code rhs} is {@code null}
-     * @since 3.4
-     */
     public DiffBuilder(final T lhs, final T rhs, final ToStringStyle style, final boolean testObjectsEquals) {
         this.left = Objects.requireNonNull(lhs, "lhs");
         this.right = Objects.requireNonNull(rhs, "rhs");
         this.diffs = new ArrayList<>();
         this.toStringFormat = DiffBuilder.TO_STRING_FORMAT;
         this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;
-        // Don't compare any fields if objects are equal
         this.objectsAreEqual = testObjectsEquals && Objects.equals(lhs, rhs);
     }
 
@@ -140,8 +59,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         diffs.add(new SDiff<>(Objects.requireNonNull(fieldName, "fieldName"), leftSupplier, rightSupplier, type));
         return this;
     }
-
-    // ... rest of the class remains unchanged except "objectsEquals" -> "objectsAreEqual" ...
 
     public DiffBuilder<T> append(final String fieldName, final boolean lhs, final boolean rhs) {
         return objectsAreEqual || lhs == rhs ? this : add(fieldName, () -> Boolean.valueOf(lhs), () -> Boolean.valueOf(rhs), Boolean.class);
@@ -177,8 +94,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final double lhs, final double rhs) {
-        return objectsAreEqual || Double.doubleToLongBits(lhs) == Double.doubleToLongBits(rhs) ? this
-                : add(fieldName, () -> Double.valueOf(lhs), () -> Double.valueOf(rhs), Double.class);
+        return objectsAreEqual || Double.doubleToLongBits(lhs) == Double.doubleToLongBits(rhs) ? this : add(fieldName, () -> Double.valueOf(lhs), () -> Double.valueOf(rhs), Double.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final double[] lhs, final double[] rhs) {
@@ -186,8 +102,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final float lhs, final float rhs) {
-        return objectsAreEqual || Float.floatToIntBits(lhs) == Float.floatToIntBits(rhs) ? this
-                : add(fieldName, () -> Float.valueOf(lhs), () -> Float.valueOf(rhs), Float.class);
+        return objectsAreEqual || Float.floatToIntBits(lhs) == Float.floatToIntBits(rhs) ? this : add(fieldName, () -> Float.valueOf(lhs), () -> Float.valueOf(rhs), Float.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final float[] lhs, final float[] rhs) {
@@ -266,17 +181,3 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         return new DiffResult<>(left, right, diffs, style, toStringFormat);
     }
 }
-```
-
----
-
-**Summary of changes:**
-- Renamed `leftS` → `leftSupplier`, `rightS` → `rightSupplier` in `SDiff`.
-- Renamed `objectsEquals` → `objectsAreEqual` throughout `DiffBuilder`.
-- Adjusted constructor and methods for new field names.
-
-**These renames make the code's intent clearer and improve maintainability.**
-
-Levenshtein edit-distance: 333
-Compiles
-Tests pass

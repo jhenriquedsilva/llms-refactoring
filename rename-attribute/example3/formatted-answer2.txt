@@ -1,18 +1,3 @@
-02-05-2025, 08:54
-
-**Refactoring Opportunities**
-
-Yes, there are clear rename attribute refactoring opportunities in the class, most notably:
-
-- The names `lhs` and `rhs` (left hand side, right hand side) for object/class fields and method parameters are not as expressive as they could be. Renaming these to `left` and `right` would improve clarity/readability.
-- Similarly, in the inner class `SDiff`, the attribute names `leftS` and `rightS` are not very clear. They can be clearly renamed to `leftSupplier` and `rightSupplier`.
-- The field `objectsEquals` could be more clearly named as `objectsAreEqual` to make it more representative of a boolean predicate.
-
-**Applying these changes throughout the codebase gives:**
-
----
-
-```java
 package org.apache.commons.lang3.builder;
 
 import java.util.ArrayList;
@@ -47,11 +32,9 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         public T getRight() {
             return rightSupplier.get();
         }
-
     }
 
     static final String TO_STRING_FORMAT = "%s differs from %s";
-
     private final List<Diff<?>> diffs;
     private final boolean objectsAreEqual;
     private final T left;
@@ -59,67 +42,16 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     private final ToStringStyle style;
     private final String toStringFormat;
 
-    /**
-     * Constructs a builder for the specified objects with the specified style.
-     *
-     * <p>
-     * If {@code left == right} or {@code left.equals(right)} then the builder will
-     * not evaluate any calls to {@code append(...)} and will return an empty
-     * {@link DiffResult} when {@link #build()} is executed.
-     * </p>
-     *
-     * <p>
-     * This delegates to {@link #DiffBuilder(Object, Object, ToStringStyle, boolean)}
-     * with the testTriviallyEqual flag enabled.
-     * </p>
-     *
-     * @param left
-     *            {@code this} object
-     * @param right
-     *            the object to diff against
-     * @param style
-     *            the style will use when outputting the objects, {@code null}
-     *            uses the default
-     * @throws NullPointerException
-     *             if {@code left} or {@code right} is {@code null}
-     */
     public DiffBuilder(final T left, final T right, final ToStringStyle style) {
         this(left, right, style, true);
     }
 
-    /**
-     * Constructs a builder for the specified objects with the specified style.
-     *
-     * <p>
-     * If {@code left == right} or {@code left.equals(right)} then the builder will
-     * not evaluate any calls to {@code append(...)} and will return an empty
-     * {@link DiffResult} when {@link #build()} is executed.
-     * </p>
-     *
-     * @param left
-     *            {@code this} object
-     * @param right
-     *            the object to diff against
-     * @param style
-     *            the style will use when outputting the objects, {@code null}
-     *            uses the default
-     * @param testObjectsAreEqual
-     *            If true, this will test if left and right are the same or equal.
-     *            All of the append(fieldName, left, right) methods will abort
-     *            without creating a field {@link Diff} if the trivially equal
-     *            test is enabled and returns true.  The result of this test
-     *            is never changed throughout the life of this {@link DiffBuilder}.
-     * @throws NullPointerException
-     *             if {@code left} or {@code right} is {@code null}
-     * @since 3.4
-     */
     public DiffBuilder(final T left, final T right, final ToStringStyle style, final boolean testObjectsAreEqual) {
         this.left = Objects.requireNonNull(left, "left");
         this.right = Objects.requireNonNull(right, "right");
         this.diffs = new ArrayList<>();
         this.toStringFormat = DiffBuilder.TO_STRING_FORMAT;
         this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;
-        // Don't compare any fields if objects are equal
         this.objectsAreEqual = testObjectsAreEqual && Objects.equals(left, right);
     }
 
@@ -128,7 +60,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         return this;
     }
 
-    // All append methods:
     public DiffBuilder<T> append(final String fieldName, final boolean left, final boolean right) {
         return objectsAreEqual || left == right ? this : add(fieldName, () -> Boolean.valueOf(left), () -> Boolean.valueOf(right), Boolean.class);
     }
@@ -163,8 +94,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final double left, final double right) {
-        return objectsAreEqual || Double.doubleToLongBits(left) == Double.doubleToLongBits(right) ? this
-                : add(fieldName, () -> Double.valueOf(left), () -> Double.valueOf(right), Double.class);
+        return objectsAreEqual || Double.doubleToLongBits(left) == Double.doubleToLongBits(right) ? this : add(fieldName, () -> Double.valueOf(left), () -> Double.valueOf(right), Double.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final double[] left, final double[] right) {
@@ -172,8 +102,7 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
     }
 
     public DiffBuilder<T> append(final String fieldName, final float left, final float right) {
-        return objectsAreEqual || Float.floatToIntBits(left) == Float.floatToIntBits(right) ? this
-                : add(fieldName, () -> Float.valueOf(left), () -> Float.valueOf(right), Float.class);
+        return objectsAreEqual || Float.floatToIntBits(left) == Float.floatToIntBits(right) ? this : add(fieldName, () -> Float.valueOf(left), () -> Float.valueOf(right), Float.class);
     }
 
     public DiffBuilder<T> append(final String fieldName, final float[] left, final float[] right) {
@@ -200,7 +129,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         if (objectsAreEqual || left == right) {
             return this;
         }
-        // right cannot be null, as left != right
         final Object objectToTest = left != null ? left : right;
         if (ObjectUtils.isArray(objectToTest)) {
             if (objectToTest instanceof boolean[]) {
@@ -229,7 +157,6 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
             }
             return append(fieldName, (Object[]) left, (Object[]) right);
         }
-        // Not array type
         if (Objects.equals(left, right)) {
             return this;
         }
@@ -254,23 +181,3 @@ public class DiffBuilder<T> implements Builder<DiffResult<T>> {
         return new DiffResult<>(left, right, diffs, style, toStringFormat);
     }
 }
-```
-
----
-
-**Main refactoring points:**
-
-- All *field* and *parameter* usages of `lhs`/`rhs` are changed to `left`/`right`.
-- Parameter documentation (`@param`) is updated accordingly.
-- `leftS`/`rightS` → `leftSupplier`/`rightSupplier`.
-- `objectsEquals` → `objectsAreEqual`.
-
-This makes the code more readable and idiomatic, especially for teams and new maintainers.
-
----
-
-**If you need more aggressive refactoring (such as for method names or logic), let me know!**
-
-Levenshtein edit-distance: 738
-Compiles
-Tests pass

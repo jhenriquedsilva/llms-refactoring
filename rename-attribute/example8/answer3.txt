@@ -105,4 +105,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 
 These changes improve code readability and maintainability by using a clear and consistent identifier.
 
+Levenshtein edit-distance: 0
 Compiles

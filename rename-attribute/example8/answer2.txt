@@ -111,4 +111,5 @@ public class HibernateSearchKnnVectorsFormat extends KnnVectorsFormat {
 
 **This improves clarity and maintains consistency across the class attributes and methods.**
 
+Levenshtein edit-distance: 10
 Compiles

@@ -108,5 +108,6 @@ class XmlPrinterTest {
 
 **No other attribute renaming is required** in this class—the rest of the identifiers are sufficiently descriptive.
 
+3
 Compiles
 Tests pass

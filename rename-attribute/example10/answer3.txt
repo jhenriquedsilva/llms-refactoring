@@ -96,6 +96,6 @@ class XmlPrinterTest {
 
 These changes enhance code readability and reduce potential naming confusion.
 
-31
+Levenshtein edit-distance: 31
 Compiles
 Tests pass

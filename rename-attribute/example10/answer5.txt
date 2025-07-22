@@ -113,6 +113,6 @@ class XmlPrinterTest {
 
 Let me know if you'd like even more granular renaming, but these cover the main clarity issues!
 
-121
+Levenshtein edit-distance: 121
 Compiles
 Tests pass

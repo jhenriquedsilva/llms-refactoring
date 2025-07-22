@@ -142,5 +142,5 @@ public class WebSocketCoreClient extends ContainerLifeCycle
 
 These changes improve the readability and maintainability of your code.
 
-262
+Levenshtein edit-distance: 262
 Compiles

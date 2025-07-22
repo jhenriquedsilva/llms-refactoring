@@ -109,6 +109,6 @@ class XmlPrinterTest {
 
 **No further rename attribute refactoring is necessary.** Let me know if you want suggestions for method names or local variables as well!
 
-0
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

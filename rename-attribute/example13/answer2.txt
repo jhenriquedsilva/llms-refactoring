@@ -514,4 +514,5 @@ class TempDirectory implements BeforeAllCallback, BeforeEachCallback, ParameterR
 
 **No other rename attribute refactoring was needed.**
 
+Levenshtein edit-distance: 118
 Compiles

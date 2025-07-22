@@ -1,29 +1,7 @@
-02-05-2025, 10:45
-
-Certainly! Reviewing the **PathHierarchyTokenizer** class, several attribute names could be clarified to improve readability, in accordance with best practices for identifier naming. Here are some refactoring opportunities, along with justifications:
-
-### Identified Low-Quality Identifiers (Attributes)
-
-- `skip` (sometimes ambiguous; could be more descriptive)
-    - Suggested: `numLevelsToSkip`
-- `skipped` (does not indicate that it's a count of levels skipped)
-    - Suggested: `numLevelsSkipped`
-- `endDelimiter` (this boolean does not indicate whether we are at the delimiter or if a delimiter was just processed)
-    - Suggested: `justProcessedDelimiter`
-- `resultToken` (may be more clear as it is a builder for the current path token)
-    - Suggested: `currentPathBuffer`
-- `startPosition` (could be clearer as it marks the character offset in input)
-    - Suggested: `startOffset`
-- `charsRead` (could be more precise to `numCharsRead` to distinguish from e.g. buffer size, etc.)
-
-Below is the **refactored class** with these improvements:
-
----
-
-```java
 package org.apache.lucene.analysis.path;
 
 import java.io.IOException;
+
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -31,23 +9,6 @@ import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.IgnoreRandomChains;
 
-/**
- * Tokenizer for path-like hierarchies.
- *
- * <p>Take something like:
- *
- * <pre>
- *  /something/something/else
- * </pre>
- *
- * and make:
- *
- * <pre>
- *  /something
- *  /something/something
- *  /something/something/else
- * </pre>
- */
 @IgnoreRandomChains(reason = "broken offsets")
 public class PathHierarchyTokenizer extends Tokenizer {
 
@@ -71,8 +32,7 @@ public class PathHierarchyTokenizer extends Tokenizer {
         this(DEFAULT_BUFFER_SIZE, delimiter, replacement, numLevelsToSkip);
     }
 
-    public PathHierarchyTokenizer(
-            AttributeFactory factory, char delimiter, char replacement, int numLevelsToSkip) {
+    public PathHierarchyTokenizer(AttributeFactory factory, char delimiter, char replacement, int numLevelsToSkip) {
         this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, numLevelsToSkip);
     }
 
@@ -80,8 +40,7 @@ public class PathHierarchyTokenizer extends Tokenizer {
         this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, numLevelsToSkip);
     }
 
-    public PathHierarchyTokenizer(
-            AttributeFactory factory, int bufferSize, char delimiter, char replacement, int numLevelsToSkip) {
+    public PathHierarchyTokenizer(AttributeFactory factory, int bufferSize, char delimiter, char replacement, int numLevelsToSkip) {
         super(factory);
         if (bufferSize < 0) {
             throw new IllegalArgumentException("bufferSize cannot be negative");
@@ -90,7 +49,6 @@ public class PathHierarchyTokenizer extends Tokenizer {
             throw new IllegalArgumentException("numLevelsToSkip cannot be negative");
         }
         termAtt.resizeBuffer(bufferSize);
-
         this.delimiter = delimiter;
         this.replacement = replacement;
         this.numLevelsToSkip = numLevelsToSkip;
@@ -100,20 +58,16 @@ public class PathHierarchyTokenizer extends Tokenizer {
     private static final int DEFAULT_BUFFER_SIZE = 1024;
     public static final char DEFAULT_DELIMITER = '/';
     public static final int DEFAULT_NUM_LEVELS_TO_SKIP = 0;
-
     private final char delimiter;
     private final char replacement;
     private final int numLevelsToSkip;
-
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
-    private final PositionIncrementAttribute posAtt =
-            addAttribute(PositionIncrementAttribute.class);
+    private final PositionIncrementAttribute posAtt = addAttribute(PositionIncrementAttribute.class);
     private int startOffset = 0;
     private int numLevelsSkipped = 0;
     private boolean justProcessedDelimiter = false;
     private StringBuilder currentPathBuffer;
-
     private int numCharsRead = 0;
 
     @Override
@@ -129,7 +83,6 @@ public class PathHierarchyTokenizer extends Tokenizer {
             justProcessedDelimiter = false;
             added = true;
         }
-
         while (true) {
             int c = input.read();
             if (c >= 0) {
@@ -191,7 +144,6 @@ public class PathHierarchyTokenizer extends Tokenizer {
     @Override
     public final void end() throws IOException {
         super.end();
-        // set final offset
         int finalOffset = correctOffset(numCharsRead);
         offsetAtt.setOffset(finalOffset, finalOffset);
     }
@@ -206,23 +158,3 @@ public class PathHierarchyTokenizer extends Tokenizer {
         startOffset = 0;
     }
 }
-```
-
----
-
-**Summary of attribute renames:**
-
-- `skip`       → `numLevelsToSkip`
-- `skipped`    → `numLevelsSkipped`
-- `endDelimiter` → `justProcessedDelimiter`
-- `resultToken` → `currentPathBuffer`
-- `startPosition` → `startOffset`
-- `charsRead`     → `numCharsRead`
-
----
-
-This improves consistency, expressiveness, and clarity of the attribute names throughout the code.
-
-Levenshtein edit-distance: 616
-Compiles
-Tests do not pass

@@ -307,5 +307,5 @@ public final class BitmapWalker {
 - No other fields or parameters needed renaming.
 
 **If you require additional refactorings or wish to address other identifier quality issues, please specify!**
-
+Levenshtein edit-distance: 131
 Compiles

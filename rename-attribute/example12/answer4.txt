@@ -362,4 +362,5 @@ public final class BitmapWalker {
 
 **No other attribute renaming was judged necessary.** If you need additional refactorings (e.g., method or local variable renames), let me know!
 
+Levenshtein edit-distance: 130
 Compiles

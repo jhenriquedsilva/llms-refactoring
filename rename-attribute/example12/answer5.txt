@@ -359,4 +359,5 @@ public final class BitmapWalker {
 - It was renamed to `progressMonitor`, and all references updated throughout the class.
 - All other identifiers are already sufficiently readable and descriptive.
 
+Levenshtein edit-distance: 130
 Compiles

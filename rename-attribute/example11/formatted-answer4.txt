@@ -1,22 +1,3 @@
-02-05-2025, 10:23
-
-Certainly! Let’s review your class for potential **Rename Attribute** refactoring opportunities—specifically looking for fields with low-quality identifiers that can be made clearer.
-
-### Analysis
-- **httpClient:** Name is clear.
-- **components:** Somewhat vague; could be more expressive as **webSocketComponents**.
-- **classLoader:** Name is clear.
-- All method parameters are clear.
-- Constants: `WEBSOCKET_CORECLIENT_ATTRIBUTE` is verbose, but consistent with Java standards.
-
-### Main Opportunity
-- The field `components` refers to a `WebSocketComponents` object, but the name is only **components**. Renaming it to **webSocketComponents** improves readability and maintains consistency with the constructor parameter.
-
----
-
-## Refactored Version
-
-```java
 package org.eclipse.jetty.websocket.core.client;
 
 import java.io.IOException;
@@ -37,40 +18,32 @@ import org.eclipse.jetty.websocket.core.client.internal.HttpClientProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class WebSocketCoreClient extends ContainerLifeCycle
-{
-    public static final String WEBSOCKET_CORECLIENT_ATTRIBUTE = WebSocketCoreClient.class.getName();
-
+public class WebSocketCoreClient extends ContainerLifeCycle {
+    public static final String WEBSOCKET_CORE_CLIENT_ATTRIBUTE = WebSocketCoreClient.class.getName();
     private static final Logger LOG = LoggerFactory.getLogger(WebSocketCoreClient.class);
     private final HttpClient httpClient;
     private final WebSocketComponents webSocketComponents;
     private ClassLoader classLoader;
 
-    public WebSocketCoreClient()
-    {
+    public WebSocketCoreClient() {
         this(null, new WebSocketComponents());
     }
 
-    public WebSocketCoreClient(WebSocketComponents webSocketComponents)
-    {
+    public WebSocketCoreClient(WebSocketComponents webSocketComponents) {
         this(null, webSocketComponents);
     }
 
-    public WebSocketCoreClient(HttpClient httpClient, WebSocketComponents webSocketComponents)
-    {
+    public WebSocketCoreClient(HttpClient httpClient, WebSocketComponents webSocketComponents) {
         this.httpClient = Objects.requireNonNullElse(httpClient, HttpClientProvider.get());
         addBean(this.httpClient);
-        if (webSocketComponents == null)
-        {
+        if (webSocketComponents == null) {
             if (this.httpClient.isStarted())
                 webSocketComponents = new WebSocketComponents(null, null, this.httpClient.getByteBufferPool(), null, null, this.httpClient.getExecutor());
-            else
-                webSocketComponents = new WebSocketComponents();
+            else webSocketComponents = new WebSocketComponents();
         }
         this.webSocketComponents = webSocketComponents;
         addBean(this.webSocketComponents);
-        if (!this.httpClient.isStarted())
-        {
+        if (!this.httpClient.isStarted()) {
             if (this.httpClient.getByteBufferPool() == null)
                 this.httpClient.setByteBufferPool(this.webSocketComponents.getBufferPool());
             if (this.httpClient.getExecutor() == null)
@@ -79,76 +52,47 @@ public class WebSocketCoreClient extends ContainerLifeCycle
         classLoader = Thread.currentThread().getContextClassLoader();
     }
 
-    public ClassLoader getClassLoader()
-    {
+    public ClassLoader getClassLoader() {
         return classLoader;
     }
 
-    public void setClassLoader(ClassLoader classLoader)
-    {
+    public void setClassLoader(ClassLoader classLoader) {
         this.classLoader = Objects.requireNonNull(classLoader);
     }
 
-    public CompletableFuture<CoreSession> connect(FrameHandler frameHandler, URI wsUri) throws IOException
-    {
+    public CompletableFuture<CoreSession> connect(FrameHandler frameHandler, URI wsUri) throws IOException {
         CoreClientUpgradeRequest request = CoreClientUpgradeRequest.from(this, wsUri, frameHandler);
         return connect(request);
     }
 
-    public CompletableFuture<CoreSession> connect(CoreClientUpgradeRequest request) throws IOException
-    {
+    public CompletableFuture<CoreSession> connect(CoreClientUpgradeRequest request) throws IOException {
         if (!isStarted())
             throw new IllegalStateException(WebSocketCoreClient.class.getSimpleName() + "@" + this.hashCode() + " is not started");
-
-        // Validate Requested Extensions
-        for (ExtensionConfig reqExt : request.getExtensions())
-        {
-            if (!webSocketComponents.getExtensionRegistry().isAvailable(reqExt.getName()))
-            {
+        for (ExtensionConfig reqExt : request.getExtensions()) {
+            if (!webSocketComponents.getExtensionRegistry().isAvailable(reqExt.getName())) {
                 throw new IllegalArgumentException("Requested extension [" + reqExt.getName() + "] is not installed");
             }
         }
-
-        for (Request.Listener l : getBeans(Request.Listener.class))
-        {
+        for (Request.Listener l : getBeans(Request.Listener.class)) {
             request.listener(l);
         }
-
-        if (LOG.isDebugEnabled())
-            LOG.debug("connect to websocket {}", request.getURI());
-
+        if (LOG.isDebugEnabled()) LOG.debug("connect to websocket {}", request.getURI());
         return request.sendAsync();
     }
 
-    public WebSocketExtensionRegistry getExtensionRegistry()
-    {
+    public WebSocketExtensionRegistry getExtensionRegistry() {
         return webSocketComponents.getExtensionRegistry();
     }
 
-    public HttpClient getHttpClient()
-    {
+    public HttpClient getHttpClient() {
         return httpClient;
     }
 
-    public DecoratedObjectFactory getObjectFactory()
-    {
+    public DecoratedObjectFactory getObjectFactory() {
         return webSocketComponents.getObjectFactory();
     }
 
-    public WebSocketComponents getWebSocketComponents()
-    {
+    public WebSocketComponents getWebSocketComponents() {
         return webSocketComponents;
     }
 }
-```
-
-# Summary of Changes
-- Renamed the field **components** → **webSocketComponents**.
-- Updated all references to reflect this change (constructor, initialization logic, getters, etc.).
-
----
-
-**This refactoring enhances clarity and consistency in the codebase.**
-
-243
-Compiles

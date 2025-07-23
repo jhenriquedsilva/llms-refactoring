@@ -118,4 +118,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 
 _No other attribute renamings were necessary; the rest of the code follows good naming conventions._
 
+Levenshtein edit-distance: 60
 Compiles

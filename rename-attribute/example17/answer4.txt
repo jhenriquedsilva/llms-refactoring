@@ -135,4 +135,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 
 Let me know if you'd like deeper/more aggressive renamings or explanations!
 
+Levenshtein edit-distance: 60
 Compiles

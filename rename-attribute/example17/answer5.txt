@@ -130,4 +130,5 @@ public final class PlainTextLanguage extends SimpleLanguageModuleBase implements
 
 No other identifiers were low-quality or confusing. This improves code readability without changing any logic.
 
+Levenshtein edit-distance: 70
 Compiles

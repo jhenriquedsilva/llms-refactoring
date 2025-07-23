@@ -118,4 +118,5 @@ final class LoadedPemSslStore implements PemSslStore {
 - Renamed attribute `certificates` to `certificatesSupplier` and updated all references accordingly to improve clarity and readability.
 - No other renaming/refactoring necessary.
 
+Levenshtein edit-distance: 0
 Compiles

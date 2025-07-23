@@ -100,4 +100,5 @@ final class LoadedPemSslStore implements PemSslStore {
 - Updated usage accordingly.
 - No other attribute renaming is necessary as the rest are clearly named.
 
+Levenshtein edit-distance: 0
 Compiles

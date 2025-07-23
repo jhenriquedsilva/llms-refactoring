@@ -1,33 +1,3 @@
-02-05-2025, 10:53
-
-### Review of Rename Attribute Refactoring Opportunities
-
-Upon reviewing the code, the **main variable/attribute names** are:
-
-- `runner` (InternalRunner)
-- `testClass` (Class<?>)
-- `filterRequested` (boolean)
-- `delegate` (Filter, in the inner class)
-
-Let's check if any identifier does **not clearly express its intent** or conflicts with established naming conventions.
-
-#### Potential Targets:
-- `runner`: A bit generic, but since the class is called `StrictRunner`, this `runner` is the underlying runner being wrapped. For clarity, renaming to something like `underlyingRunner` would improve readability and intent.
-- `testClass`: Clear usage — refers to the class being tested.
-- `filterRequested`: Its purpose is to track if a filter was requested. The name is acceptable, but could be more explicitly named as `isFilterRequested` (following boolean naming conventions) for clarity.
-- `delegate` (RecordingFilter): This is a common pattern for wrapped or proxied objects. However, `delegate` could be more specifically named `wrappedFilter`.
-
-#### Suggestion
-
-- **Rename** `runner` → `underlyingRunner`
-- **Rename** `filterRequested` → `isFilterRequested`
-- **Rename** `delegate` → `wrappedFilter`
-
----
-
-## Refactored Code
-
-```java
 package org.mockito.internal.runners;
 
 import org.junit.runner.Description;
@@ -44,10 +14,6 @@ public class StrictRunner implements InternalRunner {
     private final InternalRunner underlyingRunner;
     private boolean isFilterRequested;
 
-    /**
-     * @param underlyingRunner - the runner to wrap around
-     * @param testClass - for reporting purposes
-     */
     public StrictRunner(InternalRunner underlyingRunner, Class<?> testClass) {
         this.underlyingRunner = underlyingRunner;
         this.testClass = testClass;
@@ -56,27 +22,16 @@ public class StrictRunner implements InternalRunner {
 
     @Override
     public void run(RunNotifier notifier) {
-        // TODO need to be able to opt in for full stack trace instead of just relying on the stack
-        // trace filter
         UnnecessaryStubbingsReporter reporter = new UnnecessaryStubbingsReporter();
         FailureDetector listener = new FailureDetector();
-
         Mockito.framework().addListener(reporter);
         try {
-            // add listener that detects test failures
             notifier.addListener(listener);
             underlyingRunner.run(notifier);
         } finally {
             Mockito.framework().removeListener(reporter);
         }
-
         if (!isFilterRequested && listener.isSuccessful()) {
-            // only report when:
-            // 1. if all tests from given test have ran (tests skipped is false)
-            //   Otherwise we would report unnecessary stubs even if the user runs just single test
-            // from the class
-            // 2. tests are successful (we don't want to add an extra failure on top of any existing
-            // failure, to avoid confusion)
             reporter.validateUnusedStubs(testClass, notifier);
         }
     }
@@ -125,13 +80,3 @@ public class StrictRunner implements InternalRunner {
         }
     }
 }
-```
-
----
-
-**Summary**:
-The refactoring improves identifier clarity to better communicate the intent of each attribute, adhering to common Java conventions and enhancing overall code readability.
-
-Levenshtein edit-distance: 202
-Compiles
-Tests pass

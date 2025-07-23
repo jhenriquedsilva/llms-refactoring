@@ -140,5 +140,6 @@ public class StrictRunner implements InternalRunner {
 
 These changes improve code **readability** and **maintainability** by making the roles of these fields more explicit.
 
+Levenshtein edit-distance: 215
 Compiles
 Tests pass

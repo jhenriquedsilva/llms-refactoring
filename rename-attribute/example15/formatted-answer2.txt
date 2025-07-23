@@ -1,0 +1,82 @@
+package org.mockito.internal.runners;
+
+import org.junit.runner.Description;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.notification.RunNotifier;
+import org.mockito.Mockito;
+import org.mockito.internal.junit.UnnecessaryStubbingsReporter;
+import org.mockito.internal.runners.util.FailureDetector;
+
+public class StrictRunner implements InternalRunner {
+
+    private final Class<?> testClassType;
+    private final InternalRunner delegateRunner;
+    private boolean isFilterRequested;
+
+    public StrictRunner(InternalRunner delegateRunner, Class<?> testClassType) {
+        this.delegateRunner = delegateRunner;
+        this.testClassType = testClassType;
+        this.isFilterRequested = false;
+    }
+
+    @Override
+    public void run(RunNotifier notifier) {
+        UnnecessaryStubbingsReporter reporter = new UnnecessaryStubbingsReporter();
+        FailureDetector listener = new FailureDetector();
+        Mockito.framework().addListener(reporter);
+        try {
+            notifier.addListener(listener);
+            delegateRunner.run(notifier);
+        } finally {
+            Mockito.framework().removeListener(reporter);
+        }
+        if (!isFilterRequested && listener.isSuccessful()) {
+            reporter.validateUnusedStubs(testClassType, notifier);
+        }
+    }
+
+    @Override
+    public Description getDescription() {
+        return delegateRunner.getDescription();
+    }
+
+    @Override
+    public void filter(Filter filter) throws NoTestsRemainException {
+        Filter recordingFilter = new RecordingFilter(filter);
+        delegateRunner.filter(recordingFilter);
+    }
+
+    private class RecordingFilter extends Filter {
+
+        private final Filter wrappedFilter;
+
+        public RecordingFilter(Filter wrappedFilter) {
+            this.wrappedFilter = wrappedFilter;
+        }
+
+        @Override
+        public void apply(Object child) throws NoTestsRemainException {
+            wrappedFilter.apply(child);
+        }
+
+        @Override
+        public Filter intersect(Filter second) {
+            return wrappedFilter.intersect(second);
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            boolean result = wrappedFilter.shouldRun(description);
+            if (!result) {
+                isFilterRequested = true;
+            }
+            return result;
+        }
+
+        @Override
+        public String describe() {
+            return wrappedFilter.describe();
+        }
+    }
+}

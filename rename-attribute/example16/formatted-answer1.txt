@@ -1,46 +1,3 @@
-02-05-2025, 10:57
-
-### Review & Analysis
-
-Looking through the code, the main opportunities for **rename attribute refactoring** are in the `DataClass`:
-
-```java
-private final String param1;
-private final boolean param2;
-private int param3;
-
-@ConstructorProperties({"param1", "param2", "optionalParam"})
-DataClass(String param1, boolean p2, Optional<Integer> optionalParam) {
-    this.param1 = param1;
-    this.param2 = p2;
-    Assert.notNull(optionalParam, "Optional must not be null");
-    optionalParam.ifPresent(integer -> this.param3 = integer);
-}
-```
-
-#### Issues
-- `param1`, `param2`, and `param3` are not meaningful names.
-- The constructor parameter `p2` is inconsistent with the field `param2`.
-- `optionalParam` in the constructor does not clearly align with `param3`, which is not descriptive.
-
-#### Refactored Attribute Names
-
-Suppose these represent user data:
-- `param1` → `name`
-- `param2` → `active`
-- `param3` → `age`
-- `optionalParam` → `optionalAge`
-
-#### ConstructorProperties
-Change to: `@ConstructorProperties({"name", "active", "optionalAge"})`
-
-We will also update getter names and places in test assertions, *including* in Map keys passed to resolver.
-
----
-
-## Refactored Code
-
-```java
 package org.springframework.validation;
 
 import java.beans.ConstructorProperties;
@@ -58,11 +15,6 @@ import org.springframework.util.Assert;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Unit tests for {@link DataBinder} with constructor binding.
- *
- * @author Rossen Stoyanchev
- */
 public class DataBinderConstructTests {
 
     @Test
@@ -70,7 +22,6 @@ public class DataBinderConstructTests {
         MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1", "active", "true"));
         DataBinder binder = initDataBinder(DataClass.class);
         binder.construct(valueResolver);
-
         DataClass dataClass = getTarget(binder);
         assertThat(dataClass.name()).isEqualTo("value1");
         assertThat(dataClass.active()).isEqualTo(true);
@@ -79,12 +30,9 @@ public class DataBinderConstructTests {
 
     @Test
     void dataClassBindingWithOptionalParameter() {
-        MapValueResolver valueResolver =
-                new MapValueResolver(Map.of("name", "value1", "active", "true", "optionalAge", "8"));
-
+        MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1", "active", "true", "optionalAge", "8"));
         DataBinder binder = initDataBinder(DataClass.class);
         binder.construct(valueResolver);
-
         DataClass dataClass = getTarget(binder);
         assertThat(dataClass.name()).isEqualTo("value1");
         assertThat(dataClass.active()).isEqualTo(true);
@@ -96,7 +44,6 @@ public class DataBinderConstructTests {
         MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1"));
         DataBinder binder = initDataBinder(DataClass.class);
         binder.construct(valueResolver);
-
         BindingResult bindingResult = binder.getBindingResult();
         assertThat(bindingResult.getAllErrors()).hasSize(1);
         assertThat(bindingResult.getFieldValue("name")).isEqualTo("value1");
@@ -104,12 +51,11 @@ public class DataBinderConstructTests {
         assertThat(bindingResult.getFieldValue("age")).isNull();
     }
 
-    @Test // gh-31821
+    @Test
     void dataClassBindingWithNestedOptionalParameterWithMissingParameter() {
         MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1"));
         DataBinder binder = initDataBinder(NestedDataClass.class);
         binder.construct(valueResolver);
-
         NestedDataClass dataClass = getTarget(binder);
         assertThat(dataClass.name()).isEqualTo("value1");
         assertThat(dataClass.nestedDataClass()).isNull();
@@ -120,7 +66,6 @@ public class DataBinderConstructTests {
         MapValueResolver valueResolver = new MapValueResolver(Map.of("name", "value1", "active", "x"));
         DataBinder binder = initDataBinder(DataClass.class);
         binder.construct(valueResolver);
-
         BindingResult bindingResult = binder.getBindingResult();
         assertThat(bindingResult.getAllErrors()).hasSize(1);
         assertThat(bindingResult.getFieldValue("name")).isEqualTo("value1");
@@ -143,7 +88,6 @@ public class DataBinderConstructTests {
         assertThat(target).isNotNull();
         return (T) target;
     }
-
 
     private static class DataClass {
 
@@ -175,7 +119,6 @@ public class DataBinderConstructTests {
         }
     }
 
-
     private static class NestedDataClass {
 
         private final String name;
@@ -198,7 +141,6 @@ public class DataBinderConstructTests {
         }
     }
 
-
     private static class MapValueResolver implements DataBinder.ValueResolver {
 
         private final Map<String, Object> values;
@@ -217,22 +159,4 @@ public class DataBinderConstructTests {
             return this.values.keySet();
         }
     }
-
 }
-```
-
----
-
-**Summary of changes:**
-- `param1` → `name`
-- `param2` (and `p2`) → `active`
-- `param3` → `age`
-- `optionalParam` → `optionalAge`
-- Updated all references, assertions, and `ConstructorProperties`.
-- In `NestedDataClass`, `param1` → `name` and `nestedParam2` → `nestedDataClass`, updated all usages accordingly.
-
-This should make the code much clearer and self-explanatory.
-
-Levenshtein edit-distance: 310
-Compiles
-Tests pass

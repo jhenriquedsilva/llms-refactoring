@@ -199,5 +199,6 @@ public class DataBinderConstructTests {
 
 **No other rename attribute opportunities were found in the code.**
 
+Levenshtein edit-distance: 28
 Compiles
 Tests pass

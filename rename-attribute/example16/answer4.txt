@@ -204,5 +204,6 @@ public class DataBinderConstructTests {
 
 No other attributes stand out as low-quality, ambiguous, or violate naming conventions, so no further renaming refactoring is necessary.
 
+Levenshtein edit-distance: 44
 Compiles
 Tests pass

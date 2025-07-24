@@ -1,0 +1,391 @@
+package com.puppycrawl.tools.checkstyle.checks.imports;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.StringTokenizer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+
+@FileStatefulCheck
+public class CustomImportOrderCheck extends AbstractCheck {
+
+    public static final String MSG_LINE_SEPARATOR = "custom.import.order.line.separator";
+
+    public static final String MSG_SEPARATED_IN_GROUP = "custom.import.order.separated.internally";
+
+    public static final String MSG_LEX = "custom.import.order.lex";
+
+    public static final String MSG_NONGROUP_IMPORT = "custom.import.order.nonGroup.import";
+
+    public static final String MSG_NONGROUP_EXPECTED = "custom.import.order.nonGroup.expected";
+
+    public static final String MSG_ORDER = "custom.import.order";
+
+    public static final String STATIC_RULE_GROUP = "STATIC";
+
+    public static final String SAME_PACKAGE_RULE_GROUP = "SAME_PACKAGE";
+
+    public static final String THIRD_PARTY_PACKAGE_RULE_GROUP = "THIRD_PARTY_PACKAGE";
+
+    public static final String STANDARD_JAVA_PACKAGE_RULE_GROUP = "STANDARD_JAVA_PACKAGE";
+
+    public static final String SPECIAL_IMPORTS_RULE_GROUP = "SPECIAL_IMPORTS";
+
+    private static final String NO_GROUP_RULE = "NOT_ASSIGNED_TO_ANY_GROUP";
+
+    private static final Pattern GROUP_SEPARATOR_PATTERN = Pattern.compile("\s*###\s*");
+
+    private static final String CUSTOM_IMPORT_ORDER_RULES_INPUT = "";
+
+    private final List<String> importOrderRuleList = new ArrayList<>();
+
+    private final List<ImportDetails> importDetailsList = new ArrayList<>();
+
+    private String samePackageDomainsPrefix = "";
+
+    private Pattern standardJavaPackagePattern = Pattern.compile("^(java|javax)\.");
+
+    private Pattern thirdPartyPackagePattern = Pattern.compile(".*");
+
+    private Pattern specialImportsPattern = Pattern.compile("^$");
+
+    private boolean isSeparateLineBetweenGroups = true;
+
+    private boolean isSortImportsInGroupAlphabetically;
+
+    private int samePackageMatchingDepth = 2;
+
+    public final void setStandardJavaPackagePattern(Pattern regexp) {
+        standardJavaPackagePattern = regexp;
+    }
+
+    public final void setThirdPartyPackagePattern(Pattern regexp) {
+        thirdPartyPackagePattern = regexp;
+    }
+
+    public final void setSpecialImportsPattern(Pattern regexp) {
+        specialImportsPattern = regexp;
+    }
+
+    public final void setSeparateLineBetweenGroups(boolean value) {
+        isSeparateLineBetweenGroups = value;
+    }
+
+    public final void setSortImportsInGroupAlphabetically(boolean value) {
+        isSortImportsInGroupAlphabetically = value;
+    }
+
+    public final void setCustomImportOrderRules(final String customImportOrderRules) {
+        if (!CUSTOM_IMPORT_ORDER_RULES_INPUT.equals(customImportOrderRules)) {
+            for (String currentState : GROUP_SEPARATOR_PATTERN.split(customImportOrderRules)) {
+                addRulesToList(currentState);
+            }
+            importOrderRuleList.add(NO_GROUP_RULE);
+        }
+    }
+
+    @Override
+    public int[] getDefaultTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+        return getRequiredTokens();
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+        return new int[]{TokenTypes.IMPORT, TokenTypes.STATIC_IMPORT, TokenTypes.PACKAGE_DEF,};
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAST) {
+        importDetailsList.clear();
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+        if (ast.getType() == TokenTypes.PACKAGE_DEF) {
+            samePackageDomainsPrefix = createSamePackagePrefix(samePackageMatchingDepth, ast);
+        } else {
+            final String importFullPath = getFullImportIdent(ast);
+            final boolean isStatic = ast.getType() == TokenTypes.STATIC_IMPORT;
+            importDetailsList.add(new ImportDetails(importFullPath, getImportGroup(isStatic, importFullPath), isStatic, ast));
+        }
+    }
+
+    @Override
+    public void finishTree(DetailAST rootAST) {
+        if (!importDetailsList.isEmpty()) {
+            finishImportList();
+        }
+    }
+
+    private void finishImportList() {
+        String currentGroup = getFirstGroup();
+        int currentGroupNumber = importOrderRuleList.lastIndexOf(currentGroup);
+        ImportDetails previousImportObjectFromCurrentGroup = null;
+        String previousImportFromCurrentGroup = null;
+        for (ImportDetails importObject : importDetailsList) {
+            final String importGroup = importObject.getImportGroup();
+            final String fullImportIdent = importObject.getImportFullPath();
+            if (importGroup.equals(currentGroup)) {
+                validateExtraEmptyLine(previousImportObjectFromCurrentGroup, importObject, fullImportIdent);
+                if (isAlphabeticalOrderBroken(previousImportFromCurrentGroup, fullImportIdent)) {
+                    log(importObject.getImportAST(), MSG_LEX, fullImportIdent, previousImportFromCurrentGroup);
+                } else {
+                    previousImportFromCurrentGroup = fullImportIdent;
+                }
+                previousImportObjectFromCurrentGroup = importObject;
+            } else {
+                if (importOrderRuleList.size() > currentGroupNumber + 1) {
+                    final String nextGroup = getNextImportGroup(currentGroupNumber + 1);
+                    if (importGroup.equals(nextGroup)) {
+                        validateMissedEmptyLine(previousImportObjectFromCurrentGroup, importObject, fullImportIdent);
+                        currentGroup = nextGroup;
+                        currentGroupNumber = importOrderRuleList.lastIndexOf(nextGroup);
+                        previousImportFromCurrentGroup = fullImportIdent;
+                    } else {
+                        logWrongImportGroupOrder(importObject.getImportAST(), importGroup, nextGroup, fullImportIdent);
+                    }
+                    previousImportObjectFromCurrentGroup = importObject;
+                } else {
+                    logWrongImportGroupOrder(importObject.getImportAST(), importGroup, currentGroup, fullImportIdent);
+                }
+            }
+        }
+    }
+
+    private void validateMissedEmptyLine(ImportDetails previousImport, ImportDetails importObject, String fullImportIdent) {
+        if (isEmptyLineMissed(previousImport, importObject)) {
+            log(importObject.getImportAST(), MSG_LINE_SEPARATOR, fullImportIdent);
+        }
+    }
+
+    private void validateExtraEmptyLine(ImportDetails previousImport, ImportDetails importObject, String fullImportIdent) {
+        if (isSeparatedByExtraEmptyLine(previousImport, importObject)) {
+            log(importObject.getImportAST(), MSG_SEPARATED_IN_GROUP, fullImportIdent);
+        }
+    }
+
+    private String getFirstGroup() {
+        final ImportDetails firstImport = importDetailsList.get(0);
+        return getImportGroup(firstImport.isStaticImport(), firstImport.getImportFullPath());
+    }
+
+    private boolean isAlphabeticalOrderBroken(String previousImport, String currentImport) {
+        return isSortImportsInGroupAlphabetically && previousImport != null && compareImports(currentImport, previousImport) < 0;
+    }
+
+    private boolean isEmptyLineMissed(ImportDetails previousImportObject, ImportDetails currentImportObject) {
+        return isSeparateLineBetweenGroups && getCountOfEmptyLinesBetween(previousImportObject.getEndLineNumber(), currentImportObject.getStartLineNumber()) != 1;
+    }
+
+    private boolean isSeparatedByExtraEmptyLine(ImportDetails previousImportObject, ImportDetails currentImportObject) {
+        return previousImportObject != null && getCountOfEmptyLinesBetween(previousImportObject.getEndLineNumber(), currentImportObject.getStartLineNumber()) > 0;
+    }
+
+    private void logWrongImportGroupOrder(DetailAST importAST, String importGroup, String currentGroupNumber, String fullImportIdent) {
+        if (NO_GROUP_RULE.equals(importGroup)) {
+            log(importAST, MSG_NONGROUP_IMPORT, fullImportIdent);
+        } else if (NO_GROUP_RULE.equals(currentGroupNumber)) {
+            log(importAST, MSG_NONGROUP_EXPECTED, importGroup, fullImportIdent);
+        } else {
+            log(importAST, MSG_ORDER, importGroup, currentGroupNumber, fullImportIdent);
+        }
+    }
+
+    private String getNextImportGroup(int currentGroupNumber) {
+        int nextGroupNumber = currentGroupNumber;
+        while (importOrderRuleList.size() > nextGroupNumber + 1) {
+            if (hasAnyImportInCurrentGroup(importOrderRuleList.get(nextGroupNumber))) {
+                break;
+            }
+            nextGroupNumber++;
+        }
+        return importOrderRuleList.get(nextGroupNumber);
+    }
+
+    private boolean hasAnyImportInCurrentGroup(String currentGroup) {
+        boolean result = false;
+        for (ImportDetails currentImport : importDetailsList) {
+            if (currentGroup.equals(currentImport.getImportGroup())) {
+                result = true;
+                break;
+            }
+        }
+        return result;
+    }
+
+    private String getImportGroup(boolean isStatic, String importPath) {
+        RuleMatchForImport bestMatch = new RuleMatchForImport(NO_GROUP_RULE, 0, 0);
+        if (isStatic && importOrderRuleList.contains(STATIC_RULE_GROUP)) {
+            bestMatch.groupName = STATIC_RULE_GROUP;
+            bestMatch.matchedLength = importPath.length();
+        } else if (importOrderRuleList.contains(SAME_PACKAGE_RULE_GROUP)) {
+            final String importPathTrimmedToSamePackageDepth = getFirstDomainsFromIdent(samePackageMatchingDepth, importPath);
+            if (samePackageDomainsPrefix.equals(importPathTrimmedToSamePackageDepth)) {
+                bestMatch.groupName = SAME_PACKAGE_RULE_GROUP;
+                bestMatch.matchedLength = importPath.length();
+            }
+        }
+        for (String group : importOrderRuleList) {
+            if (STANDARD_JAVA_PACKAGE_RULE_GROUP.equals(group)) {
+                bestMatch = findBetterPatternMatch(importPath, STANDARD_JAVA_PACKAGE_RULE_GROUP, standardJavaPackagePattern, bestMatch);
+            }
+            if (SPECIAL_IMPORTS_RULE_GROUP.equals(group)) {
+                bestMatch = findBetterPatternMatch(importPath, group, specialImportsPattern, bestMatch);
+            }
+        }
+        if (NO_GROUP_RULE.equals(bestMatch.groupName) && importOrderRuleList.contains(THIRD_PARTY_PACKAGE_RULE_GROUP) && thirdPartyPackagePattern.matcher(importPath).find()) {
+            bestMatch.groupName = THIRD_PARTY_PACKAGE_RULE_GROUP;
+        }
+        return bestMatch.groupName;
+    }
+
+    private static RuleMatchForImport findBetterPatternMatch(String importPath, String group, Pattern pattern, RuleMatchForImport currentBestMatch) {
+        RuleMatchForImport betterMatchCandidate = currentBestMatch;
+        final Matcher matcher = pattern.matcher(importPath);
+        while (matcher.find()) {
+            final int matchStart = matcher.start();
+            final int length = matcher.end() - matchStart;
+            if (length > betterMatchCandidate.matchedLength || length == betterMatchCandidate.matchedLength && matchStart < betterMatchCandidate.matchedPosition) {
+                betterMatchCandidate = new RuleMatchForImport(group, length, matchStart);
+            }
+        }
+        return betterMatchCandidate;
+    }
+
+    private static int compareImports(String import1, String import2) {
+        int result = 0;
+        final String separator = "\.";
+        final String[] import1Tokens = import1.split(separator);
+        final String[] import2Tokens = import2.split(separator);
+        for (int i = 0; i != import1Tokens.length && i != import2Tokens.length; i++) {
+            final String import1Token = import1Tokens[i];
+            final String import2Token = import2Tokens[i];
+            result = import1Token.compareTo(import2Token);
+            if (result != 0) {
+                break;
+            }
+        }
+        if (result == 0) {
+            result = Integer.compare(import1Tokens.length, import2Tokens.length);
+        }
+        return result;
+    }
+
+    private int getCountOfEmptyLinesBetween(int fromLineNo, int toLineNo) {
+        int result = 0;
+        final String[] lines = getLines();
+        for (int i = fromLineNo + 1; i <= toLineNo - 1; i++) {
+            if (CommonUtil.isBlank(lines[i - 1])) {
+                result++;
+            }
+        }
+        return result;
+    }
+
+    private static String getFullImportIdent(DetailAST token) {
+        String ident = "";
+        if (token != null) {
+            ident = FullIdent.createFullIdent(token.findFirstToken(TokenTypes.DOT)).getText();
+        }
+        return ident;
+    }
+
+    private void addRulesToList(String ruleStr) {
+        if (STATIC_RULE_GROUP.equals(ruleStr) || THIRD_PARTY_PACKAGE_RULE_GROUP.equals(ruleStr) || STANDARD_JAVA_PACKAGE_RULE_GROUP.equals(ruleStr) || SPECIAL_IMPORTS_RULE_GROUP.equals(ruleStr)) {
+            importOrderRuleList.add(ruleStr);
+        } else if (ruleStr.startsWith(SAME_PACKAGE_RULE_GROUP)) {
+            final String rule = ruleStr.substring(ruleStr.indexOf('(') + 1, ruleStr.indexOf(')'));
+            samePackageMatchingDepth = Integer.parseInt(rule);
+            if (samePackageMatchingDepth <= 0) {
+                throw new IllegalArgumentException("SAME_PACKAGE rule parameter should be positive integer: " + ruleStr);
+            }
+            importOrderRuleList.add(SAME_PACKAGE_RULE_GROUP);
+        } else {
+            throw new IllegalStateException("Unexpected rule: " + ruleStr);
+        }
+    }
+
+    private static String createSamePackagePrefix(int firstPackageDomainsCount, DetailAST packageNode) {
+        final String packageFullPath = getFullImportIdent(packageNode);
+        return getFirstDomainsFromIdent(firstPackageDomainsCount, packageFullPath);
+    }
+
+    private static String getFirstDomainsFromIdent(final int firstPackageDomainsCount, final String packageFullPath) {
+        final StringBuilder builder = new StringBuilder(256);
+        final StringTokenizer tokens = new StringTokenizer(packageFullPath, ".");
+        int count = firstPackageDomainsCount;
+        while (count > 0 && tokens.hasMoreTokens()) {
+            builder.append(tokens.nextToken()).append('.');
+            count--;
+        }
+        return builder.toString();
+    }
+
+    private static final class ImportDetails {
+
+        private final String importFullPath;
+
+        private final String importGroup;
+
+        private final boolean staticImport;
+
+        private final DetailAST importAST;
+
+        private ImportDetails(String importFullPath, String importGroup, boolean staticImport, DetailAST importAST) {
+            this.importFullPath = importFullPath;
+            this.importGroup = importGroup;
+            this.staticImport = staticImport;
+            this.importAST = importAST;
+        }
+
+        public String getImportFullPath() {
+            return importFullPath;
+        }
+
+        public int getStartLineNumber() {
+            return importAST.getLineNo();
+        }
+
+        public int getEndLineNumber() {
+            return importAST.getLastChild().getLineNo();
+        }
+
+        public String getImportGroup() {
+            return importGroup;
+        }
+
+        public boolean isStaticImport() {
+            return staticImport;
+        }
+
+        public DetailAST getImportAST() {
+            return importAST;
+        }
+    }
+
+    private static final class RuleMatchForImport {
+
+        private final int matchedPosition;
+        private int matchedLength;
+        private String groupName;
+
+        private RuleMatchForImport(String groupName, int length, int position) {
+            this.groupName = groupName;
+            matchedLength = length;
+            matchedPosition = position;
+        }
+
+    }
+}

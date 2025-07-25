@@ -182,5 +182,6 @@ No other methods require renaming for clarity; all others follow standard conven
 
 **If you need other suggestions about method naming, feel free to ask!**
 
+Levenshtein edit-distance: 113
 Compiles
 Tests pass

@@ -146,4 +146,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 
 > These renamings improve method intention clarity for current and future developers. If you’d like a less aggressive refactoring (e.g. keep deprecated method names unchanged), just let me know!
 
+Levenshtein edit-distance: 116
 Does not compile

@@ -159,4 +159,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 
 **These changes make the class methods and parameters far more self-explanatory, improving code readability for future developers.**
 
+Levenshtein edit-distance: 240
 Compiles

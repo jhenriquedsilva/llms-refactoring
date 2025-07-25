@@ -139,5 +139,5 @@ If you want to remain fully consistent with Hibernate framework naming, check if
 
 **Summary:** There *are* refactoring opportunities regarding method names for clarity, especially with `performInsertReturning` and `executeAndExtractReturning`.
 If you need unchanged legacy compatibility, you may decide against it. Otherwise, the above refactoring is suggested for improved readability.
-
+Levenshtein edit-distance: 108
 Does not compile

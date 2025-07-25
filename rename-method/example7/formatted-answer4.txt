@@ -1,0 +1,63 @@
+package org.hibernate.id.insert;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.hibernate.engine.jdbc.mutation.JdbcValueBindings;
+import org.hibernate.engine.jdbc.mutation.group.PreparedStatementDetails;
+import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.generator.EventType;
+import org.hibernate.generator.values.AbstractGeneratedValuesMutationDelegate;
+import org.hibernate.generator.values.GeneratedValues;
+import org.hibernate.id.PostInsertIdentityPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.pretty.MessageHelper;
+
+public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesMutationDelegate implements InsertGeneratedIdentifierDelegate {
+
+    @Deprecated(forRemoval = true, since = "6.5")
+    public AbstractReturningDelegate(PostInsertIdentityPersister persister) {
+        super(persister, EventType.INSERT);
+    }
+
+    public AbstractReturningDelegate(EntityPersister persister, EventType timing, boolean supportsArbitraryValues, boolean supportsRowId) {
+        super(persister, timing, supportsArbitraryValues, supportsRowId);
+    }
+
+    @Override
+    public GeneratedValues performInsert(PreparedStatementDetails statementDetails, JdbcValueBindings valueBindings, Object entity, SharedSessionContractImplementor session) {
+        session.getJdbcServices().getSqlStatementLogger().logStatement(statementDetails.getSqlString());
+        valueBindings.beforeStatement(statementDetails);
+        return executeInsertAndReturnGeneratedValues(statementDetails.getSqlString(), statementDetails.getStatement(), session);
+    }
+
+    @Override
+    public final GeneratedValues performInsertReturning(String insertSql, SharedSessionContractImplementor session, Binder binder) {
+        try {
+            PreparedStatement preparedInsertStatement = prepareStatement(insertSql, session);
+            try {
+                binder.bindValues(preparedInsertStatement);
+                return executeInsertAndReturnGeneratedValues(insertSql, preparedInsertStatement, session);
+            } finally {
+                releaseStatement(preparedInsertStatement, session);
+            }
+        } catch (SQLException sqle) {
+            throw session.getJdbcServices().getSqlExceptionHelper().convert(sqle, "could not insert: " + MessageHelper.infoString(persister), insertSql);
+        }
+    }
+
+    @Deprecated(forRemoval = true, since = "6.5")
+    protected Object executeAndExtract(String insertSql, PreparedStatement preparedInsertStatement, SharedSessionContractImplementor session) {
+        final GeneratedValues generatedValues = executeInsertAndReturnGeneratedValues(insertSql, preparedInsertStatement, session);
+        return generatedValues.getGeneratedValue(persister.getIdentifierMapping());
+    }
+
+    protected abstract GeneratedValues executeInsertAndReturnGeneratedValues(String insertSql, PreparedStatement preparedInsertStatement, SharedSessionContractImplementor session);
+
+    protected void releaseStatement(PreparedStatement preparedInsertStatement, SharedSessionContractImplementor session) {
+        final JdbcCoordinator jdbcCoordinator = session.getJdbcCoordinator();
+        jdbcCoordinator.getLogicalConnection().getResourceRegistry().release(preparedInsertStatement);
+        jdbcCoordinator.afterStatementExecution();
+    }
+}

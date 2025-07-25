@@ -130,4 +130,5 @@ public abstract class AbstractReturningDelegate extends AbstractGeneratedValuesM
 - All usages are updated, including in `executeAndExtract` and as the abstract method signature.
 - Nothing else needs renaming.
 
+Levenshtein edit-distance: 64
 Compiles

@@ -170,4 +170,5 @@ public enum SpatialCoordinateTypes {
 
 **If you want even stricter consistency for all geometry encoding/decoding methods (e.g., `toWkbFromPoint`, `fromWktToWkb`, etc.), let me know!**
 
+Levenshtein edit-distance: 202
 Compiles

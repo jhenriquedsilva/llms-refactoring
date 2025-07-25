@@ -1,44 +1,3 @@
-28-04-2025, 20:14
-
-Yes, there **are rename method refactoring opportunities** in your code. Specifically, several method names can be improved for clarity and consistency. Here’s an analysis and suggested refactoring, followed by the revised code:
-
----
-
-**Opportunities for Rename Method Refactoring:**
-
-1. **Method: `longAsPoint(long encoded)`**
-   - **Problem:** Ambiguous. Does it decode? Convert? "As" can be unclear.
-   - **Suggestion:** Rename to `decodePoint(long encoded)`
-
-2. **Method: `pointAsLong(double x, double y)`**
-   - **Problem:** Ambiguous. Is it encoding, converting, or something else?
-   - **Suggestion:** Rename to `encodePoint(double x, double y)`
-
-3. **Method: `wkbAsLong(BytesRef wkb)`**
-   - **Problem:** Not clear it means decode a point from WKB to long.
-   - **Suggestion:** Rename to `decodePointFromWKB(BytesRef wkb)`
-
-4. **Method: `longAsWkb(long encoded)`**
-   - **Problem:** Not clear that it converts a long to a WKB point.
-   - **Suggestion:** Rename to `encodePointToWKB(long encoded)`
-
-5. **Method: `asWkt(Geometry geometry)`**
-   - **Problem:** Verb-first names are more readable.
-   - **Suggestion:** Rename to `toWKT(Geometry geometry)`
-
-6. **Method: `pointAsWKB(Geometry geometry)`**
-   - **Problem:** Should be consistent with earlier names.
-   - **Suggestion:** Rename to `toWKB(Geometry geometry)`
-
-7. **Method: `wktToWkb(String wkt)` and `wkbToWkt(BytesRef wkb)`**
-   - **Problem:** Lowercase "b" in "wkb" and "wkt" is inconsistent with general Java conventions.
-   - **Suggestion:** Use `toWKBFromWKT` and `toWKTFromWKB`.
-
----
-
-## **Refactored Class**
-
-```java
 package org.elasticsearch.xpack.ql.util;
 
 import org.apache.lucene.geo.GeoEncodingUtils;
@@ -56,6 +15,7 @@ import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitude;
 import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitude;
 
 public enum SpatialCoordinateTypes {
+
     GEO {
         @Override
         public Point decodePoint(long encoded) {
@@ -68,9 +28,7 @@ public enum SpatialCoordinateTypes {
             int longitudeEncoded = encodeLongitude(x);
             return (((long) latitudeEncoded) << 32) | (longitudeEncoded & 0xFFFFFFFFL);
         }
-    },
-    CARTESIAN {
-
+    }, CARTESIAN {
         private static final int MAX_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MAX_VAL_INCL);
         private static final int MIN_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MIN_VAL_INCL);
 
@@ -121,9 +79,7 @@ public enum SpatialCoordinateTypes {
         return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
     }
 
-    public BytesRef toWKBFromWKT(String wkt) {
-        // TODO: we should be able to transform WKT to WKB without building the geometry
-        // we should as well use different validator for cartesian and geo?
+    public BytesRef fromWKT(String wkt) {
         try {
             Geometry geometry = WellKnownText.fromWKT(GeometryValidator.NOOP, false, wkt);
             return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
@@ -132,20 +88,7 @@ public enum SpatialCoordinateTypes {
         }
     }
 
-    public String toWKTFromWKB(BytesRef wkb) {
+    public String fromWKB(BytesRef wkb) {
         return WellKnownText.fromWKB(wkb.bytes, wkb.offset, wkb.length);
     }
 }
-```
-
----
-
-**Summary of Improvements:**
-- All method names now use clear action verbs and describe their operation.
-- Direction of conversion is clear (decode, encode, toWKT, toWKB, etc.)
-- Consistent naming across all geometric data transformations.
-
-If you prefer different naming conventions, feel free to adjust, but these suggestions follow Java best practices for naming and clarity.
-
-Levenshtein edit-distance: 196
-Compiles

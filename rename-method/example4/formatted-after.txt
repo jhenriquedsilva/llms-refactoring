@@ -1,35 +1,3 @@
-28-04-2025, 20:14
-
-**Review:**
-Upon reviewing your code, the following methods stand out as candidates for rename method refactoring to improve their clarity:
-
-1. **`longAsPoint(long encoded)`**
-   - The method converts a long value to a `Point`.
-   - Suggestion: `decodePoint(long encoded)`
-
-2. **`pointAsLong(double x, double y)`**
-   - The method encodes the point’s coordinates as a long value.
-   - Suggestion: `encodePoint(double x, double y)`
-
-3. **`wkbAsLong(BytesRef wkb)`**
-   - This method extracts a `long` representation from Well-Known Binary (WKB).
-   - Suggestion: `wkbToEncodedPoint(BytesRef wkb)`
-
-4. **`longAsWkb(long encoded)`**
-   - This method converts a long value (encoded point) to WKB (`BytesRef`).
-   - Suggestion: `encodedPointToWkb(long encoded)`
-
-5. **`asWkt(Geometry geometry)`**
-   - Returns the WKT (Well-Known Text) for the geometry.
-   - Suggestion: `toWkt(Geometry geometry)`
-
-6. **`pointAsWKB(Geometry geometry)`**
-   - Converts a point to its WKB representation.
-   - Suggestion: `geometryToWkb(Geometry geometry)`
-
-**Here is the fully refactored class:**
-
-```java
 package org.elasticsearch.xpack.ql.util;
 
 import org.apache.lucene.geo.GeoEncodingUtils;
@@ -47,26 +15,22 @@ import static org.apache.lucene.geo.GeoEncodingUtils.encodeLatitude;
 import static org.apache.lucene.geo.GeoEncodingUtils.encodeLongitude;
 
 public enum SpatialCoordinateTypes {
+
     GEO {
-        @Override
-        public Point decodePoint(long encoded) {
+        public Point longAsPoint(long encoded) {
             return new Point(GeoEncodingUtils.decodeLongitude((int) encoded), GeoEncodingUtils.decodeLatitude((int) (encoded >>> 32)));
         }
 
-        @Override
-        public long encodePoint(double x, double y) {
+        public long pointAsLong(double x, double y) {
             int latitudeEncoded = encodeLatitude(y);
             int longitudeEncoded = encodeLongitude(x);
             return (((long) latitudeEncoded) << 32) | (longitudeEncoded & 0xFFFFFFFFL);
         }
-    },
-    CARTESIAN {
-
+    }, CARTESIAN {
         private static final int MAX_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MAX_VAL_INCL);
         private static final int MIN_VAL_ENCODED = XYEncodingUtils.encode((float) XYEncodingUtils.MIN_VAL_INCL);
 
-        @Override
-        public Point decodePoint(long encoded) {
+        public Point longAsPoint(long encoded) {
             final int x = checkCoordinate((int) (encoded >>> 32));
             final int y = checkCoordinate((int) (encoded & 0xFFFFFFFF));
             return new Point(XYEncodingUtils.decode(x), XYEncodingUtils.decode(y));
@@ -79,42 +43,39 @@ public enum SpatialCoordinateTypes {
             return i;
         }
 
-        @Override
-        public long encodePoint(double x, double y) {
+        public long pointAsLong(double x, double y) {
             final long xi = XYEncodingUtils.encode((float) x);
             final long yi = XYEncodingUtils.encode((float) y);
             return (yi & 0xFFFFFFFFL) | xi << 32;
         }
     };
 
-    public abstract Point decodePoint(long encoded);
+    public abstract Point longAsPoint(long encoded);
 
-    public abstract long encodePoint(double x, double y);
+    public abstract long pointAsLong(double x, double y);
 
-    public long wkbToEncodedPoint(BytesRef wkb) {
+    public long wkbAsLong(BytesRef wkb) {
         Geometry geometry = WellKnownBinary.fromWKB(GeometryValidator.NOOP, false, wkb.bytes, wkb.offset, wkb.length);
         if (geometry instanceof Point point) {
-            return encodePoint(point.getX(), point.getY());
+            return pointAsLong(point.getX(), point.getY());
         } else {
             throw new IllegalArgumentException("Unsupported geometry: " + geometry.type());
         }
     }
 
-    public BytesRef encodedPointToWkb(long encoded) {
-        return geometryToWkb(decodePoint(encoded));
+    public BytesRef longAsWkb(long encoded) {
+        return asWkb(longAsPoint(encoded));
     }
 
-    public String toWkt(Geometry geometry) {
+    public String asWkt(Geometry geometry) {
         return WellKnownText.toWKT(geometry);
     }
 
-    public BytesRef geometryToWkb(Geometry geometry) {
+    public BytesRef asWkb(Geometry geometry) {
         return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
     }
 
     public BytesRef wktToWkb(String wkt) {
-        // TODO: we should be able to transform WKT to WKB without building the geometry
-        // we should as well use different validator for cartesian and geo?
         try {
             Geometry geometry = WellKnownText.fromWKT(GeometryValidator.NOOP, false, wkt);
             return new BytesRef(WellKnownBinary.toWKB(geometry, ByteOrder.LITTLE_ENDIAN));
@@ -127,12 +88,3 @@ public enum SpatialCoordinateTypes {
         return WellKnownText.fromWKB(wkb.bytes, wkb.offset, wkb.length);
     }
 }
-```
-
----
-
-**Summary:**
-Several method names have been improved for clarity and to directly describe their input and output. This makes the API more apparent and improves code readability and maintainability.
-
-Levenshtein edit-distance: 182
-Compiles

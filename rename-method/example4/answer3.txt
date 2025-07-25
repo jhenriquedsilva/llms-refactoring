@@ -131,4 +131,5 @@ public enum SpatialCoordinateTypes {
 
 If your team prefers a slightly different naming style (`toWKB`, `toWKT`, etc.), those can easily be adjusted, but the refactor above follows the suggestions to maximize clarity and self-documenting code.
 
+Levenshtein edit-distance: 191
 Compiles

@@ -383,4 +383,5 @@ class DescriptorsGenerator {
 
 Let me know if you want further improvements or if you prefer different naming conventions!
 
+Levenshtein edit-distance: 232
 Compiles

@@ -310,4 +310,5 @@ public abstract class FlinkHints {
 Other methods and field names were already adequately expressive and idiomatic.
 **If you want shorter or more concise names, please state your preference, and a variant will be provided.**
 
+Levenshtein edit-distance: 106
 Compiles

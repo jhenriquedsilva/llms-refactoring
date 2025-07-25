@@ -280,4 +280,5 @@ public abstract class FlinkHints {
 
 In summary, the refactored method names more accurately describe that these methods *filter* lists based on hint type, which clarifies their behavior for future readers and maintainers. All other methods are concise and expressive, so further renaming is unnecessary.
 
+Levenshtein edit-distance: 28
 Compiles

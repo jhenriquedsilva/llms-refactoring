@@ -309,4 +309,5 @@ All usages within the class have also been updated accordingly.
 
 If you would like Javadoc comments or usages outside of this class updated, let me know!
 
+Levenshtein edit-distance: 25
 Compiles

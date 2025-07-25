@@ -304,4 +304,5 @@ public abstract class FlinkHints {
 
 If you want any further improvements (e.g. `stringifyHints` to `hintsToString`), let me know!
 
+Levenshtein edit-distance: 62
 Compiles

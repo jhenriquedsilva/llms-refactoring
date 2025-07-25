@@ -321,5 +321,6 @@ public class NullInputStream extends InputStream {
 **Rationale:**
 The refactoring improves code readability and communicates method intent more clearly, which makes collaboration and maintenance easier.
 
+95
 Compiles
 Tests pass

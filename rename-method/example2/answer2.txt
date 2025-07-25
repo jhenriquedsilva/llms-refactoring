@@ -325,5 +325,6 @@ public class NullInputStream extends InputStream {
 
 Let me know if you wish for further refinements—such as alternate suggestions for `processByte` and `processBytes`.
 
+45
 Compiles
 Tests pass

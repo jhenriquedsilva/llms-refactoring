@@ -340,5 +340,6 @@ public class NullInputStream extends InputStream {
 All other method names are adequate.
 **These two refactorings improve code clarity and maintainability.**
 
+145
 Compiles
 Tests pass

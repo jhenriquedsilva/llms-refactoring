@@ -507,4 +507,5 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
 
 **If you need additional refactoring suggestions (e.g., extracting constants, reorganizing classes, etc.), let me know!**
 
+Levenshtein edit-distance: 943
 Compiles

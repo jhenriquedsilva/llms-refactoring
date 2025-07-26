@@ -1,37 +1,3 @@
-28-04-2025, 21:29
-
-### Review of Method Names
-
-Upon reviewing the provided code, most method names are descriptive of their purpose (e.g., `cleanupModeDefaultField`, `cleanupModeOnSuccessFailingParameter`). However, some method names such as `cleanupModeDefaultField`, `cleanupModeCustomDefaultField`, etc., could be improved for clarity and expressiveness regarding what **should** happen rather than how they're achieved. For example, `cleanupModeDefaultField` could be renamed to `shouldCleanupFieldDirWhenDefaultMode`, which follows a "should...when..." naming convention, increasing clarity.
-
-For greater readability and to better communicate the intent, here are some possible **refactored method names**:
-
-| Original                          | Suggested Rename                           |
-|------------------------------------|--------------------------------------------|
-| cleanupModeDefaultField            | shouldCleanupFieldDirWhenDefaultMode       |
-| cleanupModeCustomDefaultField      | shouldNotCleanupFieldDirWhenGlobalModeNever|
-| cleanupModeNeverField              | shouldNotCleanupFieldDirWhenModeNever      |
-| cleanupModeAlwaysField             | shouldCleanupFieldDirWhenModeAlways        |
-| cleanupModeOnSuccessPassingField   | shouldCleanupFieldDirWhenOnSuccessAndPass  |
-| cleanupModeOnSuccessFailingField   | shouldNotCleanupFieldDirWhenOnSuccessAndFail|
-| cleanupModeOnSuccessFailingStaticField | shouldNotCleanupStaticFieldDirWhenOnSuccessAndFail|
-| cleanupModeOnSuccessFailingStaticFieldWithNesting | shouldNotCleanupStaticFieldDirWithNestingWhenOnSuccessAndFail |
-| cleanupModeDefaultParameter        | shouldCleanupParameterDirWhenDefaultMode   |
-| cleanupModeCustomDefaultParameter  | shouldNotCleanupParameterDirWhenGlobalModeNever|
-| cleanupModeNeverParameter          | shouldNotCleanupParameterDirWhenModeNever  |
-| cleanupModeAlwaysParameter         | shouldCleanupParameterDirWhenModeAlways    |
-| cleanupModeOnSuccessPassingParameter| shouldCleanupParameterDirWhenOnSuccessAndPass |
-| cleanupModeOnSuccessFailingParameter| shouldNotCleanupParameterDirWhenOnSuccessAndFail|
-
-All the other method names (helper, nested, etc.) are fine.
-
----
-
-### Refactored Code
-
-Below is the refactored class, applying the improved method names throughout.
-
-```java
 package org.junit.jupiter.engine.extension;
 
 import static java.nio.file.Files.deleteIfExists;
@@ -58,15 +24,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.engine.AbstractJupiterTestEngineTests;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
 
-/**
- * Test that {@linkplain TempDir temporary directories} are not deleted with
- * {@link CleanupMode#NEVER}, are deleted with {@link CleanupMode#ON_SUCCESS}
- * but only if the test passes, and are always deleted with {@link CleanupMode#ALWAYS}.
- *
- * @see CleanupMode
- * @see TempDir
- * @since 5.9
- */
 class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
 
     @Nested
@@ -79,83 +36,58 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
         private static Path onSuccessPassingFieldDir;
 
         @Test
-        void shouldCleanupFieldDirWhenDefaultMode() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(DefaultFieldCase.class, "testDefaultField"))
-                    .build();
+        void cleanupModeDefaultField() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(DefaultFieldCase.class, "testDefaultField")).build();
             executeTests(request);
-
             assertThat(defaultFieldDir).doesNotExist();
         }
 
         @Test
-        void shouldNotCleanupFieldDirWhenGlobalModeNever() {
-            LauncherDiscoveryRequest request = request()
-                    .configurationParameter(TempDir.DEFAULT_CLEANUP_MODE_PROPERTY_NAME, "never")
-                    .selectors(selectMethod(DefaultFieldCase.class, "testDefaultField"))
-                    .build();
+        void cleanupModeCustomDefaultField() {
+            LauncherDiscoveryRequest request = request().configurationParameter(TempDir.DEFAULT_CLEANUP_MODE_PROPERTY_NAME, "never").selectors(selectMethod(DefaultFieldCase.class, "testDefaultField")).build();
             executeTests(request);
-
             assertThat(defaultFieldDir).exists();
         }
 
         @Test
-        void shouldNotCleanupFieldDirWhenModeNever() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(NeverFieldCase.class, "testNeverField"))
-                    .build();
+        void cleanupModeNeverField() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(NeverFieldCase.class, "testNeverField")).build();
             executeTests(request);
-
             assertThat(neverFieldDir).exists();
         }
 
         @Test
-        void shouldCleanupFieldDirWhenModeAlways() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(AlwaysFieldCase.class, "testAlwaysField"))
-                    .build();
+        void cleanupModeAlwaysField() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(AlwaysFieldCase.class, "testAlwaysField")).build();
             executeTests(request);
-
             assertThat(alwaysFieldDir).doesNotExist();
         }
 
         @Test
-        void shouldCleanupFieldDirWhenOnSuccessAndPass() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(OnSuccessPassingFieldCase.class, "testOnSuccessPassingField"))
-                    .build();
+        void cleanupModeOnSuccessPassingField() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(OnSuccessPassingFieldCase.class, "testOnSuccessPassingField")).build();
             executeTests(request);
-
             assertThat(onSuccessPassingFieldDir).doesNotExist();
         }
 
         @Test
-        void shouldNotCleanupFieldDirWhenOnSuccessAndFail() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(OnSuccessFailingFieldCase.class, "testOnSuccessFailingField"))
-                    .build();
+        void cleanupModeOnSuccessFailingField() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(OnSuccessFailingFieldCase.class, "testOnSuccessFailingField")).build();
             executeTests(request);
-
             assertThat(onSuccessFailingFieldDir).exists();
         }
 
         @Test
-        void shouldNotCleanupStaticFieldDirWhenOnSuccessAndFail() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectClass(OnSuccessFailingStaticFieldCase.class))
-                    .build();
+        void cleanupModeOnSuccessFailingStaticField() {
+            LauncherDiscoveryRequest request = request().selectors(selectClass(OnSuccessFailingStaticFieldCase.class)).build();
             executeTests(request);
-
             assertThat(onSuccessFailingFieldDir).exists();
         }
 
         @Test
-        void shouldNotCleanupStaticFieldDirWithNestingWhenOnSuccessAndFail() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectClass(OnSuccessFailingStaticFieldWithNestingCase.class))
-                    .build();
+        void cleanupModeOnSuccessFailingStaticFieldWithNesting() {
+            LauncherDiscoveryRequest request = request().selectors(selectClass(OnSuccessFailingStaticFieldWithNestingCase.class)).build();
             executeTests(request);
-
             assertThat(onSuccessFailingFieldDir).exists();
         }
 
@@ -173,8 +105,6 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
                 deleteIfExists(dir);
             }
         }
-
-        // -------------------------------------------------------------------
 
         static class DefaultFieldCase {
 
@@ -240,7 +170,7 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
 
             @Test
             @Order(1)
-            void test() {
+            void failing() {
                 TempDirFieldTests.onSuccessFailingFieldDir = onSuccessFailingFieldDir;
                 fail();
             }
@@ -266,7 +196,6 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
                 }
             }
         }
-
     }
 
     @Nested
@@ -279,63 +208,44 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
         private static Path onSuccessPassingParameterDir;
 
         @Test
-        void shouldCleanupParameterDirWhenDefaultMode() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(DefaultParameterCase.class, "testDefaultParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeDefaultParameter() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(DefaultParameterCase.class, "testDefaultParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(defaultParameterDir).doesNotExist();
         }
 
         @Test
-        void shouldNotCleanupParameterDirWhenGlobalModeNever() {
-            LauncherDiscoveryRequest request = request()
-                    .configurationParameter(TempDir.DEFAULT_CLEANUP_MODE_PROPERTY_NAME, "never")
-                    .selectors(selectMethod(DefaultParameterCase.class, "testDefaultParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeCustomDefaultParameter() {
+            LauncherDiscoveryRequest request = request().configurationParameter(TempDir.DEFAULT_CLEANUP_MODE_PROPERTY_NAME, "never").selectors(selectMethod(DefaultParameterCase.class, "testDefaultParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(defaultParameterDir).exists();
         }
 
         @Test
-        void shouldNotCleanupParameterDirWhenModeNever() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(NeverParameterCase.class, "testNeverParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeNeverParameter() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(NeverParameterCase.class, "testNeverParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(neverParameterDir).exists();
         }
 
         @Test
-        void shouldCleanupParameterDirWhenModeAlways() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(AlwaysParameterCase.class, "testAlwaysParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeAlwaysParameter() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(AlwaysParameterCase.class, "testAlwaysParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(alwaysParameterDir).doesNotExist();
         }
 
         @Test
-        void shouldCleanupParameterDirWhenOnSuccessAndPass() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(OnSuccessPassingParameterCase.class, "testOnSuccessPassingParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeOnSuccessPassingParameter() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(OnSuccessPassingParameterCase.class, "testOnSuccessPassingParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(onSuccessPassingParameterDir).doesNotExist();
         }
 
         @Test
-        void shouldNotCleanupParameterDirWhenOnSuccessAndFail() {
-            LauncherDiscoveryRequest request = request()
-                    .selectors(selectMethod(OnSuccessFailingParameterCase.class, "testOnSuccessFailingParameter", "java.nio.file.Path"))
-                    .build();
+        void cleanupModeOnSuccessFailingParameter() {
+            LauncherDiscoveryRequest request = request().selectors(selectMethod(OnSuccessFailingParameterCase.class, "testOnSuccessFailingParameter", "java.nio.file.Path")).build();
             executeTests(request);
-
             assertThat(onSuccessFailingParameterDir).exists();
         }
 
@@ -347,8 +257,6 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
             TempDirFieldTests.deleteIfNotNullAndExists(onSuccessFailingParameterDir);
             TempDirFieldTests.deleteIfNotNullAndExists(onSuccessPassingParameterDir);
         }
-
-        // -------------------------------------------------------------------
 
         static class DefaultParameterCase {
 
@@ -392,13 +300,3 @@ class TempDirectoryCleanupTests extends AbstractJupiterTestEngineTests {
         }
     }
 }
-```
-
----
-
-**Summary**:
-- All test method names in the `TempDirFieldTests` and `TempDirParameterTests` are now more descriptive and consistently explain the *expected behavior* of each case.
-- No refactorings were made to helper or nested class method names since they already express their intent well.
-
-Levenshtein edit-distance: 455
-Compiles

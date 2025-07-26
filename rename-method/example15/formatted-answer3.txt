@@ -1,38 +1,3 @@
-29-04-2025, 20:08
-
-### Review of Method Names
-
-Let's analyze the methods for rename refactoring opportunities, focusing on improving readability and adherence to naming conventions. Here’s a summary of the methods that could use better names:
-
-#### Candidate Methods for Renaming
-
-1. `pleaseMakeStackTracesClean()`
-    - **Problem:** Looks informal and non-standard for a test setup method. Should be more direct and descriptive.
-    - **Suggestion:** `setUpCleanStackTraces()`
-2. `howMuchDidYouInherit()`
-    - **Problem:** While understandable, it's a bit awkward in naming.
-    - **Suggestion:** `getInheritedAmount()`
-3. `getNameButDelegateToMethodThatThrows()`
-    - **Problem:** The name is very verbose. A shorter, more intent-revealing name would be:
-    - **Suggestion:** `getNameAndThrowException()` **or** `getNameThatThrows()`
-4. `throwSomeException()`
-    - **Problem:** The word "some" is vague.
-    - **Suggestion:** `throwRuntimeException()`
-
-#### Test Method Names
-
-Test method names are generally expressive of behavior, but a few could be clearer.
-- `shouldCallRealMethdsEvenDelegatedToOtherSelfMethod`
-    - **Problem:** Has a typo ("Methds") and is verbose.
-    - **Suggestion:** `shouldCallRealMethodsWhenDelegatedToSelf()`
-
-Otherwise, the test methods are generally OK, as they follow the "should..." convention common in unit tests.
-
----
-
-## Full Refactored Code
-
-```java
 package org.mockitousage.spies;
 
 import static net.bytebuddy.ClassFileVersion.JAVA_V21;
@@ -109,30 +74,19 @@ public class PartialMockingWithSpiesTest extends TestBase {
 
     @Test
     public void shouldCallRealMethodsWhenDelegatedToSelf() {
-        // when
         String name = spy.getName();
-
-        // then
         assertEquals("Default name", name);
     }
 
     @Test
     public void shouldAllowStubbingOfMethodsThatDelegateToOtherMethods() {
-        // when
         when(spy.getName()).thenReturn("foo");
-
-        // then
         assertEquals("foo", spy.getName());
     }
 
     @Test
     public void shouldAllowStubbingWithThrowablesMethodsThatDelegateToOtherMethods() {
-        // when
-        doThrow(new RuntimeException("appetite for destruction"))
-                .when(spy)
-                .getNameThatThrows();
-
-        // then
+        doThrow(new RuntimeException("appetite for destruction")).when(spy).getNameThatThrows();
         try {
             spy.getNameThatThrows();
             fail();
@@ -143,21 +97,12 @@ public class PartialMockingWithSpiesTest extends TestBase {
 
     @Test
     public void shouldStackTraceGetFilteredOnUserExceptions() {
-        Assume.assumeThat(
-                Plugins.getMemberAccessor(), not(instanceOf(ReflectionMemberAccessor.class)));
-
+        Assume.assumeThat(Plugins.getMemberAccessor(), not(instanceOf(ReflectionMemberAccessor.class)));
         try {
-            // when
             spy.getNameThatThrows();
             fail();
         } catch (Throwable t) {
-            // then
-            Assertions.assertThat(t)
-                    .has(
-                            methodsInStackTrace(
-                                    "throwRuntimeException",
-                                    "getNameThatThrows",
-                                    "shouldStackTraceGetFilteredOnUserExceptions"));
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "getNameThatThrows", "shouldStackTraceGetFilteredOnUserExceptions"));
         }
     }
 
@@ -166,23 +111,11 @@ public class PartialMockingWithSpiesTest extends TestBase {
         Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
         Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
         Assume.assumeTrue(ClassFileVersion.ofThisVm().isLessThan(JAVA_V21));
-
         try {
-            // when
             spy.getNameThatThrows();
             fail();
         } catch (Throwable t) {
-            // then
-            Assertions.assertThat(t)
-                    .has(
-                            methodsInStackTrace(
-                                    "throwRuntimeException",
-                                    "invoke0",
-                                    "invoke",
-                                    "invoke",
-                                    "invoke",
-                                    "getNameThatThrows",
-                                    "shouldStackTraceGetFilteredOnUserExceptionsReflectionForJavaOfVersionLessThan21"));
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "invoke0", "invoke", "invoke", "invoke", "getNameThatThrows", "shouldStackTraceGetFilteredOnUserExceptionsReflectionForJavaOfVersionLessThan21"));
         }
     }
 
@@ -191,45 +124,28 @@ public class PartialMockingWithSpiesTest extends TestBase {
         Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
         Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
         Assume.assumeTrue(ClassFileVersion.ofThisVm().isAtLeast(JAVA_V21));
-
         try {
-            // when
             spy.getNameThatThrows();
             fail();
         } catch (Throwable t) {
-            // then
-            Assertions.assertThat(t)
-                    .has(
-                            methodsInStackTrace(
-                                    "throwRuntimeException",
-                                    "invoke",
-                                    "invoke",
-                                    "getNameThatThrows",
-                                    "shouldStackTraceGetFilteredOnUserExceptionsReflectionForJava21AndHigher"));
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "invoke", "invoke", "getNameThatThrows", "shouldStackTraceGetFilteredOnUserExceptionsReflectionForJava21AndHigher"));
         }
     }
 
-    //    @Test //manual verification
     public void verifyTheStackTrace() {
         spy.getNameThatThrows();
     }
 
     @Test
     public void shouldVerify() {
-        // when
         spy.getName();
-
-        // then
         verify(spy).guessName();
     }
 
     @Test
     public void shouldStub() {
-        // given
         when(spy.guessName()).thenReturn(new Name("John"));
-        // when
         String name = spy.getName();
-        // then
         assertEquals("John", name);
     }
 
@@ -238,21 +154,3 @@ public class PartialMockingWithSpiesTest extends TestBase {
         assertEquals("100$", spy.getInheritedAmount());
     }
 }
-```
-
----
-
-### **Summary of Changes**
-- Renamed `pleaseMakeStackTracesClean` → `setUpCleanStackTraces`
-- Renamed `howMuchDidYouInherit` → `getInheritedAmount`
-- Renamed `getNameButDelegateToMethodThatThrows` → `getNameThatThrows`
-- Renamed `throwSomeException` → `throwRuntimeException`
-- Renamed typo `shouldCallRealMethdsEvenDelegatedToOtherSelfMethod` → `shouldCallRealMethodsWhenDelegatedToSelf`
-
----
-
-**These modifications improve code clarity and adhere to standard Java naming conventions.**
-
-304
-Compiles
-Tests pass

@@ -266,5 +266,6 @@ public class PartialMockingWithSpiesTest extends TestBase {
 
 **This will improve overall code readability and maintainability.**
 
+576
 Compiles
 Tests pass

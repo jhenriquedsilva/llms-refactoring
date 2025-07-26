@@ -1,0 +1,156 @@
+package org.mockitousage.spies;
+
+import static net.bytebuddy.ClassFileVersion.JAVA_V21;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockitoutil.Conditions.methodsInStackTrace;
+
+import net.bytebuddy.ClassFileVersion;
+import org.assertj.core.api.Assertions;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.internal.configuration.plugins.Plugins;
+import org.mockito.internal.creation.bytebuddy.InlineByteBuddyMockMaker;
+import org.mockito.internal.util.reflection.ReflectionMemberAccessor;
+import org.mockitoutil.TestBase;
+
+@SuppressWarnings("unchecked")
+public class PartialMockingWithSpiesTest extends TestBase {
+
+    @Before
+    public void pleaseMakeStackTracesClean() {
+        makeStackTracesClean();
+    }
+
+    class InheritMe {
+        private String inherited = "100$";
+
+        protected String getInherited() {
+            return inherited;
+        }
+    }
+
+    class Person extends InheritMe {
+        private final Name defaultName = new Name("Default name");
+
+        public String getName() {
+            return getDefaultName().name;
+        }
+
+        Name getDefaultName() {
+            return defaultName;
+        }
+
+        public String howMuchDidYouInherit() {
+            return getInherited();
+        }
+
+        public String getNameAndThrowException() {
+            throwRuntimeException();
+            return getDefaultName().name;
+        }
+
+        private void throwRuntimeException() {
+            throw new RuntimeException("boo");
+        }
+    }
+
+    class Name {
+        private final String name;
+
+        public Name(String name) {
+            this.name = name;
+        }
+    }
+
+    Person spy = spy(new Person());
+
+    @Test
+    public void shouldCallRealMethodsWhenDelegatedToSelfMethod() {
+        String name = spy.getName();
+        assertEquals("Default name", name);
+    }
+
+    @Test
+    public void shouldAllowStubbingOfMethodsThatDelegateToOtherMethods() {
+        when(spy.getName()).thenReturn("foo");
+        assertEquals("foo", spy.getName());
+    }
+
+    @Test
+    public void shouldAllowStubbingWithThrowableWhenDelegating() {
+        doThrow(new RuntimeException("appetite for destruction")).when(spy).getNameAndThrowException();
+        try {
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Exception e) {
+            assertEquals("appetite for destruction", e.getMessage());
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceOnUserExceptions() {
+        Assume.assumeThat(Plugins.getMemberAccessor(), not(instanceOf(ReflectionMemberAccessor.class)));
+        try {
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "getNameAndThrowException", "shouldFilterStackTraceOnUserExceptions"));
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceOnUserExceptionsWithReflection() {
+        Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
+        Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
+        Assume.assumeTrue(ClassFileVersion.ofThisVm().isLessThan(JAVA_V21));
+        try {
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "invoke0", "invoke", "invoke", "invoke", "getNameAndThrowException", "shouldFilterStackTraceOnUserExceptionsWithReflection"));
+        }
+    }
+
+    @Test
+    public void shouldFilterStackTraceWithReflectionForJava21AndAbove() {
+        Assume.assumeThat(Plugins.getMockMaker(), instanceOf(InlineByteBuddyMockMaker.class));
+        Assume.assumeThat(Plugins.getMemberAccessor(), instanceOf(ReflectionMemberAccessor.class));
+        Assume.assumeTrue(ClassFileVersion.ofThisVm().isAtLeast(JAVA_V21));
+        try {
+            spy.getNameAndThrowException();
+            fail();
+        } catch (Throwable t) {
+            Assertions.assertThat(t).has(methodsInStackTrace("throwRuntimeException", "invoke", "invoke", "getNameAndThrowException", "shouldFilterStackTraceWithReflectionForJava21AndAbove"));
+        }
+    }
+
+    public void verifyTheStackTrace() {
+        spy.getNameAndThrowException();
+    }
+
+    @Test
+    public void shouldVerify() {
+        spy.getName();
+        verify(spy).getDefaultName();
+    }
+
+    @Test
+    public void shouldStub() {
+        when(spy.getDefaultName()).thenReturn(new Name("John"));
+        String name = spy.getName();
+        assertEquals("John", name);
+    }
+
+    @Test
+    public void shouldDealWithPrivateFieldsOfSubclasses() {
+        assertEquals("100$", spy.howMuchDidYouInherit());
+    }
+}

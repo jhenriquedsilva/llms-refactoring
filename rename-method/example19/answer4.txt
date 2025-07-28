@@ -299,5 +299,6 @@ class OAuth2WebSecurityConfigurationTests {
 **Summary:**
 The renamed methods above provide clearer intent and improve code readability for future maintainers. No other critical rename opportunities are present in this snippet.
 
+Levenshtein edit-distance: 347
 Compiles
 Tests pass

@@ -338,5 +338,6 @@ class OAuth2WebSecurityConfigurationTests {
 
 **These refactorings improve test readability and coding standards by making method purposes more explicit.**
 
+Levenshtein edit-distance: 259
 Compiles
 Tests pass

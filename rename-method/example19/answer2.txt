@@ -321,5 +321,6 @@ class OAuth2WebSecurityConfigurationTests {
 
 If you require a finer granularity or further comments, feel free to ask!
 
+Levenshtein edit-distance: 295
 Compiles
 Tests pass

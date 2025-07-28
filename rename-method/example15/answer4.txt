@@ -257,6 +257,6 @@ public class PartialMockingWithSpiesTest extends TestBase {
 Refactoring was necessary to increase clarity and consistency.
 The above class reflects appropriate method renaming for improved readability and maintainability.
 
-547
+Levenshtein edit-distance: 547
 Compiles
 Tests pass

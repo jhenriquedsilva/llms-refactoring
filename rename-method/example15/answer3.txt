@@ -253,6 +253,6 @@ public class PartialMockingWithSpiesTest extends TestBase {
 
 **These modifications improve code clarity and adhere to standard Java naming conventions.**
 
-304
+Levenshtein edit-distance: 304
 Compiles
 Tests pass

@@ -396,4 +396,5 @@ class OrmSetupHelperCleaner {
 
 **If you need even more expressive method names (e.g., changing `clearAllData` to `clearSessionFactoryData`), please specify your naming preferences.**
 
+Levenshtein edit-distance: 60
 Compiles

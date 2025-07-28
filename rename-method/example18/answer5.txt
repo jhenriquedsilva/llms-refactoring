@@ -258,4 +258,5 @@ public class LBHttp2SolrClient extends LBSolrClient {
 
 If desired, you may adjust the method names further to match your project's naming conventions or verbosity. If you need method documentation or have additional naming suggestions, let me know.
 
+Levenshtein edit-distance: 54
 Compiles

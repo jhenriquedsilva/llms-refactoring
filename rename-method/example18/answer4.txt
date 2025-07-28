@@ -292,4 +292,5 @@ This improves code readability and intent without changing the external interfac
 
 If you have usages of the old method names in your codebase, remember to update them accordingly.
 
+Levenshtein edit-distance: 81
 Compiles

@@ -1,0 +1,203 @@
+package org.apache.solr.client.solrj.impl;
+
+import static org.apache.solr.common.params.CommonParams.ADMIN_PATHS;
+
+import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.solr.client.solrj.ResponseParser;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.request.IsUpdateRequest;
+import org.apache.solr.client.solrj.request.RequestWriter;
+import org.apache.solr.client.solrj.util.AsyncListener;
+import org.apache.solr.client.solrj.util.Cancellable;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.NamedList;
+import org.slf4j.MDC;
+
+public class LBHttp2SolrClient extends LBSolrClient {
+    private final Http2SolrClient solrClient;
+
+    private LBHttp2SolrClient(Builder builder) {
+        super(Arrays.asList(builder.baseSolrUrls));
+        this.solrClient = builder.http2SolrClient;
+        this.aliveCheckIntervalMillis = builder.aliveCheckIntervalMillis;
+        this.defaultCollection = builder.defaultCollection;
+    }
+
+    @Override
+    protected SolrClient getClient(String baseUrl) {
+        return solrClient;
+    }
+
+    @Override
+    public ResponseParser getParser() {
+        return solrClient.getParser();
+    }
+
+    @Override
+    public RequestWriter getRequestWriter() {
+        return solrClient.getRequestWriter();
+    }
+
+    public Set<String> getUrlParamNames() {
+        return solrClient.getUrlParamNames();
+    }
+
+    public Cancellable asyncRequest(Request request, AsyncListener<Response> asyncListener) {
+        Response response = new Response();
+        boolean isNonRetryable = request.request instanceof IsUpdateRequest || ADMIN_PATHS.contains(request.request.getPath());
+        ServerIterator serverIterator = new ServerIterator(request, zombieServers);
+        asyncListener.onStart();
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        AtomicReference<Cancellable> currentCancellable = new AtomicReference<>();
+        RetryListener retryListener = new RetryListener() {
+
+            @Override
+            public void onSuccess(Response response) {
+                asyncListener.onSuccess(response);
+            }
+
+            @Override
+            public void onFailure(Exception exception, boolean retryRequest) {
+                if (retryRequest) {
+                    String url;
+                    try {
+                        url = serverIterator.nextOrError(exception);
+                    } catch (SolrServerException solrServerException) {
+                        asyncListener.onFailure(exception);
+                        return;
+                    }
+                    try {
+                        MDC.put("LBSolrClient.url", url);
+                        synchronized (cancelled) {
+                            if (cancelled.get()) {
+                                return;
+                            }
+                            Cancellable cancellable = doRequest(url, request, response, isNonRetryable, serverIterator.isServingZombieServer(), this);
+                            currentCancellable.set(cancellable);
+                        }
+                    } finally {
+                        MDC.remove("LBSolrClient.url");
+                    }
+                } else {
+                    asyncListener.onFailure(exception);
+                }
+            }
+        };
+        try {
+            Cancellable cancellable = doRequest(serverIterator.nextOrError(), request, response, isNonRetryable, serverIterator.isServingZombieServer(), retryListener);
+            currentCancellable.set(cancellable);
+        } catch (SolrServerException solrServerException) {
+            asyncListener.onFailure(solrServerException);
+        }
+        return () -> {
+            synchronized (cancelled) {
+                cancelled.set(true);
+                if (currentCancellable.get() != null) {
+                    currentCancellable.get().cancel();
+                }
+            }
+        };
+    }
+
+    private interface RetryListener {
+        void onSuccess(Response response);
+
+        void onFailure(Exception exception, boolean retryRequest);
+    }
+
+    private Cancellable doRequest(String baseUrl, Request request, Response response, boolean isNonRetryable, boolean isZombie, RetryListener listener) {
+        response.server = baseUrl;
+        request.getRequest().setBasePath(baseUrl);
+        return ((Http2SolrClient) getClient(baseUrl)).asyncRequest(request.getRequest(), null, new AsyncListener<>() {
+            @Override
+            public void onSuccess(NamedList<Object> result) {
+                response.rsp = result;
+                if (isZombie) {
+                    zombieServers.remove(baseUrl);
+                }
+                listener.onSuccess(response);
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                try {
+                    throw (Exception) throwable;
+                } catch (BaseHttpSolrClient.RemoteExecutionException exception) {
+                    listener.onFailure(exception, false);
+                } catch (SolrException exception) {
+                    if (!isNonRetryable && RETRY_CODES.contains(exception.code())) {
+                        listener.onFailure((!isZombie) ? addZombie(baseUrl, exception) : exception, true);
+                    } else {
+                        if (isZombie) {
+                            zombieServers.remove(baseUrl);
+                        }
+                        listener.onFailure(exception, false);
+                    }
+                } catch (SocketException exception) {
+                    if (!isNonRetryable || exception instanceof ConnectException) {
+                        listener.onFailure((!isZombie) ? addZombie(baseUrl, exception) : exception, true);
+                    } else {
+                        listener.onFailure(exception, false);
+                    }
+                } catch (SocketTimeoutException exception) {
+                    if (!isNonRetryable) {
+                        listener.onFailure((!isZombie) ? addZombie(baseUrl, exception) : exception, true);
+                    } else {
+                        listener.onFailure(exception, false);
+                    }
+                } catch (SolrServerException exception) {
+                    Throwable rootCause = exception.getRootCause();
+                    if (!isNonRetryable && rootCause instanceof IOException) {
+                        listener.onFailure((!isZombie) ? addZombie(baseUrl, exception) : exception, true);
+                    } else if (isNonRetryable && rootCause instanceof ConnectException) {
+                        listener.onFailure((!isZombie) ? addZombie(baseUrl, exception) : exception, true);
+                    } else {
+                        listener.onFailure(exception, false);
+                    }
+                } catch (Exception exception) {
+                    listener.onFailure(new SolrServerException(exception), false);
+                }
+            }
+        });
+    }
+
+    public static class Builder {
+
+        private final Http2SolrClient http2SolrClient;
+        private final String[] baseSolrUrls;
+        private long aliveCheckIntervalMillis = TimeUnit.MILLISECONDS.convert(60, TimeUnit.SECONDS);
+        protected String defaultCollection;
+
+        public Builder(Http2SolrClient http2Client, String... baseSolrUrls) {
+            this.http2SolrClient = http2Client;
+            this.baseSolrUrls = baseSolrUrls;
+        }
+
+        public LBHttp2SolrClient.Builder setAliveCheckInterval(int aliveCheckInterval, TimeUnit unit) {
+            if (aliveCheckInterval <= 0) {
+                throw new IllegalArgumentException("Alive check interval must be " + "positive, specified value = " + aliveCheckInterval);
+            }
+            this.aliveCheckIntervalMillis = TimeUnit.MILLISECONDS.convert(aliveCheckInterval, unit);
+            return this;
+        }
+
+        public LBHttp2SolrClient.Builder withDefaultCollection(String defaultCoreOrCollection) {
+            this.defaultCollection = defaultCoreOrCollection;
+            return this;
+        }
+
+        public LBHttp2SolrClient build() {
+            return new LBHttp2SolrClient(this);
+        }
+    }
+}

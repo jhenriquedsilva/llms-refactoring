@@ -279,4 +279,5 @@ If even more consistency for member variables is desired (`defaultDataStore` vs 
 
 **If you need the changes limited to only methods, or if you want additional class/field renaming, let me know!**
 
+Levenshtein edit-distance: 46
 Compiles

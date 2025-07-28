@@ -257,4 +257,5 @@ public class LBHttp2SolrClient extends LBSolrClient {
 **Summary:**
 Some fields and methods have been renamed for clarity (`asyncReq` to `asyncRequest`, `defaultDataStore` to `defaultCollection`, `req/rsp` → `request/response` in method signatures). No logic has been changed. If you have classes specifically named `Req` and `Rsp`, update their usages accordingly within your codebase, or adapt this refactoring to keep your type names but still use clear variable names.
 
+Levenshtein edit-distance: 546
 Does not compile

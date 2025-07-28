@@ -280,4 +280,5 @@ public class LBHttp2SolrClient extends LBSolrClient {
 
 **These renames improve method clarity and follow established Java naming conventions.**
 
+Levenshtein edit-distance: 51
 Compiles

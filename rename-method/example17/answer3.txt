@@ -167,5 +167,6 @@ class ClasspathClassLoaderTest {
 
 If you wish for more aggressive name changes (even more verbose), let me know!
 
+Levenshtein edit-distance: 13
 Compiles
 Tests pass

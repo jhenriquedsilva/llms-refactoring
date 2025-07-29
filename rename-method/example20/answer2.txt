@@ -310,4 +310,5 @@ public class AnnotatedMethod {
 These changes make the code more readable and the method responsibilities clearer to new readers and team members.
 If you want even more granular improvement or have other naming doubts, let me know!
 
+Levenshtein edit-distance: 65
 Compiles

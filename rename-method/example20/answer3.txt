@@ -300,4 +300,5 @@ public class AnnotatedMethod {
 
 **NOTE**: If you must maintain backward compatibility, you could keep the old methods as deprecated wrappers. Would you like to see a version with such deprecations included?
 
+Levenshtein edit-distance: 102
 Compiles

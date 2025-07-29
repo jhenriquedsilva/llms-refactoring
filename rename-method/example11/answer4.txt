@@ -393,3 +393,5 @@ public class WebAppProviderTest
 - `assertDirNotExists` ⟶ `assertSubdirectoryDoesNotExist`
 
 *These changes improve method intention readability and maintain naming consistency.*
+
+Levenshtein edit-distance: 133

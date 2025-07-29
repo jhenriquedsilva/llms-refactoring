@@ -434,3 +434,5 @@ public class WebAppProviderTest
 - All usages updated accordingly.
 
 These name changes enhance **expressiveness** and **intent** for maintainers and reviewers.
+
+Levenshtein edit-distance: 186

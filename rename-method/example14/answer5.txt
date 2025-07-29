@@ -301,4 +301,5 @@ public class EscapeQuerySyntaxImpl implements EscapeQuerySyntax {
 
 **If you need further improvements or have a preferred naming style, let me know!**
 
+Levenshtein edit-distance: 74
 Compiles

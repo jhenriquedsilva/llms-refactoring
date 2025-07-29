@@ -1,45 +1,3 @@
-28-04-2025, 19:47
-
-**Review and Rename Method Refactoring Opportunities**
-
-Several methods have names that could be improved for clarity, intent, brevity, or adherence to common naming conventions. Here are the most notable cases **with suggested renames based on Java standards and documentation clarity:**
-
----
-
-### Rename Candidates and Rationale
-
-1. **baseClassName(String type)**
-   - *Issue*: This does not follow getX naming and is not clearly a getter.
-   - *Proposed*: `getSimpleClassName(String fullyQualifiedName)`
-   - *Rationale*: Makes it explicit it's returning the simple name and that the parameter is a fully qualified class name.
-
-2. **lengthMinusTrailingWhitespace(String line)**
-   - *Issue*: Name is verbose and slightly unclear.
-   - *Proposed*: `getTrimmedLength(String s)`
-   - *Rationale*: Indicates it gets the length after trimming trailing whitespace.
-
-3. **lengthExpandedTabs(String inputString, int toIdx, int tabWidth)**
-   - *Issue*: Verbose and doesn't indicate calculation.
-   - *Proposed*: `getExpandedTabLength(String input, int endIdx, int tabWidth)`
-   - *Rationale*: Indicates it's returning a length, and parameters are more standard.
-
-4. **matchesFileExtension(File file, String... fileExtensions)**
-   - *Issue*: Verb `matches` is acceptable, but could be `hasAnyExtension`.
-   - *Proposed*: `hasMatchingFileExtension(File file, String... extensions)`
-   - *Rationale*: More precise English and clearer intent as a boolean query.
-
-5. **fillTemplateWithStringsByRegexp**
-   - *Issue*: Awkward, verbose.
-   - *Proposed*: `replaceTemplateGroups(String template, String input, Pattern regex)`
-   - *Rationale*: Describes what the method actually does.
-
----
-
-### Refactored Code
-
-Here is your **refactored class** with improved method names and updated invocations:
-
-```java
 package com.puppycrawl.tools.checkstyle.utils;
 
 import java.io.Closeable;
@@ -61,39 +19,30 @@ import java.util.regex.PatternSyntaxException;
 
 import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
 
-/**
- * Contains utility methods.
- *
- */
 public final class CommonUtil {
 
-    /** Default tab width for column reporting. */
     public static final int DEFAULT_TAB_WIDTH = 8;
 
-    /** For cases where no tokens should be accepted. */
     public static final BitSet EMPTY_BIT_SET = new BitSet();
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final String[] EMPTY_STRING_ARRAY = new String[0];
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final Integer[] EMPTY_INTEGER_OBJECT_ARRAY = new Integer[0];
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final Object[] EMPTY_OBJECT_ARRAY = new Object[0];
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final int[] EMPTY_INT_ARRAY = new int[0];
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
-    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+
     public static final double[] EMPTY_DOUBLE_ARRAY = new double[0];
-    /** Pseudo URL protocol for loading from the class path. */
+
     public static final String CLASSPATH_URL_PROTOCOL = "classpath:";
 
-    /** Prefix for the exception when unable to find resource. */
     private static final String UNABLE_TO_FIND_EXCEPTION_PREFIX = "Unable to find: ";
 
-    /** The extension separator. */
     private static final String EXTENSION_SEPARATOR = ".";
 
-    /** Stop instances being created. **/
     private CommonUtil() {
     }
 
@@ -104,31 +53,25 @@ public final class CommonUtil {
     public static Pattern createPattern(String pattern, int flags) {
         try {
             return Pattern.compile(pattern, flags);
-        }
-        catch (final PatternSyntaxException ex) {
-            throw new IllegalArgumentException(
-                    "Failed to initialise regular expression " + pattern, ex);
+        } catch (final PatternSyntaxException ex) {
+            throw new IllegalArgumentException("Failed to initialise regular expression " + pattern, ex);
         }
     }
 
-    // Renamed: matchesFileExtension -> hasMatchingFileExtension, param renamed
-    public static boolean hasMatchingFileExtension(File file, String... extensions) {
+    public static boolean matchesFileExtension(File file, String... fileExtensions) {
         boolean result = false;
-        if (extensions == null || extensions.length == 0) {
+        if (fileExtensions == null || fileExtensions.length == 0) {
             result = true;
-        }
-        else {
-            final String[] withDotExtensions = new String[extensions.length];
-            for (int i = 0; i < extensions.length; i++) {
-                final String extension = extensions[i];
+        } else {
+            final String[] withDotExtensions = new String[fileExtensions.length];
+            for (int i = 0; i < fileExtensions.length; i++) {
+                final String extension = fileExtensions[i];
                 if (extension.startsWith(EXTENSION_SEPARATOR)) {
                     withDotExtensions[i] = extension;
-                }
-                else {
+                } else {
                     withDotExtensions[i] = EXTENSION_SEPARATOR + extension;
                 }
             }
-
             final String fileName = file.getName();
             for (final String fileExtension : withDotExtensions) {
                 if (fileName.endsWith(fileExtension)) {
@@ -151,11 +94,10 @@ public final class CommonUtil {
         return result;
     }
 
-    // Renamed: lengthMinusTrailingWhitespace -> getTrimmedLength
-    public static int getTrimmedLength(String s) {
-        int len = s.length();
+    public static int getLengthWithoutTrailingWhitespace(String line) {
+        int len = line.length();
         for (int i = len - 1; i >= 0; i--) {
-            if (!Character.isWhitespace(s.charAt(i))) {
+            if (!Character.isWhitespace(line.charAt(i))) {
                 break;
             }
             len--;
@@ -163,14 +105,12 @@ public final class CommonUtil {
         return len;
     }
 
-    // Renamed: lengthExpandedTabs -> getExpandedTabLength
-    public static int getExpandedTabLength(String input, int endIdx, int tabWidth) {
+    public static int getExpandedTabLength(String inputString, int toIdx, int tabWidth) {
         int len = 0;
-        for (int idx = 0; idx < endIdx; idx++) {
-            if (input.codePointAt(idx) == '\t') {
+        for (int idx = 0; idx < toIdx; idx++) {
+            if (inputString.codePointAt(idx) == '	') {
                 len = (len / tabWidth + 1) * tabWidth;
-            }
-            else {
+            } else {
                 len++;
             }
         }
@@ -181,25 +121,22 @@ public final class CommonUtil {
         boolean isValid = true;
         try {
             Pattern.compile(pattern);
-        }
-        catch (final PatternSyntaxException ignored) {
+        } catch (final PatternSyntaxException ignored) {
             isValid = false;
         }
         return isValid;
     }
 
-    // Renamed: baseClassName -> getSimpleClassName, param renamed
-    public static String getSimpleClassName(String fullyQualifiedName) {
-        final int index = fullyQualifiedName.lastIndexOf('.');
-        return fullyQualifiedName.substring(index + 1);
+    public static String getSimpleClassName(String qualifiedClassName) {
+        final int index = qualifiedClassName.lastIndexOf('.');
+        return qualifiedClassName.substring(index + 1);
     }
 
     public static String relativizeAndNormalizePath(final String baseDirectory, final String path) {
         final String resultPath;
         if (baseDirectory == null) {
             resultPath = path;
-        }
-        else {
+        } else {
             final Path pathAbsolute = Paths.get(path);
             final Path pathBase = Paths.get(baseDirectory);
             resultPath = pathBase.relativize(pathAbsolute).toString();
@@ -207,12 +144,10 @@ public final class CommonUtil {
         return resultPath;
     }
 
-    public static <T> Constructor<T> getConstructor(Class<T> targetClass,
-                                                    Class<?>... parameterTypes) {
+    public static <T> Constructor<T> getConstructor(Class<T> targetClass, Class<?>... parameterTypes) {
         try {
             return targetClass.getConstructor(parameterTypes);
-        }
-        catch (NoSuchMethodException ex) {
+        } catch (NoSuchMethodException ex) {
             throw new IllegalStateException(ex);
         }
     }
@@ -220,8 +155,7 @@ public final class CommonUtil {
     public static <T> T invokeConstructor(Constructor<T> constructor, Object... parameters) {
         try {
             return constructor.newInstance(parameters);
-        }
-        catch (InstantiationException | IllegalAccessException | InvocationTargetException ex) {
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException ex) {
             throw new IllegalStateException(ex);
         }
     }
@@ -230,8 +164,7 @@ public final class CommonUtil {
         if (closeable != null) {
             try {
                 closeable.close();
-            }
-            catch (IOException ex) {
+            } catch (IOException ex) {
                 throw new IllegalStateException("Cannot close the stream", ex);
             }
         }
@@ -239,7 +172,6 @@ public final class CommonUtil {
 
     public static URI getUriByFilename(String filename) throws CheckstyleException {
         URI uri = getWebOrFileProtocolUri(filename);
-
         if (uri == null) {
             uri = getFilepathOrClasspathUri(filename);
         }
@@ -251,8 +183,7 @@ public final class CommonUtil {
         try {
             final URL url = new URL(filename);
             uri = url.toURI();
-        }
-        catch (URISyntaxException | MalformedURLException ignored) {
+        } catch (URISyntaxException | MalformedURLException ignored) {
             uri = null;
         }
         return uri;
@@ -261,20 +192,16 @@ public final class CommonUtil {
     private static URI getFilepathOrClasspathUri(String filename) throws CheckstyleException {
         final URI uri;
         final File file = new File(filename);
-
         if (file.exists()) {
             uri = file.toURI();
-        }
-        else {
+        } else {
             final int lastIndexOfClasspathProtocol;
             if (filename.lastIndexOf(CLASSPATH_URL_PROTOCOL) == 0) {
                 lastIndexOfClasspathProtocol = CLASSPATH_URL_PROTOCOL.length();
-            }
-            else {
+            } else {
                 lastIndexOfClasspathProtocol = 0;
             }
-            uri = getResourceFromClassPath(filename
-                    .substring(lastIndexOfClasspathProtocol));
+            uri = getResourceFromClassPath(filename.substring(lastIndexOfClasspathProtocol));
         }
         return uri;
     }
@@ -283,20 +210,16 @@ public final class CommonUtil {
         final URL configUrl;
         if (filename.charAt(0) == '/') {
             configUrl = getCheckstyleResource(filename);
-        }
-        else {
+        } else {
             configUrl = ClassLoader.getSystemResource(filename);
         }
-
         if (configUrl == null) {
             throw new CheckstyleException(UNABLE_TO_FIND_EXCEPTION_PREFIX + filename);
         }
-
         final URI uri;
         try {
             uri = configUrl.toURI();
-        }
-        catch (final URISyntaxException ex) {
+        } catch (final URISyntaxException ex) {
             throw new CheckstyleException(UNABLE_TO_FIND_EXCEPTION_PREFIX + filename, ex);
         }
         return uri;
@@ -306,14 +229,12 @@ public final class CommonUtil {
         return CommonUtil.class.getResource(name);
     }
 
-    // Renamed: fillTemplateWithStringsByRegexp -> replaceTemplateGroups, param renamed
-    public static String replaceTemplateGroups(
-            String template, String input, Pattern regex) {
-        final Matcher matcher = regex.matcher(input);
+    public static String replaceTemplateGroupsWithRegexMatches(String template, String lineToPlaceInTemplate, Pattern regexp) {
+        final Matcher matcher = regexp.matcher(lineToPlaceInTemplate);
         String result = template;
         if (matcher.find()) {
             for (int i = 0; i <= matcher.groupCount(); i++) {
-                result = result.replaceAll("\\$" + i, matcher.group(i));
+                result = result.replaceAll("\$" + i, matcher.group(i));
             }
         }
         return result;
@@ -325,8 +246,7 @@ public final class CommonUtil {
         final String fileNameWithoutExtension;
         if (dotIndex == -1) {
             fileNameWithoutExtension = fileName;
-        }
-        else {
+        } else {
             fileNameWithoutExtension = fileName.substring(0, dotIndex);
         }
         return fileNameWithoutExtension;
@@ -338,32 +258,29 @@ public final class CommonUtil {
         final String extension;
         if (dotIndex == -1) {
             extension = "";
-        }
-        else {
+        } else {
             extension = fileName.substring(dotIndex + 1);
         }
         return extension;
     }
 
-    public static boolean isIdentifier(String str) {
+    public static boolean isValidJavaIdentifier(String str) {
         boolean isIdentifier = !str.isEmpty();
-
         for (int i = 0; isIdentifier && i < str.length(); i++) {
             if (i == 0) {
                 isIdentifier = Character.isJavaIdentifierStart(str.charAt(0));
-            }
-            else {
+            } else {
                 isIdentifier = Character.isJavaIdentifierPart(str.charAt(i));
             }
         }
         return isIdentifier;
     }
 
-    public static boolean isName(String str) {
+    public static boolean isValidQualifiedJavaName(String str) {
         boolean isName = false;
         final String[] identifiers = str.split("\\.", -1);
         for (String identifier : identifiers) {
-            isName = isIdentifier(identifier);
+            isName = isValidJavaIdentifier(identifier);
             if (!isName) {
                 break;
             }
@@ -372,8 +289,7 @@ public final class CommonUtil {
     }
 
     public static boolean isBlank(String value) {
-        return Objects.isNull(value)
-                || indexOfNonWhitespace(value) >= value.length();
+        return Objects.isNull(value) || indexOfNonWhitespace(value) >= value.length();
     }
 
     public static int indexOfNonWhitespace(String value) {
@@ -393,17 +309,4 @@ public final class CommonUtil {
         final char character = Character.toChars(codePoints[index])[0];
         return Character.isWhitespace(character);
     }
-
 }
-```
-
-**Note:**
-- All refactorings are backward-incompatible. If you apply these, make sure you update all call sites accordingly!
-- Javadocs for each renamed method should be updated to reflect parameter renames, if applicable.
-- The method logic remains unchanged—only names and select parameter names are improved for clarity/readability.
-
-If you want alternative naming choices, let me know!
-
-Levenshtein edit-distance: 221
-Compiles
-Tests do not pass

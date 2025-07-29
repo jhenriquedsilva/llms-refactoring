@@ -617,5 +617,6 @@ public final class CommonUtil {
 
 **If you’d like suggestions for further improvements or more changes, just ask!**
 
+Levenshtein edit-distance: 46
 Does not compile
 Tests do not pass

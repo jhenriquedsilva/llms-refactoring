@@ -464,5 +464,6 @@ These refinements use more standard Java API naming conventions and provide more
 
 Let me know if you require *both* old and new method signatures with `@Deprecated` deprecation tags for migration!
 
+Levenshtein edit-distance: 151
 Does not compile
 Tests do not pass

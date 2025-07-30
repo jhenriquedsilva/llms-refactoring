@@ -732,5 +732,6 @@ public class LexicalPreservingPrinter {
 
 If you need comments or Javadocs further updated for clarity, let me know!
 
+Levenshtein edit-distance: 275
 Compiles
 Tests pass

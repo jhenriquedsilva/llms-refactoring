@@ -70,4 +70,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 **Rationale:**
 These changes enhance clarity and make the code more intent-revealing and maintainable.
 
+Levenshtein edit-distance: 55
 Compiles

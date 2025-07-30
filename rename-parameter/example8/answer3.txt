@@ -73,4 +73,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 
 **Let me know if you need other naming suggestions or code improvements!**
 
+Levenshtein edit-distance: 0
 Compiles

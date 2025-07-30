@@ -84,4 +84,5 @@ These changes should improve clarity, especially for new readers of the code.
 
 If you require stricter or alternate naming conventions, please specify your guidelines!
 
+Levenshtein edit-distance: 126
 Compiles

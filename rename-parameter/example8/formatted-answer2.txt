@@ -1,0 +1,37 @@
+package org.hibernate.search.backend.lucene.lowlevel.comparator.impl;
+
+import java.io.IOException;
+
+import org.hibernate.search.backend.lucene.lowlevel.docvalues.impl.DoubleMultiValuesToSingleValuesSource;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Pruning;
+import org.apache.lucene.search.comparators.DoubleComparator;
+
+public class DoubleValuesSourceComparator extends DoubleComparator {
+
+    private final DoubleMultiValuesToSingleValuesSource doubleValuesSource;
+
+    public DoubleValuesSourceComparator(int numHits, String field, Double missingValue, boolean reversed, Pruning pruning, DoubleMultiValuesToSingleValuesSource doubleValuesSource) {
+        super(numHits, field, missingValue, reversed, pruning);
+        this.doubleValuesSource = doubleValuesSource;
+    }
+
+    @Override
+    public LeafFieldComparator getLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+        return new DoubleValuesSourceLeafComparator(leafReaderContext);
+    }
+
+    private class DoubleValuesSourceLeafComparator extends DoubleLeafComparator {
+        DoubleValuesSourceLeafComparator(LeafReaderContext leafReaderContext) throws IOException {
+            super(leafReaderContext);
+        }
+
+        @Override
+        protected NumericDocValues getNumericDocValues(LeafReaderContext leafReaderContext, String field) throws IOException {
+            return doubleValuesSource.getValues(leafReaderContext, null).getRawDoubleValues();
+        }
+    }
+}

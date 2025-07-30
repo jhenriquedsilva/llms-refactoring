@@ -63,4 +63,5 @@ public class DoubleValuesSourceComparator extends DoubleComparator {
 
 If you want to suggest even more precise parameter names (depending on how the second argument in `getValues` is intended to be used), you could adapt further, but this already improves the clarity of the code for both maintainers and reviewers.
 
+Levenshtein edit-distance: 152
 Does not compile

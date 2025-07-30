@@ -210,4 +210,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 
 These changes improve code readability regarding parameter intent and naming consistency.
 
+Levenshtein edit-distance: 27
 Compiles

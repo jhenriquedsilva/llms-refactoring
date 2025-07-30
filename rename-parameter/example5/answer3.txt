@@ -228,4 +228,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 
 These refactorings increase code clarity while maintaining the original logic.
 
+Levenshtein edit-distance: 190
 Compiles

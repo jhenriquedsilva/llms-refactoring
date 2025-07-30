@@ -206,4 +206,5 @@ public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelS
 **Rationale**:
 The above renamings make parameter roles clearer and the code easier to read, review, and maintain. No logic has been changed—just names.
 
+Levenshtein edit-distance: 416
 Compiles

@@ -1,0 +1,109 @@
+package org.apache.flink.table.planner.hint;
+
+import org.apache.calcite.rel.BiRel;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.hint.Hintable;
+import org.apache.calcite.rel.hint.RelHint;
+import org.apache.calcite.rel.logical.LogicalCorrelate;
+import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql2rel.SqlToRelConverter;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+public class ClearQueryHintsWithInvalidPropagationShuttle extends QueryHintsRelShuttle {
+
+    @Override
+    protected RelNode visitBiRel(BiRel biRelNode) {
+        List<RelHint> allHints = ((Hintable) biRelNode).getHints();
+        Set<String> allHintNames = allHints.stream().map(hint -> hint.hintName).collect(Collectors.toSet());
+        if (allHintNames.stream().noneMatch(FlinkHints::isQueryHint)) {
+            return super.visit(biRelNode);
+        }
+        Optional<RelHint> firstAliasHint = allHints.stream().filter(hint -> FlinkHints.HINT_ALIAS.equals(hint.hintName)).findFirst();
+        if (!firstAliasHint.isPresent()) {
+            return super.visit(biRelNode);
+        }
+        List<RelHint> queryHintsPropagatedFromOuter = allHints.stream().filter(hint -> FlinkHints.isQueryHint(hint.hintName) && hint.inheritPath.size() > firstAliasHint.get().inheritPath.size()).collect(Collectors.toList());
+        if (queryHintsPropagatedFromOuter.isEmpty()) {
+            return super.visit(biRelNode);
+        }
+        RelNode updatedRelNode = biRelNode;
+        ClearOuterQueryHintShuttle clearOuterQueryHintShuttle;
+        for (RelHint queryHintToRemove : queryHintsPropagatedFromOuter) {
+            clearOuterQueryHintShuttle = new ClearOuterQueryHintShuttle(queryHintToRemove);
+            updatedRelNode = updatedRelNode.accept(clearOuterQueryHintShuttle);
+        }
+        return super.visit(updatedRelNode);
+    }
+
+    private static class ClearOuterQueryHintShuttle extends RelShuttleImpl {
+        private final Deque<Integer> currentInheritPath;
+
+        private final RelHint queryHintToRemove;
+
+        public ClearOuterQueryHintShuttle(RelHint queryHintToRemove) {
+            this.queryHintToRemove = queryHintToRemove;
+            this.currentInheritPath = new ArrayDeque<>();
+            this.currentInheritPath.addAll(queryHintToRemove.inheritPath);
+        }
+
+        @Override
+        protected RelNode visitChild(RelNode parent, int childIndex, RelNode childNode) {
+            currentInheritPath.addLast(childIndex);
+            RelNode updatedChildNode = super.visitChild(parent, childIndex, childNode);
+            currentInheritPath.removeLast();
+            return updatedChildNode;
+        }
+
+        @Override
+        public RelNode visit(LogicalCorrelate correlate) {
+            return visitBiRelNode(correlate);
+        }
+
+        @Override
+        public RelNode visit(LogicalJoin join) {
+            return visitBiRelNode(join);
+        }
+
+        private RelNode visitBiRelNode(BiRel biRelNode) {
+            Hintable hintableBiRelNode = (Hintable) biRelNode;
+            List<RelHint> nodeHints = new ArrayList<>(hintableBiRelNode.getHints());
+            Optional<RelHint> invalidQueryHint = getInvalidQueryHint(nodeHints);
+            if (invalidQueryHint.isPresent()) {
+                nodeHints.remove(invalidQueryHint.get());
+                return super.visit(hintableBiRelNode.withHints(nodeHints));
+            }
+            return super.visit(biRelNode);
+        }
+
+        private Optional<RelHint> getInvalidQueryHint(List<RelHint> nodeHints) {
+            for (RelHint candidateHint : nodeHints) {
+                if (candidateHint.hintName.equals(queryHintToRemove.hintName) && isMatchInvalidInheritPath(new ArrayList<>(currentInheritPath), candidateHint.inheritPath)) {
+                    return Optional.of(candidateHint);
+                }
+            }
+            return Optional.empty();
+        }
+
+        private boolean isMatchInvalidInheritPath(List<Integer> currentInheritPathList, List<Integer> candidateInheritPath) {
+            if (currentInheritPathList.size() != candidateInheritPath.size()) {
+                return false;
+            }
+            for (int i = 0; i < currentInheritPathList.size(); i++) {
+                if (!Objects.equals(currentInheritPathList.get(i), candidateInheritPath.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+}

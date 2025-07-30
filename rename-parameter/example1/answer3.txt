@@ -123,5 +123,6 @@ public class AuditEventDefaultFormatter implements AuditEventFormatter {
 **Summary:**
 **Rename parameter refactoring** was necessary for the `initStringBuilderWithOptimalBuffer` method where `severityLevelNameLength` was misleadingly named and has now been refactored to `severityLevelName`.
 
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

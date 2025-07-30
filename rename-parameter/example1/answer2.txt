@@ -117,5 +117,6 @@ public class AuditEventDefaultFormatter implements AuditEventFormatter {
 
 This improves readability and correctness of the identifier.
 
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

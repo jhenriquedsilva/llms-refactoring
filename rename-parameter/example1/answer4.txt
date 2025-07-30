@@ -119,5 +119,6 @@ public class AuditEventDefaultFormatter implements AuditEventFormatter {
 - The parameter `severityLevelNameLength` was misleading; it has been renamed to `severityLevelName` to better reflect its intended purpose.
 - No other parameters in the class are misleading.
 
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

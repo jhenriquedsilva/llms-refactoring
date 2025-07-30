@@ -217,5 +217,6 @@ public class ReflectionDiffBuilder<T> implements Builder<DiffResult<T>> {
 - The rest of the parameters use clear and descriptive names.
 - No other rename parameter refactoring is necessary in this class.
 
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

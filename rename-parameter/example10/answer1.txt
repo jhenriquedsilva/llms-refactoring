@@ -144,5 +144,6 @@ class XmlPrinterTest {
 
 **All usages are updated accordingly for clarity and improved readability.**
 
+Levenshtein edit-distance: 59
 Compiles
 Tests pass

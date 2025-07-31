@@ -153,4 +153,5 @@ class XmlPrinterTest {
 
 **These changes improve code readability through more descriptive parameter naming.**
 
+Levenshtein edit-distance: 45
 Does not compile

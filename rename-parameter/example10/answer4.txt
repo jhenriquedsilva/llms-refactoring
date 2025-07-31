@@ -166,4 +166,5 @@ class XmlPrinterTest {
 
 **End of refactoring.**
 
+Levenshtein edit-distance: 23
 Does not compile

@@ -118,3 +118,5 @@ public class ExhaustiveSwitch {
 
 **Summary:**
 Refactoring was applied to rename function parameters for clarity but not pattern variables or type parameters, as those are idiomatic and unambiguous in this context.
+
+Levenshtein edit-distance: 74

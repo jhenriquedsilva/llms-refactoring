@@ -148,3 +148,5 @@ public class ExhaustiveSwitch {
 ---
 
 **These changes improve code clarity without altering logic.**
+
+Levenshtein edit-distance: 154

@@ -124,3 +124,5 @@ public class ExhaustiveSwitch {
 - **testGenericSealedExhaustive** parameter renamed from `i` → `input`.
 
 These changes improve code readability and expressiveness.
+
+Levenshtein edit-distance: 68

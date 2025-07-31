@@ -121,3 +121,6 @@ public class ExhaustiveSwitch {
 - Renamed `C(int i)` record component to `C(int value)` for clarity.
 
 If you need further adjustments or stricter naming conventions, let me know!
+
+Levenshtein edit-distance: 185
+Compiles

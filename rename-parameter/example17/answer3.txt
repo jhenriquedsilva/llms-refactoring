@@ -119,3 +119,5 @@ public class ExhaustiveSwitch {
 
 **Summary:**
 Refactoring was applied to improve parameter and variable naming for clarity and readability. Let me know if you want further changes (such as Javadoc or more aggressive renaming of class/interface/type variables)!
+
+Levenshtein edit-distance: 172

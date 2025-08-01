@@ -315,5 +315,6 @@ public final class BridgeMethodResolver {
 
 Let me know if you need further adjustments (e.g., for variable names inside methods, or method renaming as well)!
 
+Levenshtein edit-distance: 388
 Compiles
 Tests pass

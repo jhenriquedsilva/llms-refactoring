@@ -319,5 +319,6 @@ If you prefer the original common variable names (`method`, `type`, `ifc`), ther
 **If you want to keep maximum consistency (especially with upstream Spring code), you may leave the original unchanged.**
 But the above version is a reasonable “slight” refactoring!
 
+Levenshtein edit-distance: 333
 Compiles
 Tests pass

@@ -1,39 +1,3 @@
-01-05-2025, 15:52
-
-**Analysis:**
-
-The code is requesting an analysis for "rename parameter" refactoring opportunities — specifically to spot low-quality or non-descriptive parameter names. In particular, this means looking for method arguments with generic names such as `properties`, `map`, or `params` where there may be room for improvement. However, it’s also important not to rename just for the sake of it: sometimes parameters map directly to fields/types with the same name, improving clarity.
-
-### Walkthrough of existing parameter names:
-
-- Most parameters names in this code reflect the class/type they represent. For example:
-  - `PulsarProperties properties` (standard pattern for configuration-typed fields/vars)
-  - `ClientBuilder clientBuilder`
-  - `PulsarConnectionDetails connectionDetails`
-  - `ProducerBuilder<T> producerBuilder`
-  - `ConsumerBuilder<T> consumerBuilder`
-  - `PulsarContainerProperties containerProperties`
-  - `PulsarProperties.Authentication properties` (note: can be ambiguous if another type named ‘properties’ is also used in nearby context.)
-  - `PulsarProperties.Consumer.Subscription properties` (also, general `properties`)
-  - `PropertyMapper map` (this could maybe be longer, but is a standard, widely-used name in Spring Boot’s mapping context)
-  - `Map<String, String> params` (these are the authentication params)
-
-**Problematic spots**:
-1. The repeated use of `properties` for different types (admin, client, consumer, producer, etc) inside different scopes.
-2. Similarly, the repeated `properties` for `PulsarProperties.Authentication` and `PulsarProperties.Consumer.Subscription`.
-3. The repeated short `map` for `PropertyMapper` in each method, although this is fairly standard in mapping code.
-4. `params` for the parameter map—this could be improved for clarity.
-
-**Best Practices Suggestion**:
-- Prefer using parameter names that clearly describe their role, especially when types can easily be confused or overloaded (e.g. `subscriptionProperties`, `clientProperties`, etc).
-- For `map`, it’s fine in context of `PropertyMapper` because it’s very idiomatic and local.
-- For `params`, maybe `authenticationParams` or `authParamsMap`.
-
-### **Refactored Code**
-
-Below is the class with improved parameter names wherever ambiguity or improvement is possible:
-
-```java
 package org.springframework.boot.autoconfigure.pulsar;
 
 import java.time.Duration;
@@ -57,12 +21,6 @@ import org.springframework.pulsar.listener.PulsarContainerProperties;
 import org.springframework.pulsar.reader.PulsarReaderContainerProperties;
 import org.springframework.util.StringUtils;
 
-/**
- * Helper class used to map {@link PulsarProperties} to various builder customizers.
- *
- * @author Chris Bono
- * @author Phillip Webb
- */
 final class PulsarPropertiesMapper {
 
     private final PulsarProperties properties;
@@ -91,24 +49,20 @@ final class PulsarPropertiesMapper {
         customizeAuthentication(adminBuilder::authentication, adminProperties.getAuthentication());
     }
 
-    private void customizeAuthentication(AuthenticationConsumer authentication,
-                                         PulsarProperties.Authentication authenticationProperties) {
+    private void customizeAuthentication(AuthenticationConsumer authentication, PulsarProperties.Authentication authenticationProperties) {
         if (!StringUtils.hasText(authenticationProperties.getPluginClassName())) {
             return;
         }
         try {
-            // sort keys for testing and readability
             Map<String, String> authParamsMap = new TreeMap<>(authenticationProperties.getParam());
             String authParamString;
             try {
                 authParamString = ObjectMapperFactory.create().writeValueAsString(authParamsMap);
-            }
-            catch (Exception ex) {
+            } catch (Exception ex) {
                 throw new IllegalStateException("Could not convert auth parameters to encoded string", ex);
             }
             authentication.accept(authenticationProperties.getPluginClassName(), authParamString);
-        }
-        catch (UnsupportedAuthenticationException ex) {
+        } catch (UnsupportedAuthenticationException ex) {
             throw new IllegalStateException("Unable to configure Pulsar authentication", ex);
         }
     }
@@ -193,19 +147,4 @@ final class PulsarPropertiesMapper {
         void accept(String authPluginClassName, String authParams) throws UnsupportedAuthenticationException;
 
     }
-
 }
-```
-
-**Summary of Changes:**
-- Renamed parameter and variable names for clarity:
-  - `properties` → `clientProperties`, `adminProperties`, `producerProperties`, `consumerProperties`, `subscriptionProperties`, `listenerProperties`, `readerProperties`, `authenticationProperties` as appropriate.
-  - `map` → `propertyMapper`
-  - `params` → `authParamsMap`
-
-**Conclusion:**
-There was opportunity for more expressive parameter names. The above code now more clearly distinguishes between different types of "properties" and between mappings, which both improves readability and reduces risk of confusion.
-
-Levenshtein edit-distance: 1042
-Compiles
-Tests pass

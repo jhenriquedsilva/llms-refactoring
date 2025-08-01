@@ -275,5 +275,6 @@ public class DateCache
 
 **These renamings improve clarity of the code and make parameter meanings explicit and self-documenting.**
 
+Levenshtein edit-distance: 211
 Compiles
 Tests pass

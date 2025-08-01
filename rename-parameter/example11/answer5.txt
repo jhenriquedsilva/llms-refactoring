@@ -267,5 +267,6 @@ public class DateCache
 
 These changes will make the code base easier to understand and maintain.
 
+Levenshtein edit-distance: 176
 Compiles
 Tests pass

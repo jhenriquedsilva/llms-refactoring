@@ -187,5 +187,6 @@ public class DataBinderConstructTests {
 
 **No further changes are necessary.**
 
+Levenshtein edit-distance: 18
 Compiles
 Tests pass

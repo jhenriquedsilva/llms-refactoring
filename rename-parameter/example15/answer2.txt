@@ -202,5 +202,6 @@ public class DataBinderConstructTests {
 
 All other parameters are already adequately named.
 
+Levenshtein edit-distance: 18
 Compiles
 Tests pass

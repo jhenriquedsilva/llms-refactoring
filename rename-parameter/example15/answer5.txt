@@ -215,5 +215,6 @@ public class DataBinderConstructTests {
 - In `DataClass(String param1, boolean p2, Optional<Integer> optionalParam)`, renamed `p2` → `param2`.
 - All other parameters are sufficiently descriptive and follow conventions. No further rename needed.
 
+Levenshtein edit-distance: 18
 Compiles
 Tests pass

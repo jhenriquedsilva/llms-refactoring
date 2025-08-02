@@ -463,4 +463,5 @@ public final class ReincludedRootsUtil {
 
 **This version increases clarity and consistency, especially for libraries/users new to the code.** If you would like to see further improvements (e.g., local variable names, field names, etc.), please let me know!
 
+Levenshtein edit-distance: 125
 Compiles

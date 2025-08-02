@@ -729,5 +729,6 @@ public class BouncyCastleGpgKeyLocator {
 
 **This improves code clarity and intent, especially for code reviewers and maintainers.**
 
+Levenshtein edit-distance: 297
 Compiles
 Tests pass

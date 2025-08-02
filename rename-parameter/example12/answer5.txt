@@ -731,5 +731,6 @@ public class BouncyCastleGpgKeyLocator {
 **Summary:**
 The class did contain parameter name issues which were improved for readability and clarity. The refactored code is above.
 
+Levenshtein edit-distance: 195
 Compiles
 Tests pass

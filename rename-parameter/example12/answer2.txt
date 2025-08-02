@@ -739,5 +739,6 @@ public class BouncyCastleGpgKeyLocator {
 
 **No behavioral changes were introduced. The primary improvements focus on parameter clarity and naming consistency, making the code much more readable and maintainable.**
 
+Levenshtein edit-distance: 562
 Compiles
 Tests pass

@@ -1,45 +1,3 @@
-01-05-2025, 14:56
-
-### Rename Parameter Refactoring Review
-
-In this code, the main parameters of method signatures are often generically named — for example:
-- `Class<?> testClass`
-- `Events tests`
-- `String msg`
-- `Events testEvent`
-From a **readability** and **clarity** perspective, we can improve some of these parameter names.
-
-#### Opportunities for Rename Parameter Refactoring
-
-- `testClass` → `testCaseClass`: To more clearly indicate that this class is a **test case** class.
-- `tests` (of type `Events`) → `eventResults` or `testEvents`: This avoids confusion between test runner/test class and the events/results returned by execution.
-- `msg` (of type `String`) → `expectedMessage`: To show that the string is the assertion message you're expecting.
-- `testEvent` (of type `Events`) → `testEvents`: For better plurality and clarity.
-- `methodName` remains fine, as does `listener` (clear with the annotation), and `stats` (callback parameter is standard).
-
-With these improvements, the method signatures, e.g.:
-```java
-private static void assertFailingWithMessage(Events testEvent, String msg)
-```
-becomes
-```java
-private static void assertFailingWithMessage(Events testEvents, String expectedMessage)
-```
-Also, for
-```java
-private void assertMissingCloseMethod(Class<?> testClass, String methodName)
-```
-becomes
-```java
-private void assertMissingCloseMethod(Class<?> testCaseClass, String methodName)
-```
-And within the methods, variable names are updated accordingly.
-
----
-
-## Refactored Code
-
-```java
 package org.junit.jupiter.engine.extension;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
@@ -69,11 +27,6 @@ import org.junit.jupiter.engine.AbstractJupiterTestEngineTests;
 import org.junit.platform.commons.logging.LogRecordListener;
 import org.junit.platform.testkit.engine.Events;
 
-/**
- * Integration tests for {@link AutoClose @AutoClose} and the {@link AutoCloseExtension}.
- *
- * @since 5.11
- */
 class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
     private static final List<String> recorder = new ArrayList<>();
@@ -88,8 +41,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     @Test
     void blankCloseMethodName() {
         Class<?> testCaseClass = BlankCloseMethodNameTestCase.class;
-        String expectedMessage = String.format("@AutoClose on field %s.field must specify a method name.",
-                testCaseClass.getCanonicalName());
+        String expectedMessage = String.format("@AutoClose on field %s.field must specify a method name.", testCaseClass.getCanonicalName());
         Events testEvents = executeTestsForClass(testCaseClass).testEvents();
         assertFailingWithMessage(testEvents, expectedMessage);
     }
@@ -97,8 +49,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     @Test
     void primitiveTypeCannotBeClosed() {
         Class<?> testCaseClass = PrimitiveFieldTestCase.class;
-        String expectedMessage = String.format("@AutoClose is not supported on primitive field %s.x.",
-                testCaseClass.getCanonicalName());
+        String expectedMessage = String.format("@AutoClose is not supported on primitive field %s.x.", testCaseClass.getCanonicalName());
         Events testEvents = executeTestsForClass(testCaseClass).testEvents();
         assertFailingWithMessage(testEvents, expectedMessage);
     }
@@ -114,8 +65,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     @Test
     void nullCannotBeClosed(@TrackLogRecords LogRecordListener listener) {
         Class<?> testCaseClass = NullCloseableFieldTestCase.class;
-        String expectedMessage = String.format("Cannot @AutoClose field %s.field because it is null.",
-                testCaseClass.getCanonicalName());
+        String expectedMessage = String.format("Cannot @AutoClose field %s.field because it is null.", testCaseClass.getCanonicalName());
         Events testEvents = executeTestsForClass(testCaseClass).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(1).failed(0));
         assertThat(listener.stream(Level.WARNING)).map(LogRecord::getMessage).anyMatch(expectedMessage::equals);
@@ -131,15 +81,10 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         assertMissingCloseMethod(NoShutdownMethodTestCase.class, "shutdown");
     }
 
-    /**
-     * Tests prerequisites for the {@link AutoCloseSpy} implementation.
-     */
     @Test
     void spyPermitsOnlyASingleAction() {
         AutoCloseSpy spy = new AutoCloseSpy("preconditions");
-
         spy.close();
-
         assertThatIllegalStateException().isThrownBy(spy::run).withMessage("Already closed via close()");
         assertThatIllegalStateException().isThrownBy(spy::close).withMessage("Already closed via close()");
         assertThat(recorder).containsExactly("AutoCloseTests.preconditions.close()");
@@ -149,16 +94,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithInstancePerMethodTestClass() {
         Events testEvents = executeTestsForClass(InstancePerMethodTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                // test1()
-                "InstancePerMethodTestCase.runnable.run()", //
-                "InstancePerMethodTestCase.closable.close()", //
-                // test2()
-                "InstancePerMethodTestCase.runnable.run()", //
-                "InstancePerMethodTestCase.closable.close()", //
-                // Class-level cleanup
-                "InstancePerMethodTestCase.staticClosable.close()"//
-        );
+        assertThat(recorder).containsExactly("InstancePerMethodTestCase.runnable.run()", "InstancePerMethodTestCase.closable.close()", "InstancePerMethodTestCase.runnable.run()", "InstancePerMethodTestCase.closable.close()", "InstancePerMethodTestCase.staticClosable.close()");
     }
 
     @Test
@@ -172,46 +108,20 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithNestedTestClassesWithInstancePerMethod() {
         Events testEvents = executeTestsForClass(InstancePerMethodEnclosingTestCase.NestedTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(1));
-        assertThat(recorder).containsExactly(//
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()"//
-        );
-
-        // Reset tracking
+        assertThat(recorder).containsExactly("NestedTestCase.nestedClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedStaticClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()");
         resetTracking();
-
         testEvents = executeTestsForClass(InstancePerMethodEnclosingTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()" //
-        );
+        assertThat(recorder).containsExactly("InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingClosable.close()", "NestedTestCase.nestedStaticClosable.close()", "InstancePerMethodEnclosingTestCase.enclosingStaticClosable.close()");
     }
 
     @Test
     void fieldsAreProperlyClosedWithNestedTestClassesWithInstancePerClass() {
-        // With test instance lifecycle "per class" mode, we actually expect the
-        // same behavior for the closing of all fields when the nested test class
-        // is run standalone AND when it's run along with its enclosing class.
-        String[] expected = { //
-                "NestedTestCase.nestedStaticClosable.close()", //
-                "NestedTestCase.nestedClosable.close()", //
-                "InstancePerClassEnclosingTestCase.enclosingStaticClosable.close()", //
-                "InstancePerClassEnclosingTestCase.enclosingClosable.close()" //
-        };
-
+        String[] expected = {"NestedTestCase.nestedStaticClosable.close()", "NestedTestCase.nestedClosable.close()", "InstancePerClassEnclosingTestCase.enclosingStaticClosable.close()", "InstancePerClassEnclosingTestCase.enclosingClosable.close()"};
         Events testEvents = executeTestsForClass(InstancePerClassEnclosingTestCase.NestedTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(1));
         assertThat(recorder).containsExactly(expected);
-
-        // Reset tracking
         resetTracking();
-
         testEvents = executeTestsForClass(InstancePerClassEnclosingTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(2));
         assertThat(recorder).containsExactly(expected);
@@ -221,41 +131,19 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
     void fieldsAreProperlyClosedWithinTestClassHierarchy() {
         Events testEvents = executeTestsForClass(SuperTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(1));
-        assertThat(recorder).containsExactly(//
-                // superTest()
-                "SuperTestCase.superClosable.close()", //
-                // Class-level cleanup
-                "SuperTestCase.superStaticClosable.close()" //
-        );
-
-        // Reset tracking
+        assertThat(recorder).containsExactly("SuperTestCase.superClosable.close()", "SuperTestCase.superStaticClosable.close()");
         resetTracking();
-
         testEvents = executeTestsForClass(SubTestCase.class).testEvents();
         testEvents.assertStatistics(stats -> stats.succeeded(2));
-        assertThat(recorder).containsExactly(//
-                // superTest()
-                "SubTestCase.subClosable.close()", //
-                "SuperTestCase.superClosable.close()", //
-                // subTest()
-                "SubTestCase.subClosable.close()", //
-                "SuperTestCase.superClosable.close()", //
-                // Class-level cleanup in subclass
-                "SubTestCase.subStaticClosable.close()", //
-                // Class-level cleanup in superclass
-                "SuperTestCase.superStaticClosable.close()" //
-        );
+        assertThat(recorder).containsExactly("SubTestCase.subClosable.close()", "SuperTestCase.superClosable.close()", "SubTestCase.subClosable.close()", "SuperTestCase.superClosable.close()", "SubTestCase.subStaticClosable.close()", "SuperTestCase.superStaticClosable.close()");
     }
 
     private static void assertFailingWithMessage(Events testEvents, String expectedMessage) {
-        testEvents//
-                .assertStatistics(stats -> stats.failed(1))//
-                .assertThatEvents().haveExactly(1, finishedWithFailure(message(expectedMessage)));
+        testEvents.assertStatistics(stats -> stats.failed(1)).assertThatEvents().haveExactly(1, finishedWithFailure(message(expectedMessage)));
     }
 
     private void assertMissingCloseMethod(Class<?> testCaseClass, String methodName) {
-        String expectedMessage = String.format("Cannot @AutoClose field %s.field because %s does not define method %s().",
-                testCaseClass.getCanonicalName(), String.class.getName(), methodName);
+        String expectedMessage = String.format("Cannot @AutoClose field %s.field because %s does not define method %s().", testCaseClass.getCanonicalName(), String.class.getName(), methodName);
         Events testEvents = executeTestsForClass(testCaseClass).testEvents();
         assertFailingWithMessage(testEvents, expectedMessage);
     }
@@ -320,7 +208,7 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         @AutoClose
         private final AutoCloseable closable = new AutoCloseSpy("closable");
 
-        @AutoClose("   run      ") // intentionally contains extra whitespace.
+        @AutoClose("   run      ")
         private final Runnable runnable = new AutoCloseSpy("runnable");
 
         @AutoClose
@@ -430,8 +318,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
         final AutoCloseable superClosable = new AutoCloseSpy("superClosable");
 
         @BeforeAll
-        // WARNING: if this method is named setup() AND the @BeforeAll method in
-        // SubTestCase is also named setup(), the latter will "hide" the former.
         static void superSetup() {
             superStaticClosable = new AutoCloseSpy("superStaticClosable");
         }
@@ -487,17 +373,4 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
             recorder.add(this.prefix + this.invokedMethod);
         }
     }
-
 }
-```
-
----
-
-**Summary:**
-- All parameter renames clarify intentions and improve code readability.
-- No change in logic or test coverage.
-- Most identifiers outside method parameters were already clear.
-
-Levenshtein edit-distance: 346
-Compiles
-Tests pass

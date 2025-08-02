@@ -533,5 +533,6 @@ class AutoCloseTests extends AbstractJupiterTestEngineTests {
 
 If you need further parameter naming detail or other refactorings, feel free to ask!
 
+Levenshtein edit-distance: 158
 Compiles
 Tests pass

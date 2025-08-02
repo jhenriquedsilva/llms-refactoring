@@ -1,18 +1,3 @@
-01-05-2025, 15:43
-
-There **are** opportunities for **Rename Parameter Refactoring** in this code, as several parameter names are ambiguous or use abbreviations that could be confusing for developers who are new to this codebase. Improving parameter names increases readability and maintainability.
-
-Here are concrete examples from the provided code:
-- In `withRetryExpiryTime(long expiryTime, TimeUnit unit)`, the parameter `expiryTime` could be more explicit as `retryExpiryDuration`.
-- In `withCollectionCacheTtl(long timeToLive, TimeUnit unit)`, `timeToLive` could be clarified as `cacheTtl` or `collectionCacheTtl`.
-- In `withZkConnectTimeout(int zkConnectTimeout, TimeUnit unit)` and `withZkClientTimeout(int zkClientTimeout, TimeUnit unit)`: the prefix `zk` could be more explicit, e.g., `zooKeeperConnectTimeoutMs`, and the unit could be encoded into the name.
-- In the constructors and methods using `zkHosts`, `zkChroot`, the abbreviations (`zk`) could be expanded to `zooKeeperHosts`, `zooKeeperChroot` for better clarity, especially for newer developers.
-
-Below is the refactored code where **parameters within method signatures and constructors have been renamed for clarity**. Comments have been updated to match the new names.
-
----
-
-```java
 package org.apache.solr.client.solrj.impl;
 
 import java.io.IOException;
@@ -21,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.solr.client.solrj.ResponseParser;
 import org.apache.solr.client.solrj.impl.SolrZkClientTimeout.SolrZkClientTimeoutAware;
 import org.apache.solr.client.solrj.request.RequestWriter;
@@ -57,12 +43,8 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
             this.myClient.setParser(builder.responseParser);
         }
         this.stateProvider = builder.stateProvider;
-
-        this.collectionStateCache.timeToLiveMs =
-                TimeUnit.MILLISECONDS.convert(builder.timeToLiveSeconds, TimeUnit.SECONDS);
-
+        this.collectionStateCache.timeToLiveMs = TimeUnit.MILLISECONDS.convert(builder.timeToLiveSeconds, TimeUnit.SECONDS);
         this.locks = objectList(builder.parallelCacheRefreshesLocks);
-
         this.lbClient = new LBHttp2SolrClient.Builder(myClient).build();
     }
 
@@ -70,11 +52,9 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
     public void close() throws IOException {
         stateProvider.close();
         lbClient.close();
-
         if (clientIsInternal && myClient != null) {
             myClient.close();
         }
-
         super.close();
     }
 
@@ -109,9 +89,7 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
         protected Http2SolrClient.Builder internalClientBuilder;
         private RequestWriter requestWriter;
         private ResponseParser responseParser;
-        private long retryExpiryTimeNano =
-                TimeUnit.NANOSECONDS.convert(3, TimeUnit.SECONDS); // 3 seconds or 3 million nanos
-
+        private long retryExpiryTimeNano = TimeUnit.NANOSECONDS.convert(3, TimeUnit.SECONDS);
         private String defaultCollection;
         private long timeToLiveSeconds = 60;
         private int parallelCacheRefreshesLocks = 3;
@@ -119,22 +97,10 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
         private int zooKeeperClientTimeoutMs = SolrZkClientTimeout.DEFAULT_ZK_CLIENT_TIMEOUT;
         private boolean canUseZkACLs = true;
 
-        /**
-         * Provide a series of Solr URLs to be used when configuring {@link CloudHttp2SolrClient}
-         * instances.
-         */
         public Builder(List<String> solrUrls) {
             this.solrUrls = solrUrls;
         }
 
-        /**
-         * Provide a series of ZooKeeper hosts which will be used when configuring {@link CloudHttp2SolrClient}
-         * instances.
-         *
-         * @param zooKeeperHosts a List of at least one ZooKeeper host and port (e.g. "zookeeper1:2181")
-         * @param zooKeeperChroot the path to the root ZooKeeper node containing Solr data. Provide {@code
-         *     java.util.Optional.empty()} if no ZooKeeper chroot is used.
-         */
         public Builder(List<String> zooKeeperHosts, Optional<String> zooKeeperChroot) {
             this.zooKeeperHosts = zooKeeperHosts;
             if (zooKeeperChroot.isPresent()) this.zooKeeperChroot = zooKeeperChroot.get();
@@ -221,8 +187,7 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 
         public Builder withHttpClient(Http2SolrClient httpClient) {
             if (this.internalClientBuilder != null) {
-                throw new IllegalStateException(
-                        "The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+                throw new IllegalStateException("The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
             }
             this.httpClient = httpClient;
             return this;
@@ -230,8 +195,7 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
 
         public Builder withInternalClientBuilder(Http2SolrClient.Builder internalClientBuilder) {
             if (this.httpClient != null) {
-                throw new IllegalStateException(
-                        "The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+                throw new IllegalStateException("The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
             }
             this.internalClientBuilder = internalClientBuilder;
             return this;
@@ -250,11 +214,9 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
         public CloudHttp2SolrClient build() {
             if (stateProvider == null) {
                 if (!zooKeeperHosts.isEmpty() && !solrUrls.isEmpty()) {
-                    throw new IllegalArgumentException(
-                            "Both zooKeeperHost(s) & solrUrl(s) have been specified. Only specify one.");
+                    throw new IllegalArgumentException("Both zooKeeperHost(s) & solrUrl(s) have been specified. Only specify one.");
                 } else if (!zooKeeperHosts.isEmpty()) {
-                    stateProvider =
-                            ClusterStateProvider.newZkClusterStateProvider(zooKeeperHosts, zooKeeperChroot, canUseZkACLs);
+                    stateProvider = ClusterStateProvider.newZkClusterStateProvider(zooKeeperHosts, zooKeeperChroot, canUseZkACLs);
                     if (stateProvider instanceof SolrZkClientTimeoutAware) {
                         var timeoutAware = (SolrZkClientTimeoutAware) stateProvider;
                         timeoutAware.setZkClientTimeout(zooKeeperClientTimeoutMs);
@@ -264,12 +226,7 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
                     try {
                         stateProvider = new Http2ClusterStateProvider(solrUrls, httpClient);
                     } catch (Exception e) {
-                        throw new RuntimeException(
-                                "Couldn't initialize a HttpClusterStateProvider (is/are the "
-                                        + "Solr server(s), "
-                                        + solrUrls
-                                        + ", down?)",
-                                e);
+                        throw new RuntimeException("Couldn't initialize a HttpClusterStateProvider (is/are the " + "Solr server(s), " + solrUrls + ", down?)", e);
                     }
                 } else {
                     throw new IllegalArgumentException("Both zooKeeperHosts and solrUrl cannot be null.");
@@ -279,21 +236,3 @@ public class CloudHttp2SolrClient extends CloudSolrClient {
         }
     }
 }
-```
-
-**Summary of Changes:**
-- `zkHosts` → `zooKeeperHosts`
-- `zkChroot` → `zooKeeperChroot`
-- `zkConnectTimeout` → `zooKeeperConnectTimeoutMs`
-- `zkClientTimeout` → `zooKeeperClientTimeoutMs`
-- `expiryTime` → `retryExpiryDuration`
-- `unit` (where ambiguous) → `timeUnit`
-- `timeToLive` (in cache) → `collectionCacheTtl`
-- Method/multi-word variables likewise renamed for parameter clarity
-
-**If you wish to keep the public API unchanged, you should consider only updating the parameter names internally for clarity (without breaking backward compatibility for existing clients using the method names).**
-
-Let me know if you want a version retaining shortened ("zk") names for compatibility in the API but improving code clarity internally!
-
-Levenshtein edit-distance: 399
-Compiles

@@ -1,0 +1,238 @@
+package org.apache.solr.client.solrj.impl;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.solr.client.solrj.ResponseParser;
+import org.apache.solr.client.solrj.impl.SolrZkClientTimeout.SolrZkClientTimeoutAware;
+import org.apache.solr.client.solrj.request.RequestWriter;
+import org.apache.solr.client.solrj.request.UpdateRequest;
+import org.apache.solr.common.SolrException;
+
+@SuppressWarnings("serial")
+public class CloudHttp2SolrClient extends CloudSolrClient {
+
+    private final ClusterStateProvider stateProvider;
+    private final LBHttp2SolrClient lbClient;
+    private final Http2SolrClient myClient;
+    private final boolean clientIsInternal;
+
+    protected CloudHttp2SolrClient(Builder builder) {
+        super(builder.shardLeadersOnly, builder.parallelUpdates, builder.directUpdatesToLeadersOnly);
+        if (builder.httpClient == null) {
+            this.clientIsInternal = true;
+            if (builder.internalClientBuilder == null) {
+                this.myClient = new Http2SolrClient.Builder().build();
+            } else {
+                this.myClient = builder.internalClientBuilder.build();
+            }
+        } else {
+            this.clientIsInternal = false;
+            this.myClient = builder.httpClient;
+        }
+        this.retryExpiryTimeNano = builder.retryExpiryTimeNano;
+        this.defaultCollection = builder.defaultCollection;
+        if (builder.requestWriter != null) {
+            this.myClient.requestWriter = builder.requestWriter;
+        }
+        if (builder.responseParser != null) {
+            this.myClient.setParser(builder.responseParser);
+        }
+        this.stateProvider = builder.stateProvider;
+        this.collectionStateCache.timeToLiveMs = TimeUnit.MILLISECONDS.convert(builder.cacheRefreshTtlSeconds, TimeUnit.SECONDS);
+        this.locks = objectList(builder.cacheRefreshLockCount);
+        this.lbClient = new LBHttp2SolrClient.Builder(myClient).build();
+    }
+
+    @Override
+    public void close() throws IOException {
+        stateProvider.close();
+        lbClient.close();
+        if (clientIsInternal && myClient != null) {
+            myClient.close();
+        }
+        super.close();
+    }
+
+    @Override
+    public LBHttp2SolrClient getLbClient() {
+        return lbClient;
+    }
+
+    @Override
+    public ClusterStateProvider getClusterStateProvider() {
+        return stateProvider;
+    }
+
+    public Http2SolrClient getHttpClient() {
+        return myClient;
+    }
+
+    @Override
+    protected boolean wasCommError(Throwable rootCause) {
+        return false;
+    }
+
+    public static class Builder {
+        protected Collection<String> zkHosts = new ArrayList<>();
+        protected List<String> solrUrls = new ArrayList<>();
+        protected String zkChroot;
+        protected Http2SolrClient httpClient;
+        protected boolean shardLeadersOnly = true;
+        protected boolean directUpdatesToLeadersOnly = false;
+        protected boolean parallelUpdates = true;
+        protected ClusterStateProvider stateProvider;
+        protected Http2SolrClient.Builder internalClientBuilder;
+        private RequestWriter requestWriter;
+        private ResponseParser responseParser;
+        private long retryExpiryTimeNano = TimeUnit.NANOSECONDS.convert(3, TimeUnit.SECONDS);
+        private String defaultCollection;
+        private long cacheRefreshTtlSeconds = 60;
+        private int cacheRefreshLockCount = 3;
+        private int zkConnectTimeout = SolrZkClientTimeout.DEFAULT_ZK_CONNECT_TIMEOUT;
+        private int zkClientTimeout = SolrZkClientTimeout.DEFAULT_ZK_CLIENT_TIMEOUT;
+        private boolean canUseZkACLs = true;
+
+        public Builder(List<String> solrUrls) {
+            this.solrUrls = solrUrls;
+        }
+
+        public Builder(List<String> zkHosts, Optional<String> zkChroot) {
+            this.zkHosts = zkHosts;
+            if (zkChroot.isPresent()) this.zkChroot = zkChroot.get();
+        }
+
+        public Builder canUseZkACLs(boolean canUseZkACLs) {
+            this.canUseZkACLs = canUseZkACLs;
+            return this;
+        }
+
+        public Builder sendUpdatesOnlyToShardLeaders() {
+            shardLeadersOnly = true;
+            return this;
+        }
+
+        public Builder sendUpdatesToAnyReplica() {
+            shardLeadersOnly = false;
+            return this;
+        }
+
+        public Builder sendDirectUpdatesToShardLeadersOnly() {
+            directUpdatesToLeadersOnly = true;
+            return this;
+        }
+
+        public Builder sendDirectUpdatesToAnyShardReplica() {
+            directUpdatesToLeadersOnly = false;
+            return this;
+        }
+
+        public Builder withRequestWriter(RequestWriter requestWriter) {
+            this.requestWriter = requestWriter;
+            return this;
+        }
+
+        public Builder withResponseParser(ResponseParser responseParser) {
+            this.responseParser = responseParser;
+            return this;
+        }
+
+        public Builder withParallelUpdates(boolean parallelUpdates) {
+            this.parallelUpdates = parallelUpdates;
+            return this;
+        }
+
+        @Deprecated(since = "9.2")
+        public Builder setParallelCacheRefreshes(int cacheRefreshLockCount) {
+            this.withParallelCacheRefreshes(cacheRefreshLockCount);
+            return this;
+        }
+
+        public Builder withParallelCacheRefreshes(int cacheRefreshLockCount) {
+            this.cacheRefreshLockCount = cacheRefreshLockCount;
+            return this;
+        }
+
+        @Deprecated(since = "9.2")
+        public Builder setRetryExpiryTime(int retryExpiryTimeSecs) {
+            this.withRetryExpiryTime(retryExpiryTimeSecs, TimeUnit.SECONDS);
+            return this;
+        }
+
+        public Builder withRetryExpiryTime(long retryExpiryTime, TimeUnit unit) {
+            this.retryExpiryTimeNano = TimeUnit.NANOSECONDS.convert(retryExpiryTime, unit);
+            return this;
+        }
+
+        public Builder withDefaultCollection(String collection) {
+            this.defaultCollection = collection;
+            return this;
+        }
+
+        @Deprecated(since = "9.2")
+        public Builder withCollectionCacheTtl(int cacheRefreshTtlSeconds) {
+            withCollectionCacheTtl(cacheRefreshTtlSeconds, TimeUnit.SECONDS);
+            return this;
+        }
+
+        public Builder withCollectionCacheTtl(long cacheRefreshTtl, TimeUnit unit) {
+            assert cacheRefreshTtl > 0;
+            this.cacheRefreshTtlSeconds = TimeUnit.SECONDS.convert(cacheRefreshTtl, unit);
+            return this;
+        }
+
+        public Builder withHttpClient(Http2SolrClient httpClient) {
+            if (this.internalClientBuilder != null) {
+                throw new IllegalStateException("The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+            }
+            this.httpClient = httpClient;
+            return this;
+        }
+
+        public Builder withInternalClientBuilder(Http2SolrClient.Builder internalClientBuilder) {
+            if (this.httpClient != null) {
+                throw new IllegalStateException("The builder can't accept an httpClient AND an internalClientBuilder, only one of those can be provided");
+            }
+            this.internalClientBuilder = internalClientBuilder;
+            return this;
+        }
+
+        public Builder withZkConnectTimeout(int zkConnectTimeout, TimeUnit unit) {
+            this.zkConnectTimeout = Math.toIntExact(unit.toMillis(zkConnectTimeout));
+            return this;
+        }
+
+        public Builder withZkClientTimeout(int zkClientTimeout, TimeUnit unit) {
+            this.zkClientTimeout = Math.toIntExact(unit.toMillis(zkClientTimeout));
+            return this;
+        }
+
+        public CloudHttp2SolrClient build() {
+            if (stateProvider == null) {
+                if (!zkHosts.isEmpty() && !solrUrls.isEmpty()) {
+                    throw new IllegalArgumentException("Both zkHosts and solrUrls have been specified. Only specify one.");
+                } else if (!zkHosts.isEmpty()) {
+                    stateProvider = ClusterStateProvider.newZkClusterStateProvider(zkHosts, zkChroot, canUseZkACLs);
+                    if (stateProvider instanceof SolrZkClientTimeoutAware) {
+                        var timeoutAware = (SolrZkClientTimeoutAware) stateProvider;
+                        timeoutAware.setZkClientTimeout(zkClientTimeout);
+                        timeoutAware.setZkConnectTimeout(zkConnectTimeout);
+                    }
+                } else if (!solrUrls.isEmpty()) {
+                    try {
+                        stateProvider = new Http2ClusterStateProvider(solrUrls, httpClient);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Couldn't initialize a HttpClusterStateProvider (are the Solr servers, " + solrUrls + ", down?)", e);
+                    }
+                } else {
+                    throw new IllegalArgumentException("Both zkHosts and solrUrls cannot be null.");
+                }
+            }
+            return new CloudHttp2SolrClient(this);
+        }
+    }
+}

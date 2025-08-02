@@ -226,4 +226,5 @@ public class PreparedStatementGroupStandard implements PreparedStatementGroup {
 
 **These changes improve clarity and reduce the cognitive load for maintainers.**
 
+Levenshtein edit-distance: 324
 Compiles

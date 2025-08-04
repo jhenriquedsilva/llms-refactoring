@@ -631,5 +631,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 
 **These changes improve readability and clarity for developers, without changing any logic.**
 
+Levenshtein edit-distance: 132
 Compiles
 Tests pass

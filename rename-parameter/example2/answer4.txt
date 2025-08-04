@@ -631,5 +631,6 @@ public abstract class AbstractOrigin<T, B extends AbstractOrigin<T, B>> extends 
 
 **If you have other rename criteria, please specify!**
 
+Levenshtein edit-distance: 0
 Compiles
 Tests pass

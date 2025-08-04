@@ -669,4 +669,5 @@ public class WeightedSpanTermExtractor {
 **Result:**
 The class is functionally identical, but with more descriptive parameter/local names for easier review and maintenance.
 
+Levenshtein edit-distance: 922
 Compiles

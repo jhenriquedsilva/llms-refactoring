@@ -640,4 +640,4 @@ public class MvcUriComponentsBuilder {
 Compiles
 Tests pass
 
-Calculates Levenshtein
+Calculates Levenshtein: 837

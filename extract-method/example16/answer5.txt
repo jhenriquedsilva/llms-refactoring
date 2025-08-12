@@ -667,4 +667,4 @@ If you want to extract methods for other duplicated code logic elsewhere, feel f
 Compiles
 Tests pass
 
-Calculates Levenshtein
+Calculates Levenshtein: 1147

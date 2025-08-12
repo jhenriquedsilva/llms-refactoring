@@ -614,4 +614,4 @@ public class MvcUriComponentsBuilder {
 
 Compiles
 Tests pass
-Levenshtein edit-distance: 15922
+Levenshtein edit-distance: 833

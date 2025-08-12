@@ -110,4 +110,5 @@ public class RemoteClusterCredentialsManager {
 
 **No other extract method refactorings are necessary for this code.**
 
-Levenshtein edit-distance: 668
+Levenshtein edit-distance: 654
+Compiles

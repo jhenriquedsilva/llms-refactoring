@@ -99,4 +99,5 @@ public class RemoteClusterCredentialsManager {
 There was an opportunity for an **extract method** refactoring by moving the duplicate logging logic into a helper method.
 All other logic appears fine and does not exhibit duplication warranting refactoring.
 
-Levenshtein edit-distance: 646
+Levenshtein edit-distance: 622
+Compiles

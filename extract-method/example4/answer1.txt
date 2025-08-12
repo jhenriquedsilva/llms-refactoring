@@ -98,4 +98,5 @@ public class RemoteClusterCredentialsManager {
 
 This improves code readability and maintainability by removing duplication.
 
-Levenshtein edit-distance: 643
+Levenshtein edit-distance: 626
+Compiles

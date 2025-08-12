@@ -1,13 +1,3 @@
-Extract method refactorings are frequently employed to remove duplicate code snippets to improve readability and reusability. As a developer, imagine your team leader requests you to review a piece of code to identify potential extract method refactoring opportunities. The original code snippet is as follows:
-```
-/*
- * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
- * or more contributor license agreements. Licensed under the Elastic License
- * 2.0 and the Server Side Public License, v 1; you may not use this file except
- * in compliance with, at your election, the Elastic License 2.0 or the Server
- * Side Public License, v 1.
- */
-
 package org.elasticsearch.transport;
 
 import org.apache.logging.log4j.LogManager;
@@ -38,29 +28,24 @@ public class RemoteClusterCredentialsManager {
         final Map<String, SecureString> newClusterCredentials = REMOTE_CLUSTER_CREDENTIALS.getAsMap(settings);
         if (clusterCredentials.isEmpty()) {
             clusterCredentials = newClusterCredentials;
-            logger.debug(
-                    () -> Strings.format(
-                            "Updated remote cluster credentials for clusters: [%s]",
-                            Strings.collectionToCommaDelimitedString(clusterCredentials.keySet())
-                    )
-            );
+            logUpdatedCredentials();
             return new UpdateRemoteClusterCredentialsResult(Set.copyOf(newClusterCredentials.keySet()), Collections.emptySet());
         }
-
         final Set<String> addedClusterAliases = Sets.difference(newClusterCredentials.keySet(), clusterCredentials.keySet());
         final Set<String> removedClusterAliases = Sets.difference(clusterCredentials.keySet(), newClusterCredentials.keySet());
         clusterCredentials = newClusterCredentials;
-        logger.debug(
-                () -> Strings.format(
-                        "Updated remote cluster credentials for clusters: [%s]",
-                        Strings.collectionToCommaDelimitedString(clusterCredentials.keySet())
-                )
-        );
+        logUpdatedCredentials();
         assert Sets.haveEmptyIntersection(removedClusterAliases, addedClusterAliases);
         return new UpdateRemoteClusterCredentialsResult(addedClusterAliases, removedClusterAliases);
     }
 
-    public record UpdateRemoteClusterCredentialsResult(Set<String> addedClusterAliases, Set<String> removedClusterAliases) {}
+    private void logUpdatedCredentials() {
+        logger.debug(() -> Strings.format("Updated remote cluster credentials for clusters: [%s]", Strings.collectionToCommaDelimitedString(clusterCredentials.keySet())));
+    }
+
+    public record UpdateRemoteClusterCredentialsResult(Set<String> addedClusterAliases,
+                                                       Set<String> removedClusterAliases) {
+    }
 
     @Nullable
     public SecureString resolveCredentials(String clusterAlias) {
@@ -73,9 +58,3 @@ public class RemoteClusterCredentialsManager {
 
     public static final RemoteClusterCredentialsManager EMPTY = new RemoteClusterCredentialsManager(Settings.EMPTY);
 }
-```
-If there are any refactoring opportunities, please do it and generate the refactored code. Otherwise, simply state that no refactoring is necessary.
-
-Mean: (643 + 646 + 640 + 668 + 635) / 5 = 646,4
-
-I GAVE UP RUNNING THE TESTS FOR NOW

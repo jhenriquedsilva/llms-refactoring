@@ -904,6 +904,6 @@ class InlineDelegateByteBuddyMockMaker
 - This improves clarity and maintainability, making future changes less error-prone.
 **No logic is changed.**
 
-Levenshtein edit-distance: 1376
+Levenshtein edit-distance: 625
 Compiles
 Tests pass

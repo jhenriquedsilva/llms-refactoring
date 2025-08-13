@@ -871,5 +871,5 @@ class InlineDelegateByteBuddyMockMaker
 
 Let me know if you want additional suggestions (e.g., for method extraction, comments, or renaming)!
 
-Levenshtein edit-distance: 1163
+Levenshtein edit-distance: 158
 Does not compile

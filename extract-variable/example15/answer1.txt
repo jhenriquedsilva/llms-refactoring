@@ -875,6 +875,6 @@ If, in your team's style, **extracting variables for all duplicated expressions 
 **Conclusion:**
 Some refactoring is appropriate, mostly in the error handling (exception) logic. The provided code above is the full class with only those "extract variable" refactorings applied.
 
-Levenshtein edit-distance: 705
+Levenshtein edit-distance: 100
 Compiles
 Tests pass

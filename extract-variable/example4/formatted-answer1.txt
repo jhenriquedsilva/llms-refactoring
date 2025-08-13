@@ -1,0 +1,107 @@
+package org.elasticsearch.search.profile.dfs;
+
+import org.apache.lucene.tests.util.English;
+import org.elasticsearch.action.index.IndexRequestBuilder;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.search.profile.ProfileResult;
+import org.elasticsearch.search.profile.SearchProfileDfsPhaseResult;
+import org.elasticsearch.search.profile.SearchProfileShardResult;
+import org.elasticsearch.search.profile.query.CollectorResult;
+import org.elasticsearch.search.profile.query.QueryProfileShardResult;
+import org.elasticsearch.search.vectors.KnnSearchBuilder;
+import org.elasticsearch.test.ESIntegTestCase;
+import org.elasticsearch.xcontent.XContentFactory;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+import static org.elasticsearch.search.profile.query.RandomQueryGenerator.randomQueryBuilder;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertResponse;
+import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+
+public class DfsProfilerIT extends ESIntegTestCase {
+
+    private static final int KNN_DIM = 3;
+    private static final String STATISTICS_QUERY_NAME = "statistics";
+
+    public void testProfileDfs() throws Exception {
+        String textField = "text_field";
+        String numericField = "number";
+        String vectorField = "vector";
+        String indexName = "text-dfs-profile";
+        createIndex(indexName, vectorField);
+        ensureGreen();
+        int numDocs = randomIntBetween(10, 50);
+        IndexRequestBuilder[] docs = new IndexRequestBuilder[numDocs];
+        for (int i = 0; i < numDocs; i++) {
+            float[] vector = new float[]{randomFloat(), randomFloat(), randomFloat()};
+            docs[i] = prepareIndex(indexName).setId(String.valueOf(i)).setSource(textField, English.intToEnglish(i), numericField, i, vectorField, vector);
+        }
+        indexRandom(true, docs);
+        refresh();
+        int iters = between(5, 10);
+        for (int i = 0; i < iters; i++) {
+            QueryBuilder q = randomQueryBuilder(List.of(textField), List.of(numericField), numDocs, 3);
+            float[] knnQueryVector = new float[]{randomFloat(), randomFloat(), randomFloat()};
+            int kValue = randomIntBetween(5, 10);
+            float[] knnSearchVector = new float[]{randomFloat(), randomFloat(), randomFloat()};
+            if (randomBoolean()) {
+                Float knnFilterScore = randomBoolean() ? null : randomFloat();
+                new KnnSearchBuilder(vectorField, knnQueryVector, kValue, 50, knnFilterScore).addFilterQuery(q);
+            }
+            logger.info("Query: {}", q);
+            assertResponse(prepareSearch().setQuery(q).setTrackTotalHits(true).setProfile(true).setSearchType(SearchType.DFS_QUERY_THEN_FETCH).setKnnSearch(randomList(2, 5, () -> {
+                float[] vector = new float[]{randomFloat(), randomFloat(), randomFloat()};
+                int k = randomIntBetween(5, 10);
+                Float filterScore = randomBoolean() ? null : randomFloat();
+                return new KnnSearchBuilder(vectorField, vector, k, 50, filterScore);
+            })), response -> {
+                Map<String, SearchProfileShardResult> profileResults = response.getProfileResults();
+                assertNotNull("Profile response element should not be null", profileResults);
+                assertThat("Profile response should not be an empty array", profileResults.size(), not(0));
+                for (Map.Entry<String, SearchProfileShardResult> shard : profileResults.entrySet()) {
+                    SearchProfileShardResult profileShardResult = shard.getValue();
+                    List<QueryProfileShardResult> queryProfileResults = profileShardResult.getQueryProfileResults();
+                    for (QueryProfileShardResult searchProfiles : queryProfileResults) {
+                        List<ProfileResult> queryResults = searchProfiles.getQueryResults();
+                        for (ProfileResult result : queryResults) {
+                            assertNotNull(result.getQueryName());
+                            assertNotNull(result.getLuceneDescription());
+                            assertThat(result.getTime(), greaterThan(0L));
+                        }
+                        CollectorResult result = searchProfiles.getCollectorResult();
+                        assertThat(result.getName(), is(not(emptyOrNullString())));
+                        assertThat(result.getTime(), greaterThan(0L));
+                    }
+                    SearchProfileDfsPhaseResult searchProfileDfsPhaseResult = profileShardResult.getSearchProfileDfsPhaseResult();
+                    assertThat(searchProfileDfsPhaseResult, is(notNullValue()));
+                    for (QueryProfileShardResult queryProfileShardResult : searchProfileDfsPhaseResult.getQueryProfileShardResult()) {
+                        List<ProfileResult> queryResults = queryProfileShardResult.getQueryResults();
+                        for (ProfileResult result : queryResults) {
+                            assertNotNull(result.getQueryName());
+                            assertNotNull(result.getLuceneDescription());
+                            assertThat(result.getTime(), greaterThan(0L));
+                        }
+                        CollectorResult result = queryProfileShardResult.getCollectorResult();
+                        assertThat(result.getName(), is(not(emptyOrNullString())));
+                        assertThat(result.getTime(), greaterThan(0L));
+                    }
+                    ProfileResult statsResult = searchProfileDfsPhaseResult.getDfsShardResult();
+                    assertThat(statsResult.getQueryName(), equalTo(STATISTICS_QUERY_NAME));
+                }
+            });
+        }
+    }
+
+    private void createIndex(String name, String vectorField) throws IOException {
+        assertAcked(prepareCreate(name).setMapping(XContentFactory.jsonBuilder().startObject().startObject("properties").startObject(vectorField).field("type", "dense_vector").field("dims", KNN_DIM).field("index", true).field("similarity", "cosine").endObject().endObject().endObject()));
+    }
+}

@@ -180,4 +180,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 
 There are no other significant opportunities for extract variable refactoring in this context.
 
+Levenshtein edit-distance: 609
 Compiles

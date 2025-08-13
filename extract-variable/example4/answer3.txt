@@ -168,4 +168,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 
 These improvements enhance the clarity and maintainability of the code.
 
+Levenshtein edit-distance: 678
 Compiles

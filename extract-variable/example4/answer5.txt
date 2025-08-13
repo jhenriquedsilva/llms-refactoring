@@ -181,4 +181,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 
 This refactoring improves readability and maintainability without altering the logic or performance.
 
+Levenshtein edit-distance: 931
 Compiles

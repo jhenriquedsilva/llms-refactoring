@@ -172,4 +172,5 @@ public class DfsProfilerIT extends ESIntegTestCase {
 
 If you wish for even further reduction of duplication (e.g. a method to generate a random vector), let me know!
 
+Levenshtein edit-distance: 655
 Compiles

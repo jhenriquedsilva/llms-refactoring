@@ -1,0 +1,273 @@
+package org.apache.hadoop.ipc;
+
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.ipc.metrics.RetryCacheMetrics;
+import org.apache.hadoop.util.LightWeightCache;
+import org.apache.hadoop.util.LightWeightGSet;
+import org.apache.hadoop.util.LightWeightGSet.LinkedElement;
+import org.apache.hadoop.classification.VisibleForTesting;
+import org.apache.hadoop.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@InterfaceAudience.Private
+public class RetryCache {
+    public static final Logger LOG = LoggerFactory.getLogger(RetryCache.class);
+    private final RetryCacheMetrics metrics;
+    private static final int MAX_CAPACITY = 16;
+
+    public static class CacheEntry implements LightWeightCache.Entry {
+        private static final byte INPROGRESS = 0;
+        private static final byte SUCCESS = 1;
+        private static final byte FAILED = 2;
+        private byte status = INPROGRESS;
+        private final long clientIdMostSignificantBits;
+        private final long clientIdLeastSignificantBits;
+        private final int rpcCallId;
+        private final long entryExpirationNanos;
+        private LightWeightGSet.LinkedElement nextEntry;
+
+        CacheEntry(byte[] clientId, int rpcCallId, long entryExpirationNanos) {
+            Preconditions.checkArgument(clientId.length == ClientId.BYTE_LENGTH, "Invalid clientId - length is " + clientId.length + " expected length " + ClientId.BYTE_LENGTH);
+            clientIdMostSignificantBits = ClientId.getMsb(clientId);
+            clientIdLeastSignificantBits = ClientId.getLsb(clientId);
+            this.rpcCallId = rpcCallId;
+            this.entryExpirationNanos = entryExpirationNanos;
+        }
+
+        CacheEntry(byte[] clientId, int rpcCallId, long entryExpirationNanos, boolean success) {
+            this(clientId, rpcCallId, entryExpirationNanos);
+            this.status = success ? SUCCESS : FAILED;
+        }
+
+        private static int hashCode(long value) {
+            return (int) (value ^ (value >>> 32));
+        }
+
+        @Override
+        public int hashCode() {
+            return (hashCode(clientIdMostSignificantBits) * 31 + hashCode(clientIdLeastSignificantBits)) * 31 + rpcCallId;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof CacheEntry)) {
+                return false;
+            }
+            CacheEntry other = (CacheEntry) obj;
+            return rpcCallId == other.rpcCallId && clientIdMostSignificantBits == other.clientIdMostSignificantBits && clientIdLeastSignificantBits == other.clientIdLeastSignificantBits;
+        }
+
+        @Override
+        public void setNext(LinkedElement nextEntry) {
+            this.nextEntry = nextEntry;
+        }
+
+        @Override
+        public LinkedElement getNext() {
+            return nextEntry;
+        }
+
+        synchronized void completed(boolean success) {
+            status = success ? SUCCESS : FAILED;
+            this.notifyAll();
+        }
+
+        public synchronized boolean isSuccess() {
+            return status == SUCCESS;
+        }
+
+        @Override
+        public void setExpirationTime(long timeNano) {
+        }
+
+        @Override
+        public long getExpirationTime() {
+            return entryExpirationNanos;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s:%s:%s", new UUID(this.clientIdMostSignificantBits, this.clientIdLeastSignificantBits), this.rpcCallId, this.status);
+        }
+    }
+
+    public static class CacheEntryWithPayload extends CacheEntry {
+        private Object responsePayload;
+
+        CacheEntryWithPayload(byte[] clientId, int rpcCallId, Object responsePayload, long entryExpirationNanos) {
+            super(clientId, rpcCallId, entryExpirationNanos);
+            this.responsePayload = responsePayload;
+        }
+
+        CacheEntryWithPayload(byte[] clientId, int rpcCallId, Object responsePayload, long entryExpirationNanos, boolean success) {
+            super(clientId, rpcCallId, entryExpirationNanos, success);
+            this.responsePayload = responsePayload;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return super.equals(obj);
+        }
+
+        @Override
+        public int hashCode() {
+            return super.hashCode();
+        }
+
+        public Object getPayload() {
+            return responsePayload;
+        }
+    }
+
+    private final LightWeightGSet<CacheEntry, CacheEntry> cacheEntries;
+    private final long entryExpirationNanos;
+    private final String cacheName;
+    private final ReentrantLock lock = new ReentrantLock();
+
+    public RetryCache(String cacheName, double percentage, long entryExpirationNanos) {
+        int capacity = LightWeightGSet.computeCapacity(percentage, cacheName);
+        capacity = Math.max(capacity, MAX_CAPACITY);
+        this.cacheEntries = new LightWeightCache<CacheEntry, CacheEntry>(capacity, capacity, entryExpirationNanos, 0);
+        this.entryExpirationNanos = entryExpirationNanos;
+        this.cacheName = cacheName;
+        this.metrics = RetryCacheMetrics.create(this);
+    }
+
+    private static boolean skipRetryCache(byte[] clientId, int callId) {
+        return !Server.isRpcInvocation() || callId < 0 || Arrays.equals(clientId, RpcConstants.DUMMY_CLIENT_ID);
+    }
+
+    public void lock() {
+        this.lock.lock();
+    }
+
+    public void unlock() {
+        this.lock.unlock();
+    }
+
+    private void incrCacheClearedCounter() {
+        metrics.incrCacheCleared();
+    }
+
+    @VisibleForTesting
+    public LightWeightGSet<CacheEntry, CacheEntry> getCacheEntries() {
+        return cacheEntries;
+    }
+
+    @VisibleForTesting
+    public RetryCacheMetrics getMetricsForTests() {
+        return metrics;
+    }
+
+    public String getCacheName() {
+        return cacheName;
+    }
+
+    private CacheEntry waitForCompletion(CacheEntry newEntry) {
+        CacheEntry mapEntry = null;
+        lock.lock();
+        try {
+            mapEntry = cacheEntries.get(newEntry);
+            if (mapEntry == null) {
+                if (LOG.isTraceEnabled()) {
+                    LOG.trace("Adding Rpc request clientId " + newEntry.clientIdMostSignificantBits + newEntry.clientIdLeastSignificantBits + " callId " + newEntry.rpcCallId + " to retryCache");
+                }
+                cacheEntries.put(newEntry);
+                metrics.incrCacheUpdated();
+                return newEntry;
+            } else {
+                metrics.incrCacheHit();
+            }
+        } finally {
+            lock.unlock();
+        }
+        Preconditions.checkNotNull(mapEntry, "Entry from the cache should not be null");
+        synchronized (mapEntry) {
+            while (mapEntry.status == CacheEntry.INPROGRESS) {
+                try {
+                    mapEntry.wait();
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if (mapEntry.status != CacheEntry.SUCCESS) {
+                mapEntry.status = CacheEntry.INPROGRESS;
+            }
+        }
+        return mapEntry;
+    }
+
+    public void addCacheEntry(byte[] clientId, int callId) {
+        CacheEntry newEntry = new CacheEntry(clientId, callId, System.nanoTime() + entryExpirationNanos, true);
+        lock.lock();
+        try {
+            cacheEntries.put(newEntry);
+        } finally {
+            lock.unlock();
+        }
+        metrics.incrCacheUpdated();
+    }
+
+    public void addCacheEntryWithPayload(byte[] clientId, int callId, Object responsePayload) {
+        CacheEntry newEntry = new CacheEntryWithPayload(clientId, callId, responsePayload, System.nanoTime() + entryExpirationNanos, true);
+        lock.lock();
+        try {
+            cacheEntries.put(newEntry);
+        } finally {
+            lock.unlock();
+        }
+        metrics.incrCacheUpdated();
+    }
+
+    private static CacheEntry newEntry(long entryExpirationNanos, byte[] clientId, int callId) {
+        return new CacheEntry(clientId, callId, System.nanoTime() + entryExpirationNanos);
+    }
+
+    private static CacheEntryWithPayload newEntry(Object responsePayload, long entryExpirationNanos, byte[] clientId, int callId) {
+        return new CacheEntryWithPayload(clientId, callId, responsePayload, System.nanoTime() + entryExpirationNanos);
+    }
+
+    public static CacheEntry waitForCompletion(RetryCache cache, byte[] clientId, int callId) {
+        if (skipRetryCache(clientId, callId)) {
+            return null;
+        }
+        return cache != null ? cache.waitForCompletion(newEntry(cache.entryExpirationNanos, clientId, callId)) : null;
+    }
+
+    public static CacheEntryWithPayload waitForCompletion(RetryCache cache, Object responsePayload, byte[] clientId, int callId) {
+        if (skipRetryCache(clientId, callId)) {
+            return null;
+        }
+        return (CacheEntryWithPayload) (cache != null ? cache.waitForCompletion(newEntry(responsePayload, cache.entryExpirationNanos, clientId, callId)) : null);
+    }
+
+    public static void setState(CacheEntry e, boolean success) {
+        if (e == null) {
+            return;
+        }
+        e.completed(success);
+    }
+
+    public static void setState(CacheEntryWithPayload e, boolean success, Object responsePayload) {
+        if (e == null) {
+            return;
+        }
+        e.responsePayload = responsePayload;
+        e.completed(success);
+    }
+
+    public static void clear(RetryCache cache) {
+        if (cache != null) {
+            cache.cacheEntries.clear();
+            cache.incrCacheClearedCounter();
+        }
+    }
+}

@@ -40,27 +40,27 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
     }
 
     @Test
-    public void testOnlyOneServerCallIsMadeWhenTheConfIsTrue() throws Exception {
-        assertNumBackendCalls(true);
+    public void testOnlyOneServerCallIsMadeWhenOptimizeFooterReadIsEnabled() throws Exception {
+        testBackendCallCountWithFooterReadOptimization(true);
     }
 
     @Test
-    public void testMultipleServerCallsAreMadeWhenTheConfIsFalse() throws Exception {
-        assertNumBackendCalls(false);
+    public void testMultipleServerCallsAreMadeWhenOptimizeFooterReadIsDisabled() throws Exception {
+        testBackendCallCountWithFooterReadOptimization(false);
     }
 
-    private void assertNumBackendCalls(boolean optimizeFooterRead) throws Exception {
+    private void testBackendCallCountWithFooterReadOptimization(boolean optimizeFooterRead) throws Exception {
         int fileIdx = 0;
         for (int i = 0; i <= 4; i++) {
             for (int j = 0; j <= 2; j++) {
                 int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
                 int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
-                final AzureBlobFileSystem fs = newFileSystemWithOptimizeFooterRead(optimizeFooterRead, fileSize);
+                final AzureBlobFileSystem fs = createFooterReadConfiguredFileSystem(optimizeFooterRead, fileSize);
                 Path testFilePath = createPathAndFileWithContent(fs, fileIdx++, fileSize);
                 int length = AbfsInputStream.FOOTER_SIZE;
-                FutureDataInputStreamBuilder builder = newOpenFileBuilderWithFooterReadBufferSize(testFilePath, fs, footerReadBufferSize);
+                FutureDataInputStreamBuilder builder = createBuilderWithFooterReadBufferSize(testFilePath, fs, footerReadBufferSize);
                 try (FSDataInputStream iStream = builder.build().get()) {
-                    assertFooterReadBufferSizeInStream(iStream, footerReadBufferSize);
+                    assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSize);
                     byte[] buffer = new byte[length];
                     Map<String, Long> metricMap = getInstrumentationMap(fs);
                     long requestsMadeBeforeTest = metricMap.get(CONNECTIONS_MADE.getStatName());
@@ -83,66 +83,66 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
     }
 
     @Test
-    public void testSeekToBeginAndReadWithConfTrue() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(true, SeekTo.BEGIN);
+    public void testSeekToBeginAndReadWithOptimizeFooterReadEnabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(true, SeekTo.BEGIN);
     }
 
     @Test
-    public void testSeekToBeginAndReadWithConfFalse() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(false, SeekTo.BEGIN);
+    public void testSeekToBeginAndReadWithOptimizeFooterReadDisabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(false, SeekTo.BEGIN);
     }
 
     @Test
-    public void testSeekToBeforeFooterAndReadWithConfTrue() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(true, SeekTo.BEFORE_FOOTER_START);
+    public void testSeekToBeforeFooterAndReadWithOptimizeFooterReadEnabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(true, SeekTo.BEFORE_FOOTER_START);
     }
 
     @Test
-    public void testSeekToBeforeFooterAndReadWithConfFalse() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(false, SeekTo.BEFORE_FOOTER_START);
+    public void testSeekToBeforeFooterAndReadWithOptimizeFooterReadDisabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(false, SeekTo.BEFORE_FOOTER_START);
     }
 
     @Test
-    public void testSeekToFooterAndReadWithConfTrue() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(true, SeekTo.AT_FOOTER_START);
+    public void testSeekToFooterAndReadWithOptimizeFooterReadEnabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(true, SeekTo.AT_FOOTER_START);
     }
 
     @Test
-    public void testSeekToFooterAndReadWithConfFalse() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(false, SeekTo.AT_FOOTER_START);
+    public void testSeekToFooterAndReadWithOptimizeFooterReadDisabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(false, SeekTo.AT_FOOTER_START);
     }
 
     @Test
-    public void testSeekToAfterFooterAndReadWithConfTrue() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(true, SeekTo.AFTER_FOOTER_START);
+    public void testSeekToAfterFooterAndReadWithOptimizeFooterReadEnabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(true, SeekTo.AFTER_FOOTER_START);
     }
 
     @Test
-    public void testSeekToToAfterFooterAndReadWithConfFalse() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(false, SeekTo.AFTER_FOOTER_START);
+    public void testSeekToAfterFooterAndReadWithOptimizeFooterReadDisabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(false, SeekTo.AFTER_FOOTER_START);
     }
 
     @Test
-    public void testSeekToEndAndReadWithConfTrue() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(true, SeekTo.END);
+    public void testSeekToEndAndReadWithOptimizeFooterReadEnabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(true, SeekTo.END);
     }
 
     @Test
-    public void testSeekToEndAndReadWithConfFalse() throws Exception {
-        assertSeekAndReadWithOptimizeFooterReadConfig(false, SeekTo.END);
+    public void testSeekToEndAndReadWithOptimizeFooterReadDisabled() throws Exception {
+        testSeekAndReadWithFooterReadOptimizeConfig(false, SeekTo.END);
     }
 
-    private void assertSeekAndReadWithOptimizeFooterReadConfig(boolean optimizeFooterRead, SeekTo seekTo) throws Exception {
+    private void testSeekAndReadWithFooterReadOptimizeConfig(boolean optimizeFooterRead, SeekTo seekTo) throws Exception {
         int fileIdx = 0;
         for (int i = 0; i <= 4; i++) {
             for (int j = 0; j <= 2; j++) {
                 int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
                 int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
-                final AzureBlobFileSystem fs = newFileSystemWithOptimizeFooterRead(optimizeFooterRead, fileSize);
+                final AzureBlobFileSystem fs = createFooterReadConfiguredFileSystem(optimizeFooterRead, fileSize);
                 String fileName = methodName.getMethodName() + fileIdx++;
                 byte[] fileContent = getRandomBytesArray(fileSize);
                 Path testFilePath = createFileWithContent(fs, fileName, fileContent);
-                performSeekReadAndAssertions(fs, testFilePath, seekPos(seekTo, fileSize), HUNDRED, fileContent, footerReadBufferSize);
+                seekReadAndVerify(fs, testFilePath, seekPos(seekTo, fileSize), HUNDRED, fileContent, footerReadBufferSize);
             }
         }
     }
@@ -163,13 +163,13 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
         return fileSize - AbfsInputStream.FOOTER_SIZE + 1;
     }
 
-    private void performSeekReadAndAssertions(final AzureBlobFileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, int footerReadBufferSize) throws Exception {
+    private void seekReadAndVerify(final AzureBlobFileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, int footerReadBufferSize) throws Exception {
         AbfsConfiguration conf = getAbfsStore(fs).getAbfsConfiguration();
         long actualContentLength = fileContent.length;
-        FutureDataInputStreamBuilder builder = newOpenFileBuilderWithFooterReadBufferSize(testFilePath, fs, footerReadBufferSize);
+        FutureDataInputStreamBuilder builder = createBuilderWithFooterReadBufferSize(testFilePath, fs, footerReadBufferSize);
         try (FSDataInputStream iStream = builder.build().get()) {
             AbfsInputStream abfsInputStream = (AbfsInputStream) iStream.getWrappedStream();
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSize);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSize);
             long readBufferSize = abfsInputStream.getBufferSize();
             seek(iStream, seekPos);
             byte[] buffer = new byte[length];
@@ -219,22 +219,22 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
     }
 
     @Test
-    public void testPartialReadWithNoDat() throws Exception {
+    public void testPartialReadWithNoData() throws Exception {
         int fileIdx = 0;
         for (int i = 0; i <= 4; i++) {
             for (int j = 0; j <= 2; j++) {
                 int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
                 int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
-                final AzureBlobFileSystem fs = newFileSystemWithOptimizeFooterAndFooterBuffer(true, fileSize, footerReadBufferSize);
+                final AzureBlobFileSystem fs = createFooterReadConfiguredFileSystem(true, fileSize, footerReadBufferSize);
                 String fileName = methodName.getMethodName() + fileIdx++;
                 byte[] fileContent = getRandomBytesArray(fileSize);
                 Path testFilePath = createFileWithContent(fs, fileName, fileContent);
-                assertPartialReadWithNoRemoteData(fs, testFilePath, fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE, fileContent, footerReadBufferSize);
+                testPartialReadWithNoContentData(fs, testFilePath, fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE, fileContent, footerReadBufferSize);
             }
         }
     }
 
-    private void assertPartialReadWithNoRemoteData(final FileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, int footerReadBufferSize) throws IOException {
+    private void testPartialReadWithNoContentData(final FileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, int footerReadBufferSize) throws IOException {
         FSDataInputStream iStream = fs.open(testFilePath);
         try {
             AbfsInputStream abfsInputStream = (AbfsInputStream) iStream.getWrappedStream();
@@ -261,19 +261,19 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
             for (int j = 0; j <= 2; j++) {
                 int fileSize = (int) Math.pow(2, i) * 256 * ONE_KB;
                 int footerReadBufferSize = (int) Math.pow(2, j) * 256 * ONE_KB;
-                final AzureBlobFileSystem fs = newFileSystemWithOptimizeFooterAndFooterBuffer(true, fileSize, footerReadBufferSize);
+                final AzureBlobFileSystem fs = createFooterReadConfiguredFileSystem(true, fileSize, footerReadBufferSize);
                 String fileName = methodName.getMethodName() + i;
                 byte[] fileContent = getRandomBytesArray(fileSize);
                 Path testFilePath = createFileWithContent(fs, fileName, fileContent);
-                assertPartialReadWithSomeRemoteData(fs, testFilePath, fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE, fileContent, footerReadBufferSize);
+                testPartialReadWithSomeContentData(fs, testFilePath, fileSize - AbfsInputStream.FOOTER_SIZE, AbfsInputStream.FOOTER_SIZE, fileContent, footerReadBufferSize);
             }
         }
     }
 
-    private void assertPartialReadWithSomeRemoteData(final FileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, final int footerReadBufferSize) throws IOException {
+    private void testPartialReadWithSomeContentData(final FileSystem fs, final Path testFilePath, final int seekPos, final int length, final byte[] fileContent, final int footerReadBufferSize) throws IOException {
         FSDataInputStream iStream = fs.open(testFilePath);
         try {
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSize);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSize);
             AbfsInputStream abfsInputStream = spy((AbfsInputStream) iStream.getWrappedStream());
             int someDataLength = 2;
             int secondReturnSize = min(fileContent.length, abfsInputStream.getFooterReadBufferSize()) - 10 - someDataLength;
@@ -300,26 +300,26 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
             final int footerReadBufferSizeConfig = 4 * ONE_KB;
             final int footerReadBufferSizeBuilder = 5 * ONE_KB;
             FSDataInputStream iStream = fs.open(testFilePath);
-            assertFooterReadBufferSizeInStream(iStream, DEFAULT_FOOTER_READ_BUFFER_SIZE);
+            assertFooterReadBufferSizeInInputStream(iStream, DEFAULT_FOOTER_READ_BUFFER_SIZE);
             getAbfsStore(fs).getAbfsConfiguration().setFooterReadBufferSize(footerReadBufferSizeConfig);
             iStream = fs.open(testFilePath);
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSizeConfig);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSizeConfig);
             getAbfsStore(fs).getAbfsConfiguration().unset(AZURE_FOOTER_READ_BUFFER_SIZE);
             FutureDataInputStreamBuilder builder = fs.openFile(testFilePath);
             builder.opt(AZURE_FOOTER_READ_BUFFER_SIZE, footerReadBufferSizeBuilder);
             iStream = builder.build().get();
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSizeBuilder);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSizeBuilder);
             getAbfsStore(fs).getAbfsConfiguration().setFooterReadBufferSize(footerReadBufferSizeConfig);
             iStream = builder.build().get();
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSizeBuilder);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSizeBuilder);
             getAbfsStore(fs).getAbfsConfiguration().setFooterReadBufferSize(footerReadBufferSizeConfig);
             builder = fs.openFile(testFilePath);
             iStream = builder.build().get();
-            assertFooterReadBufferSizeInStream(iStream, footerReadBufferSizeConfig);
+            assertFooterReadBufferSizeInInputStream(iStream, footerReadBufferSizeConfig);
         }
     }
 
-    private void assertFooterReadBufferSizeInStream(final FSDataInputStream inputStream, final int expectedValue) {
+    private void assertFooterReadBufferSizeInInputStream(final FSDataInputStream inputStream, final int expectedValue) {
         AbfsInputStream stream = (AbfsInputStream) inputStream.getWrappedStream();
         Assertions.assertThat(stream.getFooterReadBufferSize()).describedAs("Footer Read Buffer Size Value Is Not As Expected").isEqualTo(expectedValue);
     }
@@ -330,13 +330,13 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
         return createFileWithContent(fs, fileName, fileContent);
     }
 
-    private FutureDataInputStreamBuilder newOpenFileBuilderWithFooterReadBufferSize(final Path path, final AzureBlobFileSystem fs, int footerReadBufferSize) throws Exception {
+    private FutureDataInputStreamBuilder createBuilderWithFooterReadBufferSize(final Path path, final AzureBlobFileSystem fs, int footerReadBufferSize) throws Exception {
         FutureDataInputStreamBuilder builder = fs.openFile(path);
         builder.opt(AZURE_FOOTER_READ_BUFFER_SIZE, footerReadBufferSize);
         return builder;
     }
 
-    private AzureBlobFileSystem newFileSystemWithOptimizeFooterRead(final boolean optimizeFooterRead, final int fileSize) throws IOException {
+    private AzureBlobFileSystem createFooterReadConfiguredFileSystem(final boolean optimizeFooterRead, final int fileSize) throws IOException {
         final AzureBlobFileSystem fs = getFileSystem();
         AzureBlobFileSystemStore store = getAbfsStore(fs);
         store.getAbfsConfiguration().setOptimizeFooterRead(optimizeFooterRead);
@@ -346,7 +346,7 @@ public class ITestAbfsInputStreamReadFooter extends ITestAbfsInputStream {
         return fs;
     }
 
-    private AzureBlobFileSystem newFileSystemWithOptimizeFooterAndFooterBuffer(final boolean optimizeFooterRead, final int fileSize, final int footerReadBufferSize) throws IOException {
+    private AzureBlobFileSystem createFooterReadConfiguredFileSystem(final boolean optimizeFooterRead, final int fileSize, final int footerReadBufferSize) throws IOException {
         final AzureBlobFileSystem fs = getFileSystem();
         AzureBlobFileSystemStore store = getAbfsStore(fs);
         store.getAbfsConfiguration().setOptimizeFooterRead(optimizeFooterRead);

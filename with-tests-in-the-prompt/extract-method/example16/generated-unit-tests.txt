@@ -1,0 +1,296 @@
+package org.springframework.web.servlet.mvc.method.annotation;
+
+import org.junit.*;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import java.lang.reflect.Method;
+
+import static org.junit.Assert.*;
+
+public class MvcUriComponentsBuilderTest {
+
+    // --- Helper stubs for Controllers and Mocks ---
+
+    @RequestMapping("/test")
+    public static class TestController {
+        @RequestMapping("/foo")
+        public String foo() { return "ok"; }
+        @RequestMapping("/bar")
+        public void bar(String arg) {}
+    }
+
+    public static class NoMappingController {
+        public void someMethod() {}
+    }
+
+    // Register required method reflectively for tests easily
+    private static Method getMethod(Class<?> clazz, String name, Class<?>... params) {
+        try { return clazz.getMethod(name, params); }
+        catch(Exception e) { throw new RuntimeException(e); }
+    }
+
+    // 1. relativeTo(UriComponentsBuilder baseUrl)
+    @Test
+    public void testRelativeTo() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(base);
+        assertNotNull(builder);
+        // Use with any instance-based method to ensure it assigns base correctly
+        UriComponentsBuilder b = builder.withController(TestController.class);
+        assertTrue(b.build().toString().contains("/api"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testRelativeToNull() {
+        MvcUriComponentsBuilder.relativeTo(null);
+    }
+
+    // 2. fromController(Class<?> controllerType)
+    @Test
+    public void testFromController() {
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromController(TestController.class);
+        assertNotNull(b);
+        assertTrue(b.build().toString().contains("/test"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromControllerNull() {
+        MvcUriComponentsBuilder.fromController((Class<?>)null);
+    }
+
+    // 3. fromController(UriComponentsBuilder builder, Class<?> controllerType)
+    @Test
+    public void testFromControllerWithBase() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromController(base, TestController.class);
+        assertTrue(b.build().toString().contains("/api"));
+        assertTrue(b.build().toString().contains("/test"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromControllerWithBaseNullController() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        MvcUriComponentsBuilder.fromController(base, null);
+    }
+
+    // 4. fromMethodName(Class<?> controllerType, String methodName, Object... args)
+    @Test
+    public void testFromMethodName() {
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethodName(TestController.class, "foo");
+        assertNotNull(b);
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromMethodNameNotFound() {
+        MvcUriComponentsBuilder.fromMethodName(TestController.class, "notExisting");
+    }
+
+    // 5. fromMethodName(UriComponentsBuilder builder, Class<?> controllerType, String methodName, Object... args)
+    @Test
+    public void testFromMethodNameWithBase() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethodName(base, TestController.class, "foo");
+        assertTrue(b.build().toString().contains("/api"));
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromMethodNameWithBaseDuplicateOrNotFound() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        MvcUriComponentsBuilder.fromMethodName(base, TestController.class, "notExisting");
+    }
+
+    // 6. fromMethod(Class<?> controllerType, Method method, Object... args)
+    @Test
+    public void testFromMethod() {
+        Method m = getMethod(TestController.class, "foo");
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethod(TestController.class, m);
+        assertNotNull(b);
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromMethodWithWrongArgsLength() {
+        Method m = getMethod(TestController.class, "foo");
+        // foo() takes no args, supply one: mismatch
+        MvcUriComponentsBuilder.fromMethod(TestController.class, m, "unexpected");
+    }
+
+    // 7. fromMethod(UriComponentsBuilder baseUrl, Class<?> controllerType, Method method, Object... args)
+    @Test
+    public void testFromMethodWithBase() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        Method m = getMethod(TestController.class, "foo");
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethod(base, TestController.class, m);
+        assertTrue(b.build().toString().contains("/api"));
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+
+    // 8. fromMethodCall(Object info)
+    @Test
+    public void testFromMethodCall() {
+        TestController proxy = MvcUriComponentsBuilder.on(TestController.class);
+        proxy.foo();
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethodCall(proxy);
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void testFromMethodCallWrongObject() {
+        MvcUriComponentsBuilder.fromMethodCall(new Object()); // Not MethodInvocationInfo
+    }
+
+    // 9. fromMethodCall(UriComponentsBuilder builder, Object info)
+    @Test
+    public void testFromMethodCallWithBase() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        TestController proxy = MvcUriComponentsBuilder.on(TestController.class);
+        proxy.foo();
+        UriComponentsBuilder b = MvcUriComponentsBuilder.fromMethodCall(base, proxy);
+        assertTrue(b.build().toString().contains("/api"));
+        assertTrue(b.build().toString().contains("/test/foo"));
+    }
+
+    // 10. on(Class<T> controllerType)
+    @Test
+    public void testOn() {
+        TestController proxy = MvcUriComponentsBuilder.on(TestController.class);
+        assertNotNull(proxy);
+        proxy.foo();
+    }
+
+    // 11. controller(Class<T> controllerType)
+    @Test
+    public void testController() {
+        TestController proxy = MvcUriComponentsBuilder.controller(TestController.class);
+        assertNotNull(proxy);
+        proxy.bar("hi");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testControllerNull() {
+        MvcUriComponentsBuilder.controller(null);
+    }
+
+    // 12,13. fromMappingName(String mappingName) and fromMappingName(UriComponentsBuilder builder, String name)
+    // Note: These would require a full WebApplicationContext, which is much harder to fake in a standalone test.
+    // Instead, verify exception (since no context should throw).
+    @Test(expected = IllegalStateException.class)
+    public void testFromMappingNameNoContext() {
+        MvcUriComponentsBuilder.fromMappingName("FOO#bar");
+    }
+    @Test(expected = IllegalStateException.class)
+    public void testFromMappingNameWithBaseNoContext() {
+        UriComponentsBuilder base = UriComponentsBuilder.fromPath("/api");
+        MvcUriComponentsBuilder.fromMappingName(base, "FOO#bar");
+    }
+
+    // 14. withController(Class<?> controllerType) [Instance method]
+    @Test
+    public void testWithController() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/xyz"));
+        UriComponentsBuilder b = builder.withController(TestController.class);
+        assertTrue(b.build().toString().contains("/xyz/test"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testWithControllerNull() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/"));
+        builder.withController(null);
+    }
+
+    // 15. withMethodName(Class<?> controllerType, String methodName, Object... args)
+    @Test
+    public void testWithMethodName() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/base"));
+        UriComponentsBuilder b = builder.withMethodName(TestController.class, "foo");
+        assertTrue(b.build().toString().contains("/base/test/foo"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testWithMethodNameWrong() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/base"));
+        builder.withMethodName(TestController.class, "noMethod");
+    }
+
+    // 16. withMethodCall(Object invocationInfo)
+    @Test
+    public void testWithMethodCall() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/root"));
+        TestController proxy = MvcUriComponentsBuilder.on(TestController.class);
+        proxy.foo();
+        UriComponentsBuilder b = builder.withMethodCall(proxy);
+        assertTrue(b.build().toString().contains("/root/test/foo"));
+    }
+
+    // 17. withMappingName(String mappingName)
+    @Test(expected = IllegalStateException.class)
+    public void testWithMappingNameNoContext() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/x"));
+        builder.withMappingName("TC#foo");
+    }
+
+    // 18. withMethod(Class<?> controllerType, Method method, Object... args)
+    @Test
+    public void testWithMethod() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/abc"));
+        Method m = getMethod(TestController.class, "foo");
+        UriComponentsBuilder b = builder.withMethod(TestController.class, m);
+        assertTrue(b.build().toString().contains("/abc/test/foo"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testWithMethodWrongArgs() {
+        MvcUriComponentsBuilder builder = MvcUriComponentsBuilder.relativeTo(UriComponentsBuilder.fromPath("/abc"));
+        Method m = getMethod(TestController.class, "foo");
+        builder.withMethod(TestController.class, m, "unexpected");
+    }
+
+    // --- MethodArgumentBuilder ---
+
+    @Test
+    public void testMethodArgumentBuilderBuild() {
+        Method m = getMethod(TestController.class, "bar", String.class);
+        MvcUriComponentsBuilder.MethodArgumentBuilder builder =
+                new MvcUriComponentsBuilder.MethodArgumentBuilder(TestController.class, m);
+        builder.arg(0, "myArg");
+        String uri = builder.build();
+        assertNotNull(uri);
+        assertTrue(uri.contains("/test/bar"));
+    }
+
+    @Test
+    public void testMethodArgumentBuilderBuildAndExpand() {
+        Method m = getMethod(TestController.class, "bar", String.class);
+        MvcUriComponentsBuilder.MethodArgumentBuilder builder =
+                new MvcUriComponentsBuilder.MethodArgumentBuilder(TestController.class, m);
+        builder.arg(0, "myArg");
+        String expanded = builder.buildAndExpand("abc");
+        assertNotNull(expanded);
+        assertTrue(expanded.contains("/test/bar"));
+    }
+
+    @Test
+    public void testMethodArgumentBuilderEncode() {
+        Method m = getMethod(TestController.class, "bar", String.class);
+        MvcUriComponentsBuilder.MethodArgumentBuilder builder =
+                new MvcUriComponentsBuilder.MethodArgumentBuilder(TestController.class, m);
+        assertSame(builder, builder.encode());
+    }
+
+    @Test(expected = ArrayIndexOutOfBoundsException.class)
+    public void testMethodArgumentBuilderArgIndexOutOfBounds() {
+        Method m = getMethod(TestController.class, "bar", String.class);
+        MvcUriComponentsBuilder.MethodArgumentBuilder builder =
+                new MvcUriComponentsBuilder.MethodArgumentBuilder(TestController.class, m);
+        // arg(1,...) for method with 1 param should throw
+        builder.arg(1, "fail");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testMethodArgumentBuilderNullParams() {
+        new MvcUriComponentsBuilder.MethodArgumentBuilder(null, null);
+    }
+}
+
+

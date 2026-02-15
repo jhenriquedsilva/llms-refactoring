@@ -1,0 +1,252 @@
+package org.springframework.boot.loader.zip;
+
+import org.junit.*;
+import org.junit.rules.TemporaryFolder;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+
+import static org.junit.Assert.*;
+
+public class FileChannelDataBlockTest {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
+
+    private Path tempFile;
+
+    private byte[] sampleData = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+    @Before
+    public void setUp() throws Exception {
+        tempFile = tmp.newFile("sample.bin").toPath();
+        Files.write(tempFile, sampleData);
+    }
+
+    @Test
+    public void constructor_WithRegularFile_ShouldSucceed() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        assertEquals(sampleData.length, block.size());
+        block.close();
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void constructor_WithNonRegularFile_ShouldThrow() throws Exception {
+        Path dir = tmp.newFolder("notafile").toPath();
+        // Attempt to use directory as file
+        new FileChannelDataBlock(dir);
+    }
+
+    @Test(expected = NoSuchFileException.class)
+    public void constructor_WithNonExistentFile_ShouldThrow() throws Exception {
+        Path notExists = tmp.getRoot().toPath().resolve("nofile.bin");
+        new FileChannelDataBlock(notExists);
+    }
+
+    @Test
+    public void constructor_WithManagedFileChannel_ShouldSucceed() throws Exception {
+        FileChannelDataBlock.ManagedFileChannel managed =
+                new FileChannelDataBlock.ManagedFileChannel(tempFile);
+        managed.open();
+        FileChannelDataBlock block = new FileChannelDataBlock(managed, 0, sampleData.length);
+        assertNotNull(block);
+        block.close();
+        managed.close();
+    }
+
+    @Test
+    public void size_ShouldReturnCorrectValue() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        assertEquals((long)sampleData.length, block.size());
+        block.close();
+    }
+
+    @Test
+    public void read_WithNormalParams_ReturnsExpectedBytes() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        ByteBuffer buf = ByteBuffer.allocate(sampleData.length);
+        int n = block.read(buf, 0);
+        assertEquals(sampleData.length, n);
+        buf.flip();
+        byte[] out = new byte[sampleData.length];
+        buf.get(out);
+        assertArrayEquals(sampleData, out);
+        block.close();
+    }
+
+    @Test
+    public void read_WithPartialBuffer_ReadsPartial() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        ByteBuffer buf = ByteBuffer.allocate(5);
+        int n = block.read(buf, 0);
+        assertEquals(5, n);
+        buf.flip();
+        byte[] out = new byte[5];
+        buf.get(out);
+        for (int i = 0; i < 5; i++) {
+            assertEquals(sampleData[i], out[i]);
+        }
+        block.close();
+    }
+
+    @Test
+    public void read_BeyondEndOfFile_ReturnsMinusOne() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        ByteBuffer buf = ByteBuffer.allocate(5);
+        int n = block.read(buf, sampleData.length + 10);
+        assertEquals(-1, n);
+        block.close();
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void read_NegativePosition_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        block.read(ByteBuffer.allocate(2), -1);
+    }
+
+    @Test(expected = ClosedChannelException.class)
+    public void read_AfterClose_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        block.close();
+        block.read(ByteBuffer.allocate(2), 0);
+    }
+
+    @Test
+    public void open_AndClose_AreIdempotent() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        block.open();
+        block.close();
+        block.close();
+    }
+
+    @Test
+    public void ensureOpen_WhenOpen_DoesNotThrow() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        block.ensureOpen(ClosedChannelException::new);
+        block.close();
+    }
+
+    @Test(expected = ClosedChannelException.class)
+    public void ensureOpen_WhenClosed_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        // Not opened, still closed
+        block.ensureOpen(ClosedChannelException::new);
+    }
+
+    @Test
+    public void slice_WholeFile_ReturnsSameInstance() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        FileChannelDataBlock slice = block.slice(0, sampleData.length);
+        assertSame(block, slice);
+        block.close();
+    }
+
+    @Test
+    public void slice_WithOffset_ReturnsCorrectBlock() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        long offset = 2;
+        long size = 4;
+        FileChannelDataBlock slice = block.slice(offset, size);
+        assertNotSame(block, slice);
+        assertEquals(size, slice.size());
+        ByteBuffer buf = ByteBuffer.allocate((int)size);
+        slice.open();
+        int n = slice.read(buf, 0);
+        assertEquals(size, n);
+        buf.flip();
+        byte[] out = new byte[(int)size];
+        buf.get(out);
+        for (int i = 0; i < size; i++) {
+            assertEquals(sampleData[(int)offset + i], out[i]);
+        }
+        slice.close();
+        block.close();
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void slice_NegativeOffset_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.slice(-1, 2);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void slice_NegativeSize_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.slice(1, -5);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void slice_OffsetPlusSizeTooLarge_Throws() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.slice(5, sampleData.length); // offset+size > block.size
+    }
+
+    @Test
+    public void slice_OneArgument_ReturnsExpectedSlice() throws Exception {
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        FileChannelDataBlock slice = block.slice(5);
+        assertEquals(sampleData.length-5, slice.size());
+        slice.open();
+        ByteBuffer buf = ByteBuffer.allocate((int)slice.size());
+        assertEquals(buf.capacity(), slice.read(buf, 0));
+        slice.close();
+        block.close();
+    }
+
+    @Test
+    public void managedFileChannel_ToString_ReturnsPathString() {
+        FileChannelDataBlock.ManagedFileChannel managed =
+                new FileChannelDataBlock.ManagedFileChannel(tempFile);
+        assertEquals(tempFile.toString(), managed.toString());
+    }
+
+    @Test
+    public void tracker_OpenedAndClosedFileChannel_AreCalled() throws Exception {
+        AtomicBoolean opened = new AtomicBoolean(false);
+        AtomicBoolean closed = new AtomicBoolean(false);
+
+        FileChannelDataBlock.Tracker tracker = new FileChannelDataBlock.Tracker() {
+            @Override public void openedFileChannel(Path path, java.nio.channels.FileChannel fc) {
+                opened.set(true);
+            }
+            @Override public void closedFileChannel(Path path, java.nio.channels.FileChannel fc) {
+                closed.set(true);
+            }
+        };
+        FileChannelDataBlock.tracker = tracker;
+
+        FileChannelDataBlock block = new FileChannelDataBlock(tempFile);
+        block.open();
+        assertTrue(opened.get());
+        block.close();
+        assertTrue(closed.get());
+
+        FileChannelDataBlock.tracker = null; // Clean up
+    }
+
+    @Test
+    public void managedFileChannel_OpenCloseReferenceCounting() throws Exception {
+        FileChannelDataBlock.ManagedFileChannel managed1 =
+                new FileChannelDataBlock.ManagedFileChannel(tempFile);
+        managed1.open();
+        managed1.open();
+        managed1.close();
+        managed1.close();
+        // Should not throw
+    }
+
+}

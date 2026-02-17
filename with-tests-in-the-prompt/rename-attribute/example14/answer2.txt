@@ -1,0 +1,213 @@
+17/02/2026 14:32
+There are several **rename attribute refactoring** opportunities in the code based on Java naming conventions and clarity/readability. Here are some of the less-than-ideal identifiers and suggestions:
+
+- `termAtt`, `offsetAtt`, `posAtt`: The "Att" suffix is minimal and unclear outside Lucene context. More descriptive: `termAttribute`, `offsetAttribute`, `positionIncrementAttribute`.
+- `charsRead`: OK, but `numCharsRead` or `characterCount` is a bit more descriptive.
+- `startPosition`: OK, but `startOffset` would be more consistent with tokenization terminology.
+- `resultToken`: Could be `currentPathToken` for clearer context.
+- `skipped`: Could be `elementsSkipped` or `skipCount` to clarify intent.
+- `endDelimiter`: Could be `pendingDelimiter` or `hasPendingDelimiter` to suggest the boolean represents waiting for a delimiter append.
+- Constants (`DEFAULT_BUFFER_SIZE`, etc.) are already clear.
+
+Below is the refactored class using these naming improvements:
+
+```java
+package org.apache.lucene.analysis.path;
+
+import java.io.IOException;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.AttributeFactory;
+import org.apache.lucene.util.IgnoreRandomChains;
+
+/**
+ * Tokenizer for path-like hierarchies.
+ *
+ * <p>Take something like:
+ *
+ * <pre>
+ *  /something/something/else
+ * </pre>
+ *
+ * and make:
+ *
+ * <pre>
+ *  /something
+ *  /something/something
+ *  /something/something/else
+ * </pre>
+ */
+@IgnoreRandomChains(reason = "broken offsets")
+public class PathHierarchyTokenizer extends Tokenizer {
+
+    public PathHierarchyTokenizer() {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(int skip) {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter) {
+        this(bufferSize, delimiter, delimiter, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement, int skip) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, char delimiter, char replacement, int skip) {
+        this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter, char replacement, int skip) {
+        this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, int bufferSize, char delimiter, char replacement, int skip) {
+        super(factory);
+        if (bufferSize < 0) {
+            throw new IllegalArgumentException("bufferSize cannot be negative");
+        }
+        if (skip < 0) {
+            throw new IllegalArgumentException("skip cannot be negative");
+        }
+        charTermAttribute.resizeBuffer(bufferSize);
+
+        this.delimiter = delimiter;
+        this.replacement = replacement;
+        this.skip = skip;
+        currentPathToken = new StringBuilder(bufferSize);
+    }
+
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
+    public static final char DEFAULT_DELIMITER = '/';
+    public static final int DEFAULT_SKIP = 0;
+
+    private final char delimiter;
+    private final char replacement;
+    private final int skip;
+
+    private final CharTermAttribute charTermAttribute = addAttribute(CharTermAttribute.class);
+    private final OffsetAttribute offsetAttribute = addAttribute(OffsetAttribute.class);
+    private final PositionIncrementAttribute positionIncrementAttribute =
+            addAttribute(PositionIncrementAttribute.class);
+    private int startOffset = 0;
+    private int skipCount = 0;
+    private boolean hasPendingDelimiter = false;
+    private StringBuilder currentPathToken;
+
+    private int numCharsRead = 0;
+
+    @Override
+    public final boolean incrementToken() throws IOException {
+        clearAttributes();
+        charTermAttribute.append(currentPathToken);
+        positionIncrementAttribute.setPositionIncrement(1);
+        int length = 0;
+        boolean added = false;
+        if (hasPendingDelimiter) {
+            charTermAttribute.append(replacement);
+            length++;
+            hasPendingDelimiter = false;
+            added = true;
+        }
+
+        while (true) {
+            int c = input.read();
+            if (c >= 0) {
+                numCharsRead++;
+            } else {
+                if (skipCount > skip) {
+                    length += currentPathToken.length();
+                    charTermAttribute.setLength(length);
+                    offsetAttribute.setOffset(correctOffset(startOffset), correctOffset(startOffset + length));
+                    if (added) {
+                        currentPathToken.setLength(0);
+                        currentPathToken.append(charTermAttribute.buffer(), 0, length);
+                    }
+                    return added;
+                } else {
+                    return false;
+                }
+            }
+            if (!added) {
+                added = true;
+                skipCount++;
+                if (skipCount > skip) {
+                    charTermAttribute.append(c == delimiter ? replacement : (char) c);
+                    length++;
+                } else {
+                    startOffset++;
+                }
+            } else {
+                if (c == delimiter) {
+                    if (skipCount > skip) {
+                        hasPendingDelimiter = true;
+                        break;
+                    }
+                    skipCount++;
+                    if (skipCount > skip) {
+                        charTermAttribute.append(replacement);
+                        length++;
+                    } else {
+                        startOffset++;
+                    }
+                } else {
+                    if (skipCount > skip) {
+                        charTermAttribute.append((char) c);
+                        length++;
+                    } else {
+                        startOffset++;
+                    }
+                }
+            }
+        }
+        length += currentPathToken.length();
+        charTermAttribute.setLength(length);
+        offsetAttribute.setOffset(correctOffset(startOffset), correctOffset(startOffset + length));
+        currentPathToken.setLength(0);
+        currentPathToken.append(charTermAttribute.buffer(), 0, length);
+        return true;
+    }
+
+    @Override
+    public final void end() throws IOException {
+        super.end();
+        // set final offset
+        int finalOffset = correctOffset(numCharsRead);
+        offsetAttribute.setOffset(finalOffset, finalOffset);
+    }
+
+    @Override
+    public void reset() throws IOException {
+        super.reset();
+        currentPathToken.setLength(0);
+        numCharsRead = 0;
+        hasPendingDelimiter = false;
+        skipCount = 0;
+        startOffset = 0;
+    }
+}
+```
+
+**Summary of Changes:**
+- `termAtt` -> `charTermAttribute`
+- `offsetAtt` -> `offsetAttribute`
+- `posAtt` -> `positionIncrementAttribute`
+- `skipped` -> `skipCount`
+- `startPosition` -> `startOffset`
+- `resultToken` -> `currentPathToken`
+- `charsRead` -> `numCharsRead`
+- `endDelimiter` -> `hasPendingDelimiter`
+
+**No logic has been changed; only identifier names have improved for clarity and maintainability.**
+All unit tests should still pass without modification.

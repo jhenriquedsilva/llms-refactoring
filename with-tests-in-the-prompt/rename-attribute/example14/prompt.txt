@@ -1,0 +1,416 @@
+Rename attribute refactorings are frequently employed to modify low-quality identifiers to improve readability. As a developer, imagine your team leader requests you to review a piece of code to identify potential rename attribute refactoring opportunities. The original code snippet is as follows:
+```
+package org.apache.lucene.analysis.path;
+
+import java.io.IOException;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.AttributeFactory;
+import org.apache.lucene.util.IgnoreRandomChains;
+
+/**
+ * Tokenizer for path-like hierarchies.
+ *
+ * <p>Take something like:
+ *
+ * <pre>
+ *  /something/something/else
+ * </pre>
+ *
+ * and make:
+ *
+ * <pre>
+ *  /something
+ *  /something/something
+ *  /something/something/else
+ * </pre>
+ */
+@IgnoreRandomChains(reason = "broken offsets")
+public class PathHierarchyTokenizer extends Tokenizer {
+
+    public PathHierarchyTokenizer() {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(int skip) {
+        this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter) {
+        this(bufferSize, delimiter, delimiter, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
+    }
+
+    public PathHierarchyTokenizer(char delimiter, char replacement, int skip) {
+        this(DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, char delimiter, char replacement, int skip) {
+        this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(int bufferSize, char delimiter, char replacement, int skip) {
+        this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, skip);
+    }
+
+    public PathHierarchyTokenizer(
+            AttributeFactory factory, int bufferSize, char delimiter, char replacement, int skip) {
+        super(factory);
+        if (bufferSize < 0) {
+            throw new IllegalArgumentException("bufferSize cannot be negative");
+        }
+        if (skip < 0) {
+            throw new IllegalArgumentException("skip cannot be negative");
+        }
+        termAtt.resizeBuffer(bufferSize);
+
+        this.delimiter = delimiter;
+        this.replacement = replacement;
+        this.skip = skip;
+        resultToken = new StringBuilder(bufferSize);
+    }
+
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
+    public static final char DEFAULT_DELIMITER = '/';
+    public static final int DEFAULT_SKIP = 0;
+
+    private final char delimiter;
+    private final char replacement;
+    private final int skip;
+
+    private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+    private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
+    private final PositionIncrementAttribute posAtt =
+            addAttribute(PositionIncrementAttribute.class);
+    private int startPosition = 0;
+    private int skipped = 0;
+    private boolean endDelimiter = false;
+    private StringBuilder resultToken;
+
+    private int charsRead = 0;
+
+    @Override
+    public final boolean incrementToken() throws IOException {
+        clearAttributes();
+        termAtt.append(resultToken);
+        posAtt.setPositionIncrement(1);
+        int length = 0;
+        boolean added = false;
+        if (endDelimiter) {
+            termAtt.append(replacement);
+            length++;
+            endDelimiter = false;
+            added = true;
+        }
+
+        while (true) {
+            int c = input.read();
+            if (c >= 0) {
+                charsRead++;
+            } else {
+                if (skipped > skip) {
+                    length += resultToken.length();
+                    termAtt.setLength(length);
+                    offsetAtt.setOffset(correctOffset(startPosition), correctOffset(startPosition + length));
+                    if (added) {
+                        resultToken.setLength(0);
+                        resultToken.append(termAtt.buffer(), 0, length);
+                    }
+                    return added;
+                } else {
+                    return false;
+                }
+            }
+            if (!added) {
+                added = true;
+                skipped++;
+                if (skipped > skip) {
+                    termAtt.append(c == delimiter ? replacement : (char) c);
+                    length++;
+                } else {
+                    startPosition++;
+                }
+            } else {
+                if (c == delimiter) {
+                    if (skipped > skip) {
+                        endDelimiter = true;
+                        break;
+                    }
+                    skipped++;
+                    if (skipped > skip) {
+                        termAtt.append(replacement);
+                        length++;
+                    } else {
+                        startPosition++;
+                    }
+                } else {
+                    if (skipped > skip) {
+                        termAtt.append((char) c);
+                        length++;
+                    } else {
+                        startPosition++;
+                    }
+                }
+            }
+        }
+        length += resultToken.length();
+        termAtt.setLength(length);
+        offsetAtt.setOffset(correctOffset(startPosition), correctOffset(startPosition + length));
+        resultToken.setLength(0);
+        resultToken.append(termAtt.buffer(), 0, length);
+        return true;
+    }
+
+    @Override
+    public final void end() throws IOException {
+        super.end();
+        // set final offset
+        int finalOffset = correctOffset(charsRead);
+        offsetAtt.setOffset(finalOffset, finalOffset);
+    }
+
+    @Override
+    public void reset() throws IOException {
+        super.reset();
+        resultToken.setLength(0);
+        charsRead = 0;
+        endDelimiter = false;
+        skipped = 0;
+        startPosition = 0;
+    }
+}
+```
+
+Also, here it is a test suite for the given code snippet to help you refactor the code without behavior changes:
+```
+package org.apache.lucene.analysis.path;
+
+import static org.junit.Assert.*;
+
+import java.io.IOException;
+import java.io.StringReader;
+
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.AttributeFactory;
+import org.junit.Test;
+import org.junit.Before;
+
+public class PathHierarchyTokenizerTest {
+    private CharTermAttribute termAtt;
+    private OffsetAttribute offsetAtt;
+    private PositionIncrementAttribute posAtt;
+
+    // Helper to get tokens from PathHierarchyTokenizer
+    private static String[] tokenize(Tokenizer t, String input) throws IOException {
+        t.setReader(new StringReader(input));
+        t.reset();
+        java.util.List<String> result = new java.util.ArrayList<>();
+        while (t.incrementToken()) {
+            result.add(t.getAttribute(CharTermAttribute.class).toString());
+        }
+        t.end();
+        t.close();
+        return result.toArray(new String[0]);
+    }
+
+    //
+    // Basic Constructor Tests
+    //
+    @Test
+    public void testDefaultConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer();
+        assertNotNull(t);
+    }
+    @Test
+    public void testIntConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer(0);
+        assertNotNull(t);
+    }
+    @Test
+    public void testBufferSizeDelimiterConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer(1024, '/');
+        assertNotNull(t);
+    }
+    @Test
+    public void testDelimiterReplacementConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer('/', '-');
+        assertNotNull(t);
+    }
+    @Test
+    public void testDelimiterReplacementSkipConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer('/', '-', 0);
+        assertNotNull(t);
+    }
+    @Test
+    public void testFactoryDelimiterReplacementSkipConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, '/', '-', 0);
+        assertNotNull(t);
+    }
+    @Test
+    public void testBufferSizeDelimiterReplacementSkipConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer(1024, '/', '-', 0);
+        assertNotNull(t);
+    }
+    @Test
+    public void testFullConstructor() {
+        Tokenizer t = new PathHierarchyTokenizer(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, 1024, '/', '-', 0);
+        assertNotNull(t);
+    }
+
+    //
+    // Constructor : Negative bufferSize or skip throws exception
+    //
+    @Test(expected = IllegalArgumentException.class)
+    public void testNegativeBufferSizeThrows() {
+        new PathHierarchyTokenizer(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, -1, '/', '-', 0);
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void testNegativeSkipThrows() {
+        new PathHierarchyTokenizer(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, 1, '/', '-', -3);
+    }
+
+    //
+    // incrementToken typical use cases
+    //
+    @Test
+    public void testHierarchyTokenizationDefault() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "/a/b/c");
+        assertArrayEquals(new String[]{"/a", "/a/b", "/a/b/c"}, tokens);
+    }
+
+    @Test
+    public void testHierarchyTokenizationNoLeadingSlash() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "a/b/c");
+        assertArrayEquals(new String[]{"a", "a/b", "a/b/c"}, tokens);
+    }
+
+    @Test
+    public void testHierarchyTokenizationWithSkip() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer(1); // skip first element
+        String[] tokens = tokenize(t, "/a/b/c");
+        assertArrayEquals(new String[]{"/a/b", "/a/b/c"}, tokens);
+    }
+
+    @Test
+    public void testCustomDelimiterAndReplacement() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer('-', '_', 0);
+        String[] tokens = tokenize(t, "a-b-c");
+        assertArrayEquals(new String[]{"a_b", "a_b_c"}, tokens);
+    }
+
+    @Test
+    public void testReplacementDiffersFromDelimiter() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer('/', '-', 0);
+        String[] tokens = tokenize(t, "/a/b/c");
+        assertArrayEquals(new String[]{"-a", "-a-b", "-a-b-c"}, tokens);
+    }
+
+    //
+    // Edge Cases
+    //
+    @Test
+    public void testEmptyInput() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "");
+        assertEquals(0, tokens.length);
+    }
+
+    @Test
+    public void testInputWithoutDelimiter() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "abc");
+        assertArrayEquals(new String[]{"abc"}, tokens);
+    }
+
+    @Test
+    public void testMultipleLeadingDelimiters() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "///a/b");
+        assertArrayEquals(new String[]{"///a", "///a/b"}, tokens);
+    }
+
+    @Test
+    public void testOnlyDelimiters() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "///");
+        assertArrayEquals(new String[]{"///"}, tokens);
+    }
+
+    @Test
+    public void testRepeatedDelimitersInside() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String[] tokens = tokenize(t, "/a//b/");
+        assertArrayEquals(new String[]{"/a", "/a/", "/a//b", "/a//b/"}, tokens);
+    }
+
+    @Test
+    public void testLongPath() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String base = "/a/b/c/d/e/f/g/h/i/j/k";
+        String[] tokens = tokenize(t, base);
+        assertEquals(11, tokens.length);
+        assertEquals("/a/b/c/d/e/f/g/h/i/j/k", tokens[10]);
+    }
+
+    //
+    // Test incrementToken returns false for exhausted input
+    //
+    @Test
+    public void testIncrementTokenReturnsFalseWhenExhausted() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        t.setReader(new StringReader("/foo"));
+        t.reset();
+        assertTrue(t.incrementToken());
+        assertFalse(t.incrementToken());
+        t.close();
+    }
+
+
+    //
+    // Test offsets in end()
+    //
+    @Test
+    public void testOffsetsAtEnd() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        String input = "/a/b";
+        t.setReader(new StringReader(input));
+        t.reset();
+        while (t.incrementToken()) {}
+        t.end(); // Should set offsetAtt offsets to input.length
+        OffsetAttribute offsetAtt = t.addAttribute(OffsetAttribute.class);
+        assertEquals(input.length(), offsetAtt.endOffset());
+    }
+
+    //
+    // Test reset() resets all state for reuse
+    //
+    @Test
+    public void testResetAllowsReuse() throws Exception {
+        Tokenizer t = new PathHierarchyTokenizer();
+        t.setReader(new StringReader("/a/b"));
+        t.reset();
+        String[] tokens1 = tokenize(t, "/a/b");
+        assertArrayEquals(new String[]{"/a", "/a/b"}, tokens1);
+
+        t.setReader(new StringReader("/c/d"));
+        t.reset();
+        String[] tokens2 = tokenize(t, "/c/d");
+        assertArrayEquals(new String[]{"/c", "/c/d"}, tokens2);
+
+        t.close();
+    }
+}
+```
+
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.

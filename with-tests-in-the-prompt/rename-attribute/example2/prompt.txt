@@ -1,0 +1,593 @@
+Rename attribute refactorings are frequently employed to modify low-quality identifiers to improve readability. As a developer, imagine your team leader requests you to review a piece of code to identify potential rename attribute refactoring opportunities. The original code snippet is as follows:
+```
+package org.apache.commons.io.input;
+
+import static org.apache.commons.io.IOUtils.EOF;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.build.AbstractStreamBuilder;
+
+/**
+ * Reads bytes up to a maximum length, if its count goes above that, it stops.
+ * <p>
+ * This is useful to wrap {@code ServletInputStream}s. The {@code ServletInputStream} will block if you try to read content from it that isn't there, because it
+ * doesn't know whether the content hasn't arrived yet or whether the content has finished. So, one of these, initialized with the {@code Content-Length} sent
+ * in the {@code ServletInputStream}'s header, will stop it blocking, providing it's been sent with a correct content length.
+ * </p>
+ *
+ * @since 2.0
+ */
+public class BoundedInputStream extends ProxyInputStream {
+
+    // TODO For 3.0, extend CountingInputStream. Or, add a max feature to CountingInputStream.
+
+    /**
+     * Builds a new {@link BoundedInputStream} instance.
+     *
+     * <h2>Using NIO</h2>
+     *
+     * <pre>{@code
+     * BoundedInputStream s = BoundedInputStream.builder().setPath(Paths.get("MyFile.xml")).setMaxCount(1024).setPropagateClose(false).get();
+     * }
+     * </pre>
+     *
+     * <h2>Using IO</h2>
+     *
+     * <pre>{@code
+     * BoundedInputStream s = BoundedInputStream.builder().setFile(new File("MyFile.xml")).setMaxCount(1024).setPropagateClose(false).get();
+     * }
+     * </pre>
+     *
+     * @since 2.16.0
+     */
+    public static class Builder extends AbstractStreamBuilder<BoundedInputStream, Builder> {
+
+        /** The max count of bytes to read. */
+        private long maxLength = EOF;
+
+        /** Flag if close should be propagated. */
+        private boolean propagateClose = true;
+
+        @SuppressWarnings("resource")
+        @Override
+        public BoundedInputStream get() throws IOException {
+            return new BoundedInputStream(getInputStream(), maxLength, propagateClose);
+        }
+
+        /**
+         * Sets the maximum number of bytes to return.
+         * <p>
+         * Default is {@value IOUtils#EOF}.
+         * </p>
+         *
+         * @param maxCount The maximum number of bytes to return.
+         * @return this.
+         */
+        public Builder setMaxCount(final long maxCount) {
+            this.maxLength = maxCount;
+            return this;
+        }
+
+        /**
+         * Sets whether the {@link #close()} method should propagate to the underling {@link InputStream}.
+         * <p>
+         * Default is true.
+         * </p>
+         *
+         * @param propagateClose {@code true} if calling {@link #close()} propagates to the {@code close()} method of the underlying stream or {@code false} if
+         *                       it does not.
+         * @return this.
+         */
+        public Builder setPropagateClose(final boolean propagateClose) {
+            this.propagateClose = propagateClose;
+            return this;
+        }
+
+    }
+
+    /**
+     * Constructs a new {@link Builder}.
+     *
+     * @return a new {@link Builder}.
+     * @since 2.16.0
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /** The max count of bytes to read. */
+    private final long maxCount;
+
+    /**
+     * Flag if close should be propagated.
+     *
+     * TODO Make final in 3.0.
+     */
+    private boolean propagateClose = true;
+
+    /**
+     * Constructs a new {@link BoundedInputStream} that wraps the given input stream and is unlimited.
+     *
+     * @param in The wrapped input stream.
+     * @deprecated Use {@link Builder#get()}.
+     */
+    @Deprecated
+    public BoundedInputStream(final InputStream in) {
+        this(in, EOF);
+    }
+
+    /**
+     * Constructs a new {@link BoundedInputStream} that wraps the given input stream and limits it to a certain size.
+     *
+     * @param inputStream The wrapped input stream.
+     * @param maxCount   The maximum number of bytes to return.
+     * @deprecated Use {@link Builder#get()}.
+     */
+    @Deprecated
+    public BoundedInputStream(final InputStream inputStream, final long maxCount) {
+        // Some badly designed methods - e.g. the Servlet API - overload length
+        // such that "-1" means stream finished
+        this(inputStream, maxCount, true);
+    }
+
+    /**
+     * Constructs a new {@link BoundedInputStream} that wraps the given input stream and limits it to a certain size.
+     *
+     * @param inputStream    The wrapped input stream.
+     * @param maxCount      The maximum number of bytes to return.
+     * @param propagateClose {@code true} if calling {@link #close()} propagates to the {@code close()} method of the underlying stream or {@code false} if it
+     *                       does not.
+     */
+    @SuppressWarnings("resource") // Caller closes.
+    private BoundedInputStream(final InputStream inputStream, final long maxCount, final boolean propagateClose) {
+        // Some badly designed methods - e.g. the Servlet API - overload length
+        // such that "-1" means stream finished
+        super(new CountingInputStream(inputStream));
+        this.maxCount = maxCount;
+        this.propagateClose = propagateClose;
+    }
+
+    private CountingInputStream getCountingInputStream() {
+        return (CountingInputStream) in;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int available() throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return 0;
+        }
+        return in.available();
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#close()} method if {@link #isPropagateClose()} is {@code true}.
+     *
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public void close() throws IOException {
+        if (propagateClose) {
+            in.close();
+        }
+    }
+
+    /**
+     * Gets the count of bytes read.
+     *
+     * @return The count of bytes read.
+     * @since 2.12.0
+     */
+    @SuppressWarnings("resource") // no allocation
+    public long getCount() {
+        return getCountingInputStream().getByteCount();
+    }
+
+    /**
+     * Gets the max count of bytes to read.
+     *
+     * @return The max count of bytes to read.
+     * @since 2.16.0
+     */
+    public long getMaxCount() {
+        return maxCount;
+    }
+
+    /**
+     * Gets the max count of bytes to read.
+     *
+     * @return The max count of bytes to read.
+     * @since 2.12.0
+     * @deprecated Use {@link #getMaxCount()}.
+     */
+    @Deprecated
+    public long getMaxLength() {
+        return maxCount;
+    }
+
+    /**
+     * Gets how many bytes remain to read.
+     *
+     * @return bytes how many bytes remain to read.
+     * @since 2.16.0
+     */
+    public long getRemaining() {
+        return getMaxCount() - getCount();
+    }
+
+    private boolean isMaxCount() {
+        return maxCount >= 0 && getCount() >= maxCount;
+    }
+
+    /**
+     * Tests whether the {@link #close()} method should propagate to the underling {@link InputStream}.
+     *
+     * @return {@code true} if calling {@link #close()} propagates to the {@code close()} method of the underlying stream or {@code false} if it does not.
+     */
+    public boolean isPropagateClose() {
+        return propagateClose;
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#mark(int)} method.
+     *
+     * @param readLimit read ahead limit
+     */
+    @Override
+    public synchronized void mark(final int readLimit) {
+        in.mark(readLimit);
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#markSupported()} method.
+     *
+     * @return true if mark is supported, otherwise false
+     */
+    @Override
+    public boolean markSupported() {
+        return in.markSupported();
+    }
+
+    /**
+     * A caller has caused a request that would cross the {@code maxLength} boundary.
+     *
+     * @param maxLength The max count of bytes to read.
+     * @param count     The count of bytes read.
+     * @throws IOException Subclasses may throw.
+     * @since 2.12.0
+     */
+    @SuppressWarnings("unused")
+    protected void onMaxLength(final long maxLength, final long count) throws IOException {
+        // for subclasses
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#read()} method if the current position is less than the limit.
+     *
+     * @return the byte read or -1 if the end of stream or the limit has been reached.
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public int read() throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return EOF;
+        }
+        return super.read();
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#read(byte[])} method.
+     *
+     * @param b the buffer to read the bytes into
+     * @return the number of bytes read or -1 if the end of stream or the limit has been reached.
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public int read(final byte[] b) throws IOException {
+        return read(b, 0, b.length);
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#read(byte[], int, int)} method.
+     *
+     * @param b   the buffer to read the bytes into
+     * @param off The start offset
+     * @param len The number of bytes to read
+     * @return the number of bytes read or -1 if the end of stream or the limit has been reached.
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public int read(final byte[] b, final int off, final int len) throws IOException {
+        if (isMaxCount()) {
+            onMaxLength(maxCount, getCount());
+            return EOF;
+        }
+        return super.read(b, off, (int) toReadLen(len));
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#reset()} method.
+     *
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public synchronized void reset() throws IOException {
+        in.reset();
+    }
+
+    /**
+     * Sets whether the {@link #close()} method should propagate to the underling {@link InputStream}.
+     *
+     * @param propagateClose {@code true} if calling {@link #close()} propagates to the {@code close()} method of the underlying stream or {@code false} if it
+     *                       does not.
+     * @deprecated Use {@link Builder#setPropagateClose(boolean)}.
+     */
+    @Deprecated
+    public void setPropagateClose(final boolean propagateClose) {
+        this.propagateClose = propagateClose;
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#skip(long)} method.
+     *
+     * @param n the number of bytes to skip
+     * @return the actual number of bytes skipped
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public long skip(final long n) throws IOException {
+        return super.skip(toReadLen(n));
+    }
+
+    private long toReadLen(final long len) {
+        return maxCount >= 0 ? Math.min(len, maxCount - getCount()) : len;
+    }
+
+    /**
+     * Invokes the delegate's {@link InputStream#toString()} method.
+     *
+     * @return the delegate's {@link InputStream#toString()}
+     */
+    @Override
+    public String toString() {
+        return in.toString();
+    }
+}
+```
+
+Also, here it is a test suite for the given code snippet to help you refactor the code without behavior changes:
+```
+import org.junit.Test;
+import java.io.*;
+
+import static org.junit.Assert.*;
+
+public class BoundedInputStreamTest {
+
+    @Test
+    public void testAvailableWithinBounds() throws IOException {
+        byte[] data = {1, 2, 3, 4, 5};
+        ByteArrayInputStream bais = new ByteArrayInputStream(data);
+        BoundedInputStream bis = new BoundedInputStream(bais, 3);
+        int avail = bis.available();
+        assertTrue(avail <= 3);
+    }
+
+    @Test
+    public void testAvailableAtMaxCount() throws IOException {
+        byte[] arr = {1,2};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 2);
+        bis.read(); bis.read();
+        assertEquals(0, bis.available());
+    }
+
+    @Test
+    public void testClosePropagatesByDefault() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1});
+        BoundedInputStream bis = new BoundedInputStream(bais, 1);
+        bis.close();
+        // Should not throw
+        bais.read();
+        bis.close(); // idempotent
+    }
+
+    @Test
+    public void testGetCountAfterRead() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        assertEquals(0, bis.getCount());
+        bis.read();
+        assertEquals(1, bis.getCount());
+        bis.read();
+        bis.read();
+        assertEquals(3, bis.getCount());
+    }
+
+    @Test
+    public void testGetMaxCount() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[7]), 5);
+        assertEquals(5, bis.getMaxCount());
+    }
+
+    @Test
+    public void testGetMaxLengthDeprecated() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertEquals(2, bis.getMaxLength());
+    }
+
+    @Test
+    public void testGetRemainingDecreases() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        assertEquals(3, bis.getRemaining());
+        bis.read();
+        assertEquals(2, bis.getRemaining());
+    }
+
+    @Test
+    public void testIsPropagateCloseDefault() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertTrue(bis.isPropagateClose());
+    }
+
+    @Test
+    public void testMarkSupportedAndMark() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[4]), 4);
+        bis.mark(2);
+        assertTrue(bis.markSupported());
+    }
+
+    @Test
+    public void testMarkSupportedReturn() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertTrue(bis.markSupported());
+    }
+
+    @Test
+    public void testReadSingle() throws IOException {
+        byte[] data = {42};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 1);
+        assertEquals(42, bis.read());
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testReadAfterLimit() throws IOException {
+        byte[] arr = {9,8};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 1);
+        bis.read();
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testReadByteArr() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 2);
+        byte[] buf = new byte[3];
+        int count = bis.read(buf);
+        assertEquals(2, count);
+        assertArrayEquals(new byte[]{1,2,0}, buf);
+    }
+
+    @Test
+    public void testReadByteArrOffsetLen() throws IOException {
+        byte[] data = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        byte[] buf = new byte[5];
+        int count = bis.read(buf, 1, 2);
+        assertEquals(2, count);
+        assertEquals(1, buf[1]);
+        assertEquals(2, buf[2]);
+        int c2 = bis.read(buf, 3, 3);
+        assertEquals(1, c2);
+        assertEquals(3, buf[3]);
+    }
+
+    @Test
+    public void testResetSupported() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{5,6,7});
+        BoundedInputStream bis = new BoundedInputStream(bais, 3);
+        bis.mark(2);
+        bis.read();
+        bis.reset();
+        assertEquals(5, bis.read());
+    }
+
+    @Test
+    public void testSetPropagateCloseFalse() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1,2});
+        BoundedInputStream bis = new BoundedInputStream(bais, 2);
+        bis.setPropagateClose(false);
+        bis.close();
+        assertEquals(1, bais.read());
+    }
+
+    @Test
+    public void testSkipWithinBound() throws IOException {
+        byte[] data = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 2);
+        long skipped = bis.skip(5);
+        assertEquals(2, skipped);
+    }
+
+    @Test
+    public void testSkipMoreThanAvailable() throws IOException {
+        byte[] arr = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 2);
+        long skipped = bis.skip(10);
+        assertEquals(2, skipped);
+    }
+
+    @Test
+    public void testZeroMaxCountGivesEOF() throws IOException {
+        byte[] arr = {1,2};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 0);
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testNegativeMaxCountNoBound() throws IOException {
+        byte[] arr = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), -1L);
+        assertEquals(1, bis.read());
+        assertEquals(2, bis.read());
+        assertEquals(3, bis.read());
+        assertEquals(4, bis.read());
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testPropagateCloseFalse() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1});
+        BoundedInputStream bis = new BoundedInputStream(bais, 1);
+        bis.setPropagateClose(false);
+        bis.close();
+        assertEquals(1, bais.read());
+    }
+
+    @Test(expected = IOException.class)
+    public void testResetOnNonMarkableStream() throws IOException {
+        InputStream noMark = new InputStream() {
+            public int read() { return -1; }
+            public boolean markSupported() { return false; }
+            public void reset() throws IOException { throw new IOException("reset"); }
+        };
+        BoundedInputStream bis = new BoundedInputStream(noMark, 10);
+        bis.reset();
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testNullInputStreamThrows() {
+        new BoundedInputStream(null, 1);
+    }
+
+    @Test(expected = IndexOutOfBoundsException.class)
+    public void testReadOffsetArrayOutOfBounds() throws IOException {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        bis.read(new byte[1], 1, 2);
+    }
+
+    @Test
+    public void testSkipNegativeValue() throws IOException {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[]{1,2}), 2);
+        assertEquals(0, bis.skip(-5));
+    }
+
+    @Test
+    public void testToStringReturnsDelegateString() {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1,2});
+        BoundedInputStream bis = new BoundedInputStream(bais, 2);
+        String str = bis.toString();
+        assertNotNull(str);
+    }
+}
+```
+
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.

@@ -1,0 +1,224 @@
+import org.junit.Test;
+import java.io.*;
+
+import static org.junit.Assert.*;
+
+public class BoundedInputStreamTest {
+
+    @Test
+    public void testAvailableWithinBounds() throws IOException {
+        byte[] data = {1, 2, 3, 4, 5};
+        ByteArrayInputStream bais = new ByteArrayInputStream(data);
+        BoundedInputStream bis = new BoundedInputStream(bais, 3);
+        int avail = bis.available();
+        assertTrue(avail <= 3);
+    }
+
+    @Test
+    public void testAvailableAtMaxCount() throws IOException {
+        byte[] arr = {1,2};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 2);
+        bis.read(); bis.read();
+        assertEquals(0, bis.available());
+    }
+
+    @Test
+    public void testClosePropagatesByDefault() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1});
+        BoundedInputStream bis = new BoundedInputStream(bais, 1);
+        bis.close();
+        // Should not throw
+        bais.read();
+        bis.close(); // idempotent
+    }
+
+    @Test
+    public void testGetCountAfterRead() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        assertEquals(0, bis.getCount());
+        bis.read();
+        assertEquals(1, bis.getCount());
+        bis.read();
+        bis.read();
+        assertEquals(3, bis.getCount());
+    }
+
+    @Test
+    public void testGetMaxCount() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[7]), 5);
+        assertEquals(5, bis.getMaxCount());
+    }
+
+    @Test
+    public void testGetMaxLengthDeprecated() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertEquals(2, bis.getMaxLength());
+    }
+
+    @Test
+    public void testGetRemainingDecreases() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        assertEquals(3, bis.getRemaining());
+        bis.read();
+        assertEquals(2, bis.getRemaining());
+    }
+
+    @Test
+    public void testIsPropagateCloseDefault() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertTrue(bis.isPropagateClose());
+    }
+
+    @Test
+    public void testMarkSupportedAndMark() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[4]), 4);
+        bis.mark(2);
+        assertTrue(bis.markSupported());
+    }
+
+    @Test
+    public void testMarkSupportedReturn() {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        assertTrue(bis.markSupported());
+    }
+
+    @Test
+    public void testReadSingle() throws IOException {
+        byte[] data = {42};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 1);
+        assertEquals(42, bis.read());
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testReadAfterLimit() throws IOException {
+        byte[] arr = {9,8};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 1);
+        bis.read();
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testReadByteArr() throws IOException {
+        byte[] data = {1,2,3};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 2);
+        byte[] buf = new byte[3];
+        int count = bis.read(buf);
+        assertEquals(2, count);
+        assertArrayEquals(new byte[]{1,2,0}, buf);
+    }
+
+    @Test
+    public void testReadByteArrOffsetLen() throws IOException {
+        byte[] data = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 3);
+        byte[] buf = new byte[5];
+        int count = bis.read(buf, 1, 2);
+        assertEquals(2, count);
+        assertEquals(1, buf[1]);
+        assertEquals(2, buf[2]);
+        int c2 = bis.read(buf, 3, 3);
+        assertEquals(1, c2);
+        assertEquals(3, buf[3]);
+    }
+
+    @Test
+    public void testResetSupported() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{5,6,7});
+        BoundedInputStream bis = new BoundedInputStream(bais, 3);
+        bis.mark(2);
+        bis.read();
+        bis.reset();
+        assertEquals(5, bis.read());
+    }
+
+    @Test
+    public void testSetPropagateCloseFalse() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1,2});
+        BoundedInputStream bis = new BoundedInputStream(bais, 2);
+        bis.setPropagateClose(false);
+        bis.close();
+        assertEquals(1, bais.read());
+    }
+
+    @Test
+    public void testSkipWithinBound() throws IOException {
+        byte[] data = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(data), 2);
+        long skipped = bis.skip(5);
+        assertEquals(2, skipped);
+    }
+
+    @Test
+    public void testSkipMoreThanAvailable() throws IOException {
+        byte[] arr = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 2);
+        long skipped = bis.skip(10);
+        assertEquals(2, skipped);
+    }
+
+    @Test
+    public void testZeroMaxCountGivesEOF() throws IOException {
+        byte[] arr = {1,2};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), 0);
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testNegativeMaxCountNoBound() throws IOException {
+        byte[] arr = {1,2,3,4};
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(arr), -1L);
+        assertEquals(1, bis.read());
+        assertEquals(2, bis.read());
+        assertEquals(3, bis.read());
+        assertEquals(4, bis.read());
+        assertEquals(-1, bis.read());
+    }
+
+    @Test
+    public void testPropagateCloseFalse() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1});
+        BoundedInputStream bis = new BoundedInputStream(bais, 1);
+        bis.setPropagateClose(false);
+        bis.close();
+        assertEquals(1, bais.read());
+    }
+
+    @Test(expected = IOException.class)
+    public void testResetOnNonMarkableStream() throws IOException {
+        InputStream noMark = new InputStream() {
+            public int read() { return -1; }
+            public boolean markSupported() { return false; }
+            public void reset() throws IOException { throw new IOException("reset"); }
+        };
+        BoundedInputStream bis = new BoundedInputStream(noMark, 10);
+        bis.reset();
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testNullInputStreamThrows() {
+        new BoundedInputStream(null, 1);
+    }
+
+    @Test(expected = IndexOutOfBoundsException.class)
+    public void testReadOffsetArrayOutOfBounds() throws IOException {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[2]), 2);
+        bis.read(new byte[1], 1, 2);
+    }
+
+    @Test
+    public void testSkipNegativeValue() throws IOException {
+        BoundedInputStream bis = new BoundedInputStream(new ByteArrayInputStream(new byte[]{1,2}), 2);
+        assertEquals(0, bis.skip(-5));
+    }
+
+    @Test
+    public void testToStringReturnsDelegateString() {
+        ByteArrayInputStream bais = new ByteArrayInputStream(new byte[]{1,2});
+        BoundedInputStream bis = new BoundedInputStream(bais, 2);
+        String str = bis.toString();
+        assertNotNull(str);
+    }
+}

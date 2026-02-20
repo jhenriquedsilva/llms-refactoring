@@ -1,0 +1,83 @@
+package com.github.javaparser.printer.lexicalpreservation;
+
+import static org.junit.Assert.*;
+
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import org.junit.Test;
+
+public class LexicalPreservingPrinterTest {
+    // ========== Basic Tests ==========
+
+    @Test
+    public void testSetupWithValidNode() {
+        CompilationUnit cu = JavaParser.parse("class Foo{}");
+        Node node = cu;
+        Node result = LexicalPreservingPrinter.setup(node);
+        assertSame(node, result);
+        assertTrue(LexicalPreservingPrinter.isAvailableOn(node));
+    }
+
+    @Test
+    public void testIsAvailableOnAfterSetup() {
+        CompilationUnit cu = JavaParser.parse("class Bar{}");
+        Node node = cu;
+        assertFalse(LexicalPreservingPrinter.isAvailableOn(node));
+        LexicalPreservingPrinter.setup(node);
+        assertTrue(LexicalPreservingPrinter.isAvailableOn(node));
+    }
+
+    @Test
+    public void testPrintPreservesFormatting() {
+        String code = "class A {\n    int x;\n}";
+        CompilationUnit cu = JavaParser.parse(code);
+        LexicalPreservingPrinter.setup(cu);
+        String printed = LexicalPreservingPrinter.print(cu);
+        assertTrue(printed.contains("int x;"));
+        assertEquals(code.replaceAll("\\r\\n?", "\n"), printed.replaceAll("\\r\\n?", "\n"));
+    }
+
+    // ========== Edge/Exception Tests ==========
+
+    @Test(expected = AssertionError.class)
+    public void testSetupWithNullNodeThrows() {
+        LexicalPreservingPrinter.setup(null);
+    }
+
+    @Test
+    public void testSetupIsIdempotent() {
+        CompilationUnit cu = JavaParser.parse("class X{}");
+        Node first = LexicalPreservingPrinter.setup(cu);
+        Node second = LexicalPreservingPrinter.setup(cu);
+        assertSame(first, second);
+        assertTrue(LexicalPreservingPrinter.isAvailableOn(cu));
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testIsAvailableOnNullThrows() {
+        LexicalPreservingPrinter.isAvailableOn(null);
+    }
+
+    @Test(expected = Exception.class)
+    public void testPrintWithoutSetupThrows() {
+        CompilationUnit cu = JavaParser.parse("class Y{}");
+        LexicalPreservingPrinter.print(cu);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testPrintNullThrows() {
+        LexicalPreservingPrinter.print(null);
+    }
+
+    @Test
+    public void testLexicalPreservingOfAddedMember() {
+        CompilationUnit cu = JavaParser.parse("class Z{}");
+        LexicalPreservingPrinter.setup(cu);
+        ClassOrInterfaceDeclaration clazz = cu.getClassByName("Z").get();
+        clazz.addField("int", "y");
+        String modified = LexicalPreservingPrinter.print(cu);
+        assertTrue(modified.contains("int y;"));
+    }
+}

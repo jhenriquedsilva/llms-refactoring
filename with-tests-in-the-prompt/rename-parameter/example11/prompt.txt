@@ -1,0 +1,459 @@
+Rename parameter refactorings are frequently employed to modify low-quality identifiers to improve readability. As a developer, imagine your team leader requests you to review a piece of code to identify potential rename parameter refactoring opportunities. The original code snippet is as follows:
+```
+package org.eclipse.jetty.util;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+/**
+ * Computes String representations of Dates then caches the results so
+ * that subsequent requests within the same second will be fast.
+ * <p>
+ * If consecutive calls are frequently very different, then this
+ * may be a little slower than a normal DateFormat.
+ * <p>
+ * @see DateTimeFormatter for date formatting patterns.
+ */
+public class DateCache
+{
+    public static final String DEFAULT_FORMAT = "EEE MMM dd HH:mm:ss zzz yyyy";
+
+    private final String _formatString;
+    private final DateTimeFormatter _tzFormat1;
+    private final DateTimeFormatter _tzFormat2;
+    private final ZoneId _zoneId;
+
+    private volatile TickHolder _tickHolder;
+
+    private static class TickHolder
+    {
+        public TickHolder(Tick t1, Tick t2)
+        {
+            tick1 = t1;
+            tick2 = t2;
+        }
+
+        final Tick tick1;
+        final Tick tick2;
+    }
+
+    public static class Tick
+    {
+        private final long _seconds;
+        private final String _prefix;
+        private final String _suffix;
+
+        public Tick(long seconds, String prefix, String suffix)
+        {
+            _seconds = seconds;
+            _prefix = prefix;
+            _suffix = suffix;
+        }
+
+        public long getSeconds()
+        {
+            return _seconds;
+        }
+
+        public String format(long inDate)
+        {
+            if (_suffix == null)
+                return _prefix;
+
+            long ms = inDate % 1000;
+            StringBuilder sb = new StringBuilder();
+            sb.append(_prefix);
+            if (ms < 10)
+                sb.append("00").append(ms);
+            else if (ms < 100)
+                sb.append('0').append(ms);
+            else
+                sb.append(ms);
+            sb.append(_suffix);
+            return sb.toString();
+        }
+    }
+
+    /**
+     * Make a DateCache that will use a default format.
+     * The default format generates the same results as Date.toString().
+     */
+    public DateCache()
+    {
+        this(DEFAULT_FORMAT);
+    }
+
+    /**
+     * Make a DateCache that will use the given format.
+     *
+     * @param format the format to use
+     */
+    public DateCache(String format)
+    {
+        this(format, null, TimeZone.getDefault());
+    }
+
+    public DateCache(String format, Locale l)
+    {
+        this(format, l, TimeZone.getDefault());
+    }
+
+    public DateCache(String format, Locale l, String tz)
+    {
+        this(format, l, TimeZone.getTimeZone(tz));
+    }
+
+    public DateCache(String format, Locale l, TimeZone tz)
+    {
+        this(format, l, tz, true);
+    }
+
+    public DateCache(String format, Locale l, TimeZone tz, boolean subSecondPrecision)
+    {
+        format = format.replaceFirst("S+", "SSS");
+        _formatString = format;
+        _zoneId = tz.toZoneId();
+
+        String format1 = format;
+        String format2 = null;
+        boolean subSecond;
+        if (subSecondPrecision)
+        {
+            int msIndex = format.indexOf("SSS");
+            subSecond = (msIndex >= 0);
+            if (subSecond)
+            {
+                format1 = format.substring(0, msIndex);
+                format2 = format.substring(msIndex + 3);
+            }
+        }
+        else
+        {
+            subSecond = false;
+            format1 = format.replace("SSS", "000");
+        }
+
+        _tzFormat1 = createFormatter(format1, l, _zoneId);
+        _tzFormat2 = subSecond ? createFormatter(format2, l, _zoneId) : null;
+    }
+
+    private DateTimeFormatter createFormatter(String format, Locale locale, ZoneId zoneId)
+    {
+        if (locale == null)
+            return DateTimeFormatter.ofPattern(format).withZone(zoneId);
+        else
+            return DateTimeFormatter.ofPattern(format, locale).withZone(zoneId);
+    }
+
+    public TimeZone getTimeZone()
+    {
+        return TimeZone.getTimeZone(_zoneId);
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * If it happens to be in the same second as the last
+     * formatNow call, then the format is reused.
+     *
+     * @param inDate the Date.
+     * @return Formatted date.
+     */
+    public String format(Date inDate)
+    {
+        return format(inDate.getTime());
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * If it happens to be in the same second as the last
+     * formatNow call, then the format is reused.
+     *
+     * @param inDate the date in milliseconds since unix epoch.
+     * @return Formatted date.
+     */
+    public String format(long inDate)
+    {
+        return formatTick(inDate).format(inDate);
+    }
+
+    /**
+     * Format a date according to supplied formatter.
+     *
+     * @param inDate the date in milliseconds since unix epoch.
+     * @return Formatted date.
+     */
+    protected String doFormat(long inDate, DateTimeFormatter formatter)
+    {
+        if (formatter == null)
+            return null;
+        return formatter.format(Instant.ofEpochMilli(inDate));
+    }
+
+    /**
+     * Format a date according to our stored formatter.
+     * The passed time is expected to be close to the current time, so it is
+     * compared to the last value passed and if it is within the same second,
+     * the format is reused. Otherwise, a new cached format is created.
+     *
+     * @param now the milliseconds since unix epoch
+     * @return Formatted date
+     * @deprecated use {@link #format(long)}
+     */
+    @Deprecated
+    public String formatNow(long now)
+    {
+        return format(now);
+    }
+
+    @Deprecated
+    public String now()
+    {
+        return formatNow(System.currentTimeMillis());
+    }
+
+    @Deprecated
+    public Tick tick()
+    {
+        return formatTick(System.currentTimeMillis());
+    }
+
+    protected Tick formatTick(long now)
+    {
+        long seconds = now / 1000;
+
+        // Two Ticks are cached so that for monotonically increasing times to not see any jitter from multiple cores.
+        // The ticks are kept in a volatile field, so there a small risk of inconsequential multiple recalculations
+        TickHolder holder = _tickHolder;
+        if (holder != null)
+        {
+            if (holder.tick1 != null && holder.tick1.getSeconds() == seconds)
+                return holder.tick1;
+            if (holder.tick2 != null && holder.tick2.getSeconds() == seconds)
+                return holder.tick2;
+        }
+
+        String prefix = doFormat(now, _tzFormat1);
+        String suffix = doFormat(now, _tzFormat2);
+        Tick tick = new Tick(seconds, prefix, suffix);
+        _tickHolder = new TickHolder(tick, (holder == null) ? null : holder.tick1);
+        return tick;
+    }
+
+    public String getFormatString()
+    {
+        return _formatString;
+    }
+}
+```
+
+Also, here it is a test suite for the given code snippet to help you refactor the code without behavior changes:
+```
+package org.eclipse.jetty.util;
+
+import org.junit.*;
+import static org.junit.Assert.*;
+
+import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+public class DateCacheTest
+{
+    @Test
+    public void testDefaultConstructor() {
+        DateCache cache = new DateCache();
+        assertNotNull(cache.getFormatString());
+        assertEquals(DateCache.DEFAULT_FORMAT, cache.getFormatString());
+        assertNotNull(cache.getTimeZone());
+    }
+
+    @Test
+    public void testFormatDate() {
+        DateCache cache = new DateCache();
+        Date now = new Date();
+        String formatted = cache.format(now);
+        assertNotNull(formatted);
+        // Compare with standard Date.toString format
+        SimpleDateFormat sdf = new SimpleDateFormat(DateCache.DEFAULT_FORMAT, Locale.ENGLISH);
+        sdf.setTimeZone(TimeZone.getDefault());
+        assertEquals(sdf.format(now), formatted);
+    }
+
+    @Test
+    public void testFormatLong() {
+        DateCache cache = new DateCache();
+        long now = System.currentTimeMillis();
+        String formatted1 = cache.format(now);
+        String formatted2 = cache.format(new Date(now));
+        assertEquals(formatted1, formatted2);
+    }
+
+    @Test
+    public void testFormatWithCustomPattern() {
+        String pattern = "yyyy-MM-dd HH:mm:ss.SSS";
+        DateCache cache = new DateCache(pattern);
+        Date now = new Date(0L);
+        String formatted = cache.format(now);
+        assertTrue(formatted.startsWith("1970-01-01 00:00:00"));
+    }
+
+    @Test
+    public void testFormatWithLocale() {
+        String pattern = "EEEE, MMMM d, yyyy";
+        Locale fr = Locale.FRENCH;
+        DateCache cache = new DateCache(pattern, fr);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.contains("janvier") || formatted.contains("jeudi"));
+    }
+
+    @Test
+    public void testFormatWithTimezoneString() {
+        String pattern = "yyyy-MM-dd HH:mm:ss z";
+        String tz = "GMT+1";
+        DateCache cache = new DateCache(pattern, Locale.ENGLISH, tz);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.contains("GMT"));
+    }
+
+    @Test
+    public void testFormatWithTimeZoneObject() {
+        String pattern = "yyyy-MM-dd HH:mm:ss z";
+        TimeZone tz = TimeZone.getTimeZone("UTC");
+        DateCache cache = new DateCache(pattern, Locale.US, tz);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.endsWith("UTC 1970"));
+    }
+
+    @Test
+    public void testFormatWithDisableSubSecondPrecision() {
+        String pattern = "yyyy-MM-dd HH:mm:ss.SSS";
+        TimeZone tz = TimeZone.getTimeZone("UTC");
+        DateCache cache = new DateCache(pattern, Locale.US, tz, false);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        // No sub-second info should be present other than 000
+        assertTrue(formatted.endsWith("000 UTC 1970") || formatted.contains("000"));
+    }
+
+    @Test
+    public void testGetTimeZone() {
+        TimeZone tz = TimeZone.getTimeZone("Asia/Kolkata");
+        DateCache cache = new DateCache("yyyy-MM-dd", Locale.US, tz);
+        assertEquals(tz, cache.getTimeZone());
+    }
+
+    @Test
+    public void testFormatEdgeEpochValues() {
+        DateCache cache = new DateCache("yyyy-MM-dd HH:mm:ss.SSS");
+        // Unix epoch
+        String epoch = cache.format(0L);
+        assertTrue(epoch.contains("1970"));
+        // One millisecond before epoch
+        String beforeEpoch = cache.format(-1L);
+        assertTrue(beforeEpoch.contains("1969"));
+        // Far future
+        String future = cache.format(Long.MAX_VALUE);
+        assertNotNull(future);
+    }
+
+    @Test
+    public void testFormatNowDeprecated() {
+        DateCache cache = new DateCache();
+        long now = System.currentTimeMillis();
+        String formattedDep = cache.formatNow(now);
+        String formatted = cache.format(now);
+        assertEquals(formatted, formattedDep);
+    }
+
+    @Test
+    public void testNowDeprecated() {
+        DateCache cache = new DateCache();
+        String now1 = cache.now();
+        assertNotNull(now1);
+        String now2 = cache.format(System.currentTimeMillis());
+        assertNotNull(now2);
+    }
+
+    @Test
+    public void testTickMethodDeprecated() {
+        DateCache cache = new DateCache();
+        DateCache.Tick tick = cache.tick();
+        assertNotNull(tick);
+        assertTrue(tick.getSeconds() > 0);
+        String formatted = tick.format(System.currentTimeMillis());
+        assertNotNull(formatted);
+    }
+
+    @Test
+    public void testGetFormatString() {
+        String pattern = "yyyy-MM-dd";
+        DateCache cache = new DateCache(pattern);
+        assertEquals(pattern, cache.getFormatString());
+    }
+
+    @Test
+    public void testTickFormatSubSecond() {
+        DateCache cache = new DateCache("yyyy-MM-dd HH:mm:ss.SSS");
+        long date = System.currentTimeMillis();
+        DateCache.Tick tick = cache.tick();
+        String formatted = tick.format(date);
+        assertTrue(formatted.contains(String.format("%03d", date % 1000)));
+    }
+
+    @Test
+    public void testTickFormatSubSecondEdgeCases() {
+        DateCache.Tick tick = new DateCache.Tick(0L, "prefix", "suffix");
+        String formatted = tick.format(0L);
+        assertTrue(formatted.contains("prefix"));
+        assertTrue(formatted.contains("000"));
+        assertTrue(formatted.contains("suffix"));
+
+        // exactly 100 ms
+        formatted = tick.format(100L);
+        assertTrue(formatted.contains("100"));
+
+        // exactly 999 ms
+        formatted = tick.format(999L);
+        assertTrue(formatted.contains("999"));
+    }
+
+    @Test
+    public void testTickFormatSuffixNull() {
+        DateCache.Tick tick = new DateCache.Tick(0L, "prefix", null);
+        String formatted = tick.format(123L);
+        // If suffix is null, only prefix should be returned
+        assertEquals("prefix", formatted);
+    }
+
+    @Test
+    public void testConstructorIgnoresBadTimezoneString() {
+        String pattern = "yyyy-MM-dd";
+        DateCache cache = new DateCache(pattern, Locale.US, "NO_SUCH_TZ");
+        // Should fallback to GMT
+        assertEquals(TimeZone.getTimeZone("NO_SUCH_TZ"), cache.getTimeZone());
+    }
+
+    @Test
+    public void testGetSeconds() {
+        DateCache.Tick tick = new DateCache.Tick(123456L, "prefix", "suffix");
+        assertEquals(123456L, tick.getSeconds());
+    }
+
+    @Test
+    public void testDoFormatWithNullFormatterReturnsNull() {
+        DateCache cache = new DateCache();
+        assertNull(cache.doFormat(0L, null));
+    }
+}
+```
+
+If there are any refactoring opportunities, please do it and generate the whole class with the refactored code. Otherwise, simply state that no refactoring is necessary.

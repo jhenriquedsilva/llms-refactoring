@@ -1,0 +1,202 @@
+package org.eclipse.jetty.util;
+
+import org.junit.*;
+import static org.junit.Assert.*;
+
+import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+public class DateCacheTest
+{
+    @Test
+    public void testDefaultConstructor() {
+        DateCache cache = new DateCache();
+        assertNotNull(cache.getFormatString());
+        assertEquals(DateCache.DEFAULT_FORMAT, cache.getFormatString());
+        assertNotNull(cache.getTimeZone());
+    }
+
+    @Test
+    public void testFormatDate() {
+        DateCache cache = new DateCache();
+        Date now = new Date();
+        String formatted = cache.format(now);
+        assertNotNull(formatted);
+        // Compare with standard Date.toString format
+        SimpleDateFormat sdf = new SimpleDateFormat(DateCache.DEFAULT_FORMAT, Locale.ENGLISH);
+        sdf.setTimeZone(TimeZone.getDefault());
+        assertEquals(sdf.format(now), formatted);
+    }
+
+    @Test
+    public void testFormatLong() {
+        DateCache cache = new DateCache();
+        long now = System.currentTimeMillis();
+        String formatted1 = cache.format(now);
+        String formatted2 = cache.format(new Date(now));
+        assertEquals(formatted1, formatted2);
+    }
+
+    @Test
+    public void testFormatWithCustomPattern() {
+        String pattern = "yyyy-MM-dd HH:mm:ss.SSS";
+        DateCache cache = new DateCache(pattern);
+        Date now = new Date(0L);
+        String formatted = cache.format(now);
+        assertTrue(formatted.startsWith("1970-01-01 00:00:00"));
+    }
+
+    @Test
+    public void testFormatWithLocale() {
+        String pattern = "EEEE, MMMM d, yyyy";
+        Locale fr = Locale.FRENCH;
+        DateCache cache = new DateCache(pattern, fr);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.contains("janvier") || formatted.contains("jeudi"));
+    }
+
+    @Test
+    public void testFormatWithTimezoneString() {
+        String pattern = "yyyy-MM-dd HH:mm:ss z";
+        String tz = "GMT+1";
+        DateCache cache = new DateCache(pattern, Locale.ENGLISH, tz);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.contains("GMT"));
+    }
+
+    @Test
+    public void testFormatWithTimeZoneObject() {
+        String pattern = "yyyy-MM-dd HH:mm:ss z";
+        TimeZone tz = TimeZone.getTimeZone("UTC");
+        DateCache cache = new DateCache(pattern, Locale.US, tz);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        assertTrue(formatted.endsWith("UTC 1970"));
+    }
+
+    @Test
+    public void testFormatWithDisableSubSecondPrecision() {
+        String pattern = "yyyy-MM-dd HH:mm:ss.SSS";
+        TimeZone tz = TimeZone.getTimeZone("UTC");
+        DateCache cache = new DateCache(pattern, Locale.US, tz, false);
+        Date d = new Date(0L);
+        String formatted = cache.format(d);
+        // No sub-second info should be present other than 000
+        assertTrue(formatted.endsWith("000 UTC 1970") || formatted.contains("000"));
+    }
+
+    @Test
+    public void testGetTimeZone() {
+        TimeZone tz = TimeZone.getTimeZone("Asia/Kolkata");
+        DateCache cache = new DateCache("yyyy-MM-dd", Locale.US, tz);
+        assertEquals(tz, cache.getTimeZone());
+    }
+
+    @Test
+    public void testFormatEdgeEpochValues() {
+        DateCache cache = new DateCache("yyyy-MM-dd HH:mm:ss.SSS");
+        // Unix epoch
+        String epoch = cache.format(0L);
+        assertTrue(epoch.contains("1970"));
+        // One millisecond before epoch
+        String beforeEpoch = cache.format(-1L);
+        assertTrue(beforeEpoch.contains("1969"));
+        // Far future
+        String future = cache.format(Long.MAX_VALUE);
+        assertNotNull(future);
+    }
+
+    @Test
+    public void testFormatNowDeprecated() {
+        DateCache cache = new DateCache();
+        long now = System.currentTimeMillis();
+        String formattedDep = cache.formatNow(now);
+        String formatted = cache.format(now);
+        assertEquals(formatted, formattedDep);
+    }
+
+    @Test
+    public void testNowDeprecated() {
+        DateCache cache = new DateCache();
+        String now1 = cache.now();
+        assertNotNull(now1);
+        String now2 = cache.format(System.currentTimeMillis());
+        assertNotNull(now2);
+    }
+
+    @Test
+    public void testTickMethodDeprecated() {
+        DateCache cache = new DateCache();
+        DateCache.Tick tick = cache.tick();
+        assertNotNull(tick);
+        assertTrue(tick.getSeconds() > 0);
+        String formatted = tick.format(System.currentTimeMillis());
+        assertNotNull(formatted);
+    }
+
+    @Test
+    public void testGetFormatString() {
+        String pattern = "yyyy-MM-dd";
+        DateCache cache = new DateCache(pattern);
+        assertEquals(pattern, cache.getFormatString());
+    }
+
+    @Test
+    public void testTickFormatSubSecond() {
+        DateCache cache = new DateCache("yyyy-MM-dd HH:mm:ss.SSS");
+        long date = System.currentTimeMillis();
+        DateCache.Tick tick = cache.tick();
+        String formatted = tick.format(date);
+        assertTrue(formatted.contains(String.format("%03d", date % 1000)));
+    }
+
+    @Test
+    public void testTickFormatSubSecondEdgeCases() {
+        DateCache.Tick tick = new DateCache.Tick(0L, "prefix", "suffix");
+        String formatted = tick.format(0L);
+        assertTrue(formatted.contains("prefix"));
+        assertTrue(formatted.contains("000"));
+        assertTrue(formatted.contains("suffix"));
+
+        // exactly 100 ms
+        formatted = tick.format(100L);
+        assertTrue(formatted.contains("100"));
+
+        // exactly 999 ms
+        formatted = tick.format(999L);
+        assertTrue(formatted.contains("999"));
+    }
+
+    @Test
+    public void testTickFormatSuffixNull() {
+        DateCache.Tick tick = new DateCache.Tick(0L, "prefix", null);
+        String formatted = tick.format(123L);
+        // If suffix is null, only prefix should be returned
+        assertEquals("prefix", formatted);
+    }
+
+    @Test
+    public void testConstructorIgnoresBadTimezoneString() {
+        String pattern = "yyyy-MM-dd";
+        DateCache cache = new DateCache(pattern, Locale.US, "NO_SUCH_TZ");
+        // Should fallback to GMT
+        assertEquals(TimeZone.getTimeZone("NO_SUCH_TZ"), cache.getTimeZone());
+    }
+
+    @Test
+    public void testGetSeconds() {
+        DateCache.Tick tick = new DateCache.Tick(123456L, "prefix", "suffix");
+        assertEquals(123456L, tick.getSeconds());
+    }
+
+    @Test
+    public void testDoFormatWithNullFormatterReturnsNull() {
+        DateCache cache = new DateCache();
+        assertNull(cache.doFormat(0L, null));
+    }
+}

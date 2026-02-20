@@ -1,0 +1,227 @@
+package org.apache.commons.lang3.builder;
+
+import org.junit.*;
+import static org.junit.Assert.*;
+import java.lang.reflect.Field;
+import java.util.Arrays;
+
+// Stubs for external classes that would be in commons-lang3
+class Dummy {}
+class DummyWithPassword {
+    public String a = "X";
+    public String password = "secret";
+}
+class DiffExclude extends java.lang.annotation.RetentionImpl {} // Fake for compile
+class ToStringStyle {}
+
+class DiffResult<T> {
+    private boolean empty;
+    public DiffResult(boolean empty) { this.empty = empty; }
+    public boolean isEmpty() { return empty; }
+}
+
+class DiffBuilder<T> {
+    private T left, right;
+    private ToStringStyle style;
+    boolean appended = false;
+    boolean buildCalled = false;
+
+    public static <T> DiffBuilder<T> builder() { return new DiffBuilder<>(); }
+    public DiffBuilder<T> setLeft(T left) { this.left = left; return this; }
+    public DiffBuilder<T> setRight(T right) { this.right = right; return this; }
+    public DiffBuilder<T> setStyle(ToStringStyle style) { this.style = style; return this; }
+    public DiffBuilder<T> build() { return this; }
+    public void append(String name, Object leftVal, Object rightVal) { this.appended = true; }
+    public T getLeft() { return left; }
+    public T getRight() { return right; }
+    public DiffResult<T> buildResult() { return new DiffResult<>(left != null && left.equals(right)); }
+}
+
+public class ReflectionDiffBuilderTest {
+
+    // Helper to build a simple dummy DiffBuilder (since ReflectionDiffBuilder requires one)
+    private <T> DiffBuilder<T> basicDiffBuilder(T left, T right, ToStringStyle style) {
+        return DiffBuilder.<T>builder().setLeft(left).setRight(right).setStyle(style).build();
+    }
+
+    // 1. Test: builder() static method returns non-null
+    @Test
+    public void testBuilderStaticMethodReturnsBuilder() {
+        ReflectionDiffBuilder.Builder<Dummy> builder = ReflectionDiffBuilder.builder();
+        assertNotNull(builder);
+    }
+
+    // 2. Test: Builder.build() returns properly configured ReflectionDiffBuilder
+    @Test
+    public void testBuilderBuildReturnsConfigured() {
+        Dummy left = new Dummy();
+        Dummy right = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(left, right, new ToStringStyle());
+        ReflectionDiffBuilder.Builder<Dummy> builder = ReflectionDiffBuilder.<Dummy>builder()
+                .setDiffBuilder(diffBuilder)
+                .setExcludeFieldNames("ignoreMe", "password");
+
+        ReflectionDiffBuilder<Dummy> rdb = builder.build();
+        assertNotNull(rdb);
+        assertArrayEquals(new String[]{"ignoreMe", "password"}, rdb.getExcludeFieldNames());
+    }
+
+    // 3. Test: Builder.setDiffBuilder returns self
+    @Test
+    public void testBuilderSetDiffBuilderChaining() {
+        ReflectionDiffBuilder.Builder<Dummy> builder = ReflectionDiffBuilder.<Dummy>builder();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(new Dummy(), new Dummy(), null);
+        ReflectionDiffBuilder.Builder<Dummy> ret = builder.setDiffBuilder(diffBuilder);
+        assertTrue(builder == ret);
+    }
+
+    // 4. Test: Builder.setExcludeFieldNames returns self and handles null
+    @Test
+    public void testBuilderSetExcludeFieldNames() {
+        ReflectionDiffBuilder.Builder<Dummy> builder = ReflectionDiffBuilder.<Dummy>builder();
+        ReflectionDiffBuilder.Builder<Dummy> ret = builder.setExcludeFieldNames("alpha", null, "beta");
+        assertTrue(builder == ret);
+        // Should sort and ignore null
+        ReflectionDiffBuilder<Dummy> rdb = builder.setDiffBuilder(basicDiffBuilder(new Dummy(), new Dummy(), null)).build();
+        assertArrayEquals(new String[]{"alpha", "beta"}, rdb.getExcludeFieldNames());
+    }
+
+    // 5. Test: Deprecated constructor - normal usage and null inputs
+    @Test(expected = IllegalArgumentException.class)
+    public void testDeprecatedConstructorNullLeft() {
+        new ReflectionDiffBuilder<Dummy>(null, new Dummy(), null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testDeprecatedConstructorNullRight() {
+        new ReflectionDiffBuilder<Dummy>(new Dummy(), null, null);
+    }
+
+    @Test
+    public void testDeprecatedConstructorValid() {
+        Dummy left = new Dummy();
+        Dummy right = new Dummy();
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(left, right, null);
+        assertNotNull(rdb);
+    }
+
+    // 6. Test: build() returns empty result for identical objects
+    @Test
+    public void testBuildIdenticalObjects() {
+        Dummy obj = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(obj, obj, null) {
+            @Override public DiffResult<Dummy> buildResult() { return new DiffResult<>(true); }
+        };
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+        DiffResult<Dummy> result = rdb.build();
+        assertTrue(result.isEmpty());
+    }
+
+    // 7. Test: build() returns non-empty for different objects
+    @Test
+    public void testBuildDifferentObjects() {
+        Dummy left = new Dummy();
+        Dummy right = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(left, right, null) {
+            @Override public DiffResult<Dummy> buildResult() { return new DiffResult<>(false); }
+        };
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+        DiffResult<Dummy> result = rdb.build();
+        assertFalse(result.isEmpty());
+    }
+
+    // 8. Test: getExcludeFieldNames default and after set
+    @Test
+    public void testGetExcludeFieldNamesDefaultAndAfterSet() {
+        Dummy left = new Dummy();
+        Dummy right = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(left, right, null);
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+        assertNotNull(rdb.getExcludeFieldNames());
+        assertEquals(0, rdb.getExcludeFieldNames().length);
+
+        rdb.setExcludeFieldNames("foo", "bar");
+        String[] got = rdb.getExcludeFieldNames();
+        Arrays.sort(got);
+        assertArrayEquals(new String[]{"bar", "foo"}, got);
+    }
+
+    // 9. Test: setExcludeFieldNames handles null and returns self
+    @Test
+    public void testSetExcludeFieldNamesWithNullAndChaining() {
+        Dummy left = new Dummy();
+        Dummy right = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(left, right, null);
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+
+        ReflectionDiffBuilder<Dummy> ret = rdb.setExcludeFieldNames(null);
+        assertSame(rdb, ret);
+        assertArrayEquals(new String[]{}, rdb.getExcludeFieldNames());
+    }
+
+    // 10. Edge: exclude transient/static/annotation fields
+    public static class WeirdFields {
+        public static int S = 10;
+        public transient int t = 5;
+        public int x = 3;
+        public int normal = 4;
+    }
+
+    @Test
+    public void testDoesNotAppendStaticOrTransient() {
+        WeirdFields left = new WeirdFields();
+        WeirdFields right = new WeirdFields();
+        // We'll check that only "x" and "normal" are considered
+        class CountingDiffBuilder extends DiffBuilder<WeirdFields> {
+            int appendCount = 0;
+            public CountingDiffBuilder() {}
+            @Override
+            public void append(String name, Object l, Object r) { appendCount++; }
+        }
+        CountingDiffBuilder diffBuilder = new CountingDiffBuilder();
+        diffBuilder.setLeft(left).setRight(right).setStyle(null);
+        ReflectionDiffBuilder<WeirdFields> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+        rdb.build();
+        assertEquals(2, diffBuilder.appendCount);
+    }
+
+    // 11. Edge: fields named "password" excluded if configured
+    @Test
+    public void testExcludesNamedFields() {
+        DummyWithPassword left = new DummyWithPassword();
+        DummyWithPassword right = new DummyWithPassword();
+        class CountingDiffBuilder extends DiffBuilder<DummyWithPassword> {
+            int appendCount = 0;
+            public CountingDiffBuilder() {}
+            @Override
+            public void append(String name, Object l, Object r) { appendCount++; }
+        }
+        CountingDiffBuilder diffBuilder = new CountingDiffBuilder();
+        diffBuilder.setLeft(left).setRight(right).setStyle(null);
+        ReflectionDiffBuilder<DummyWithPassword> rdb = new ReflectionDiffBuilder<>(diffBuilder, new String[]{"password"});
+        rdb.build();
+        assertEquals(1, diffBuilder.appendCount); // "a" is included, "password" is excluded
+    }
+
+    // 12. Edge: call deprecated setExcludeFieldNames() and getExcludeFieldNames
+    @Test
+    public void testDeprecatedSetExcludeFieldNames() {
+        Dummy obj = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(obj, obj, null);
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, null);
+        rdb.setExcludeFieldNames("foo");
+        String[] got = rdb.getExcludeFieldNames();
+        assertEquals(1, got.length);
+        assertEquals("foo", got[0]);
+    }
+
+    // 13. Edge: passing in empty exclude field names
+    @Test
+    public void testEmptyExcludeFieldNames() {
+        Dummy obj = new Dummy();
+        DiffBuilder<Dummy> diffBuilder = basicDiffBuilder(obj, obj, null);
+        ReflectionDiffBuilder<Dummy> rdb = new ReflectionDiffBuilder<>(diffBuilder, new String[]{});
+        assertArrayEquals(new String[]{}, rdb.getExcludeFieldNames());
+    }
+}
+

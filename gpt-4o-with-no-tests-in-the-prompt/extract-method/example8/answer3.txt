@@ -1,0 +1,72 @@
+2026-03-28 17:25:00
+
+Upon reviewing the code snippet, there appears to be a good opportunity for extract method refactoring. The code pattern `fieldModelContributor.add( c -> c.vectorTypeOptionsStep().<method>( <parameter> ) );` is repeated multiple times. We can abstract this pattern into a separate method to reduce code duplication and enhance readability. Here's how the refactored code can look:
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    private <T> void addVectorTypeOption(BiConsumer<FieldModelContributorContext, T> consumer, T value) {
+        fieldModelContributor.add( c -> consumer.accept( c.vectorTypeOptionsStep(), value ) );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        addVectorTypeOption((step, value) -> step.projectable(value), projectable);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        addVectorTypeOption((step, value) -> step.vectorSimilarity(value), vectorSimilarity);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        addVectorTypeOption((step, value) -> step.beamWidth(value), beamWidth);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        addVectorTypeOption((step, value) -> step.maxConnections(value), maxConnections);
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        fieldModelContributor.add(c -> c.indexNullAs(indexNullAs));
+        return this;
+    }
+}
+```
+
+In this refactoring:
+
+- A private generic method `addVectorTypeOption` was added. It receives a `BiConsumer` for defining the specific operation needed and the value for that operation. This eliminates the repetitive lambda expressions for applying `vectorTypeOptionsStep` operations.
+- The `indexNullAs` method was left unchanged as it has a different pattern (not calling `vectorTypeOptionsStep`).

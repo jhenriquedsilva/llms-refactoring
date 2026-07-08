@@ -1,0 +1,292 @@
+2026-03-28 17:24:45
+
+The given code is relatively large and contains several methods, creating a few opportunities for method extraction to improve readability and maintainability. The primary focus should be on reducing complexity, improving clarity, and removing duplicative logic where possible.
+
+Here's a refactored version of the code. I've extracted methods to handle specific logical operations that appear to be repeated or are complex enough to justify their own methods:
+
+```java
+package org.hibernate.event.internal;
+
+import org.hibernate.HibernateException;
+import org.hibernate.LockMode;
+import org.hibernate.LockOptions;
+import org.hibernate.NonUniqueObjectException;
+import org.hibernate.TransientObjectException;
+import org.hibernate.UnresolvableObjectException;
+import org.hibernate.cache.spi.access.CollectionDataAccess;
+import org.hibernate.cache.spi.access.EntityDataAccess;
+import org.hibernate.cache.spi.access.SoftLock;
+import org.hibernate.engine.internal.Cascade;
+import org.hibernate.engine.internal.CascadePoint;
+import org.hibernate.engine.spi.ActionQueue;
+import org.hibernate.engine.spi.CascadingActions;
+import org.hibernate.engine.spi.EntityEntry;
+import org.hibernate.engine.spi.EntityKey;
+import org.hibernate.engine.spi.PersistenceContext;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.event.spi.EventSource;
+import org.hibernate.event.spi.RefreshContext;
+import org.hibernate.event.spi.RefreshEvent;
+import org.hibernate.event.spi.RefreshEventListener;
+import org.hibernate.internal.CoreLogging;
+import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.loader.ast.spi.CascadingFetchProfile;
+import org.hibernate.metamodel.spi.MappingMetamodelImplementor;
+import org.hibernate.persister.collection.CollectionPersister;
+import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.proxy.HibernateProxy;
+import org.hibernate.proxy.LazyInitializer;
+import org.hibernate.type.CollectionType;
+import org.hibernate.type.CompositeType;
+import org.hibernate.type.Type;
+
+import static org.hibernate.pretty.MessageHelper.infoString;
+
+public class DefaultRefreshEventListener implements RefreshEventListener {
+    private static final CoreMessageLogger LOG = CoreLogging.messageLogger(DefaultRefreshEventListener.class);
+
+    public void onRefresh(RefreshEvent event) throws HibernateException {
+        onRefresh(event, RefreshContext.create());
+    }
+
+    public void onRefresh(RefreshEvent event, RefreshContext refreshedAlready) {
+        final EventSource source = event.getSession();
+        final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
+        final Object object = event.getObject();
+        
+        if (persistenceContext.reassociateIfUninitializedProxy(object)) {
+            processUninitializedProxy(event, source, object, persistenceContext);
+        } else {
+            handleExistingProxy(event, refreshedAlready, source, persistenceContext, object);
+        }
+    }
+
+    private void processUninitializedProxy(RefreshEvent event, EventSource source, Object object, PersistenceContext persistenceContext) {
+        final boolean isTransient = isTransient(event, source, object);
+
+        final LazyInitializer lazyInitializer = HibernateProxy.extractLazyInitializer(object);
+        final EntityPersister persister = source.getEntityPersister(lazyInitializer.getEntityName(), object);
+        Object id = persister.getIdentifier(object, event.getSession());
+
+        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
+                CascadingFetchProfile.REFRESH,
+                () -> doRefresh(event, source, null, null, persister, lazyInitializer, id, persistenceContext)
+        );
+        UnresolvableObjectException.throwIfNull(result, id, persister.getEntityName());
+
+        if (isTransient) {
+            source.setReadOnly(object, source.isDefaultReadOnly());
+        }
+    }
+
+    private void handleExistingProxy(RefreshEvent event, RefreshContext refreshedAlready, EventSource source, PersistenceContext persistenceContext, Object object) {
+        final Object entity = persistenceContext.unproxyAndReassociate(object);
+        if (refreshedAlready.add(entity)) {
+            refresh(event, refreshedAlready, entity);
+        } else {
+            LOG.trace("Already refreshed");
+        }
+    }
+
+    private static boolean isTransient(RefreshEvent event, EventSource source, Object object) {
+        final String entityName = event.getEntityName();
+        return entityName != null ? !source.contains(entityName, object) : !source.contains(object);
+    }
+
+    private static void refresh(RefreshEvent event, RefreshContext refreshedAlready, Object object) {
+        final EventSource source = event.getSession();
+        final PersistenceContext persistenceContext = source.getPersistenceContextInternal();
+        final EntityEntry entry = persistenceContext.getEntry(object);
+
+        final EntityPersister persister;
+        final Object id;
+        if (entry == null) {
+            persister = getTransientEntityPersister(event, source, object);
+            id = persister.getIdentifier(object, event.getSession());
+            verifyTransientEntity(persistenceContext, source, id, persister);
+        } else {
+            verifyEntityExistence(entry);
+            persister = entry.getPersister();
+            id = entry.getId();
+        }
+
+        cascadeRefresh(source, persister, object, refreshedAlready);
+
+        if (entry != null) {
+            removeEntityFromContext(source, persistenceContext, persister, object, id);
+        }
+
+        evictEntity(object, persister, id, source);
+        evictCachedCollections(persister, id, source);
+
+        final Object result = source.getLoadQueryInfluencers().fromInternalFetchProfile(
+                CascadingFetchProfile.REFRESH,
+                () -> doRefresh(event, source, object, entry, persister, null, id, persistenceContext)
+        );
+        UnresolvableObjectException.throwIfNull(result, id, persister.getEntityName());
+    }
+
+    private static EntityPersister getTransientEntityPersister(RefreshEvent event, EventSource source, Object object) {
+        EntityPersister persister = source.getEntityPersister(event.getEntityName(), object);
+        if (persister.getIdentifier(object, event.getSession()) == null) {
+            throw new TransientObjectException("transient instance passed to refresh");
+        }
+        return persister;
+    }
+
+    private static void verifyTransientEntity(PersistenceContext persistenceContext, EventSource source, Object id, EntityPersister persister) {
+        if (LOG.isTraceEnabled()) {
+            LOG.tracev("Refreshing transient {0}", infoString(persister, id, source.getFactory()));
+        }
+        if (persistenceContext.getEntry(source.generateEntityKey(id, persister)) != null) {
+            throw new NonUniqueObjectException(id, persister.getEntityName());
+        }
+    }
+
+    private static void verifyEntityExistence(EntityEntry entry) {
+        if (LOG.isTraceEnabled()) {
+            LOG.tracev("Refreshing ", infoString(entry.getPersister(), entry.getId(), entry.getPersister().getFactory()));
+        }
+        if (!entry.isExistsInDatabase()) {
+            throw new UnresolvableObjectException(entry.getId(), "this instance does not yet exist as a row in the database");
+        }
+    }
+
+    private static void cascadeRefresh(EventSource source, EntityPersister persister, Object object, RefreshContext refreshedAlready) {
+        Cascade.cascade(
+                CascadingActions.REFRESH,
+                CascadePoint.BEFORE_REFRESH,
+                source,
+                persister,
+                object,
+                refreshedAlready
+        );
+    }
+
+    private static void removeEntityFromContext(EventSource source, PersistenceContext persistenceContext, EntityPersister persister, Object object, Object id) {
+        final EntityKey key = source.generateEntityKey(id, persister);
+        persistenceContext.removeEntity(key);
+        if (persister.hasCollections()) {
+            new EvictVisitor(source, object).process(object, persister);
+        }
+    }
+
+    private static void evictEntity(Object object, EntityPersister persister, Object id, EventSource source) {
+        if (persister.canWriteToCache()) {
+            Object previousVersion = fetchPreviousVersion(persister, object);
+            final EntityDataAccess cache = persister.getCacheAccessStrategy();
+            final Object ck = cache.generateCacheKey(id, persister, source.getFactory(), source.getTenantIdentifier());
+            final SoftLock lock = cache.lockItem(source, ck, previousVersion);
+            cache.remove(source, ck);
+            source.getActionQueue().registerProcess((success, session) -> cache.unlockItem(session, ck, lock));
+        }
+    }
+
+    private static Object fetchPreviousVersion(EntityPersister persister, Object object) {
+        return persister.isVersionPropertyGenerated() ? persister.getVersion(object) : null;
+    }
+
+    private static Object doRefresh(
+            RefreshEvent event,
+            EventSource source,
+            Object object,
+            EntityEntry entry,
+            EntityPersister persister,
+            LazyInitializer lazyInitializer,
+            Object id,
+            PersistenceContext persistenceContext) {
+        LockOptions lockOptionsToUse = determineLockOptions(event, entry);
+        final LockMode postRefreshLockMode = determinePostRefreshLockMode(entry, lockOptionsToUse);
+
+        final Object result = persister.load(id, object, lockOptionsToUse, source);
+        if (result != null) {
+            applyPostRefreshLockMode(persistenceContext, result, postRefreshLockMode);
+            source.setReadOnly(result, isReadOnly(entry, persister, lazyInitializer, source));
+        }
+        return result;
+    }
+
+    private static LockOptions determineLockOptions(RefreshEvent event, EntityEntry entry) {
+        LockOptions lockOptionsToUse = event.getLockOptions();
+        if (entry != null) {
+            final LockMode currentLockMode = entry.getLockMode();
+            if (currentLockMode.greaterThan(lockOptionsToUse.getLockMode())) {
+                lockOptionsToUse = adjustLockOptions(event, currentLockMode, lockOptionsToUse);
+            }
+        }
+        return lockOptionsToUse;
+    }
+
+    private static LockOptions adjustLockOptions(RefreshEvent event, LockMode currentLockMode, LockOptions lockOptionsToUse) {
+        lockOptionsToUse = event.getLockOptions().makeCopy();
+        if (currentLockMode == LockMode.WRITE || currentLockMode == LockMode.PESSIMISTIC_WRITE || currentLockMode == LockMode.PESSIMISTIC_READ) {
+            lockOptionsToUse.setLockMode(LockMode.READ);
+        } else {
+            lockOptionsToUse.setLockMode(currentLockMode);
+        }
+        return lockOptionsToUse;
+    }
+
+    private static LockMode determinePostRefreshLockMode(EntityEntry entry, LockOptions lockOptionsToUse) {
+        return entry != null && entry.getLockMode().greaterThan(lockOptionsToUse.getLockMode()) ? entry.getLockMode() : null;
+    }
+
+    private static void applyPostRefreshLockMode(PersistenceContext persistenceContext, Object result, LockMode postRefreshLockMode) {
+        if (postRefreshLockMode != null) {
+            persistenceContext.getEntry(result).setLockMode(postRefreshLockMode);
+        }
+    }
+
+    private static boolean isReadOnly(EntityEntry entry, EntityPersister persister, LazyInitializer lazyInitializer, EventSource source) {
+        if (!persister.isMutable()) {
+            return true;
+        } else if (entry != null) {
+            return entry.isReadOnly();
+        } else if (lazyInitializer != null) {
+            return lazyInitializer.isReadOnly();
+        } else {
+            return source.isDefaultReadOnly();
+        }
+    }
+
+    private static void evictCachedCollections(EntityPersister persister, Object id, EventSource source) {
+        evictCachedCollections(persister.getPropertyTypes(), id, source);
+    }
+
+    private static void evictCachedCollections(Type[] types, Object id, EventSource source) throws HibernateException {
+        final ActionQueue actionQueue = source.getActionQueue();
+        final SessionFactoryImplementor factory = source.getFactory();
+        final MappingMetamodelImplementor metamodel = factory.getRuntimeMetamodels().getMappingMetamodel();
+
+        for (Type type : types) {
+            if (type.isCollectionType()) {
+                evictCollection(id, source, actionQueue, metamodel, type);
+            } else if (type.isComponentType()) {
+                evictCachedCollections(((CompositeType) type).getSubtypes(), id, source);
+            }
+        }
+    }
+
+    private static void evictCollection(Object id, EventSource source, ActionQueue actionQueue, MappingMetamodelImplementor metamodel, Type type) {
+        final String role = ((CollectionType) type).getRole();
+        final CollectionPersister collectionPersister = metamodel.getCollectionDescriptor(role);
+        if (collectionPersister.hasCache()) {
+            final CollectionDataAccess cache = collectionPersister.getCacheAccessStrategy();
+            final Object ck = cache.generateCacheKey(id, collectionPersister, source.getFactory(), source.getTenantIdentifier());
+            final SoftLock lock = cache.lockItem(source, ck, null);
+            cache.remove(source, ck);
+            actionQueue.registerProcess((success, session) -> cache.unlockItem(session, ck, lock));
+        }
+    }
+}
+```
+
+### Key Refactorings:
+
+1. **Extraction of Methods for Readability**: Methods such as `processUninitializedProxy`, `handleExistingProxy`, `determineLockOptions`, and `adjustLockOptions` have been extracted to reduce complexity and improve clarity within the `onRefresh` and `doRefresh` methods.
+
+2. **Evict Methods**: Logic related to evicting entities and cached collections is now consolidated in `evictEntity` and `evictCollection` for better separation of concerns.
+
+3. **Reduced Duplicate Logic**: Handling of lock modes and entity processing is encapsulated in focused methods, reducing potential code duplications and increasing maintainability.
+
+These changes should help make the code more manageable and maintainable by isolating distinct responsibilities into their respective methods.

@@ -1,0 +1,295 @@
+2026-03-28 17:34:47
+
+Upon reviewing the provided code, there are several opportunities for refactoring using the extract method technique to enhance readability and maintainability. These refactorings will aim to break down complex functionality into smaller, more focused methods. Below is the refactored version of the class with extracted methods:
+
+```java
+package org.springframework.boot.loader.zip;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.function.Supplier;
+
+import org.springframework.boot.loader.log.DebugLogger;
+
+/**
+ * Reference counted {@link DataBlock} implementation backed by a {@link FileChannel} with
+ * support for slicing.
+ * 
+ */
+class FileChannelDataBlock implements CloseableDataBlock {
+
+    private static final DebugLogger debug = DebugLogger.get(FileChannelDataBlock.class);
+
+    static Tracker tracker;
+
+    private final ManagedFileChannel channel;
+
+    private final long offset;
+
+    private final long size;
+
+    FileChannelDataBlock(Path path) throws IOException {
+        this.channel = new ManagedFileChannel(path);
+        this.offset = 0;
+        this.size = Files.size(path);
+    }
+
+    FileChannelDataBlock(ManagedFileChannel channel, long offset, long size) {
+        this.channel = channel;
+        this.offset = offset;
+        this.size = size;
+    }
+
+    @Override
+    public long size() throws IOException {
+        return this.size;
+    }
+
+    @Override
+    public int read(ByteBuffer dst, long pos) throws IOException {
+        validatePosition(pos);
+        ensureOpen(ClosedChannelException::new);
+        return performRead(dst, pos);
+    }
+
+    void open() throws IOException {
+        this.channel.open();
+    }
+
+    @Override
+    public void close() throws IOException {
+        this.channel.close();
+    }
+
+    <E extends Exception> void ensureOpen(Supplier<E> exceptionSupplier) throws E {
+        this.channel.ensureOpen(exceptionSupplier);
+    }
+
+    FileChannelDataBlock slice(long offset) throws IOException {
+        return slice(offset, this.size - offset);
+    }
+
+    FileChannelDataBlock slice(long offset, long size) {
+        validateSliceParameters(offset, size);
+        debug.log("Slicing %s at %s with size %s", this.channel, offset, size);
+        return new FileChannelDataBlock(this.channel, this.offset + offset, size);
+    }
+
+    private void validatePosition(long pos) {
+        if (pos < 0) {
+            throw new IllegalArgumentException("Position must not be negative");
+        }
+    }
+
+    private int performRead(ByteBuffer dst, long pos) throws IOException {
+        int remaining = (int) (this.size - pos);
+        if (remaining <= 0) {
+            return -1;
+        }
+        int originalDestinationLimit = adjustBufferLimit(dst, remaining);
+        int result = this.channel.read(dst, this.offset + pos);
+        restoreBufferLimit(dst, originalDestinationLimit);
+        return result;
+    }
+
+    private int adjustBufferLimit(ByteBuffer dst, int remaining) {
+        int originalDestinationLimit = -1;
+        if (dst.remaining() > remaining) {
+            originalDestinationLimit = dst.limit();
+            dst.limit(dst.position() + remaining);
+        }
+        return originalDestinationLimit;
+    }
+
+    private void restoreBufferLimit(ByteBuffer dst, int originalDestinationLimit) {
+        if (originalDestinationLimit != -1) {
+            dst.limit(originalDestinationLimit);
+        }
+    }
+
+    private void validateSliceParameters(long offset, long size) {
+        if (offset == 0 && size == this.size) {
+            return;
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("Offset must not be negative");
+        }
+        if (size < 0 || offset + size > this.size) {
+            throw new IllegalArgumentException("Size must not be negative and must be within bounds");
+        }
+    }
+
+    static class ManagedFileChannel {
+
+        static final int BUFFER_SIZE = 1024 * 10;
+
+        private final Path path;
+
+        private int referenceCount;
+
+        private FileChannel fileChannel;
+
+        private ByteBuffer buffer;
+
+        private long bufferPosition = -1;
+
+        private int bufferSize;
+
+        private final Object lock = new Object();
+
+        ManagedFileChannel(Path path) {
+            validateFilePath(path);
+            this.path = path;
+        }
+
+        int read(ByteBuffer dst, long position) throws IOException {
+            synchronized (this.lock) {
+                if (!isPositionInBuffer(position)) {
+                    return readFileChannel(dst, position);
+                }
+                return readFromBuffer(dst, position);
+            }
+        }
+
+        private void validateFilePath(Path path) {
+            if (!Files.isRegularFile(path)) {
+                throw new IllegalArgumentException(path + " must be a regular file");
+            }
+        }
+
+        private boolean isPositionInBuffer(long position) {
+            return position >= this.bufferPosition && position < this.bufferPosition + this.bufferSize;
+        }
+
+        private int readFileChannel(ByteBuffer dst, long position) throws IOException {
+            for (int i = 0; i < 10; i++) {
+                boolean interrupted = handleInterruptAndClearBuffer(i);
+                try {
+                    this.bufferSize = this.fileChannel.read(this.buffer, position);
+                    this.bufferPosition = position;
+                    return this.bufferSize;
+                } catch (ClosedByInterruptException ex) {
+                    repairFileChannel();
+                } finally {
+                    restoreInterruptState(interrupted);
+                }
+            }
+            throw new ClosedByInterruptException();
+        }
+
+        private boolean handleInterruptAndClearBuffer(int attempt) {
+            boolean interrupted = attempt != 0 && Thread.interrupted();
+            this.buffer.clear();
+            return interrupted;
+        }
+
+        private void restoreInterruptState(boolean interrupted) {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private int readFromBuffer(ByteBuffer dst, long position) {
+            int offset = (int) (position - this.bufferPosition);
+            int length = Math.min(this.bufferSize - offset, dst.remaining());
+            dst.put(dst.position(), this.buffer, offset, length);
+            dst.position(dst.position() + length);
+            return length;
+        }
+
+        private void repairFileChannel() throws IOException {
+            if (tracker != null) {
+                tracker.closedFileChannel(this.path, this.fileChannel);
+            }
+            this.fileChannel = FileChannel.open(this.path, StandardOpenOption.READ);
+            if (tracker != null) {
+                tracker.openedFileChannel(this.path, this.fileChannel);
+            }
+        }
+
+        void open() throws IOException {
+            synchronized (this.lock) {
+                if (this.referenceCount == 0) {
+                    openFileChannel();
+                }
+                incrementReferenceCount();
+            }
+        }
+
+        private void openFileChannel() throws IOException {
+            debug.log("Opening '%s'", this.path);
+            this.fileChannel = FileChannel.open(this.path, StandardOpenOption.READ);
+            this.buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
+            if (tracker != null) {
+                tracker.openedFileChannel(this.path, this.fileChannel);
+            }
+        }
+
+        private void incrementReferenceCount() {
+            this.referenceCount++;
+            debug.log("Reference count for '%s' incremented to %s", this.path, this.referenceCount);
+        }
+
+        void close() throws IOException {
+            synchronized (this.lock) {
+                if (this.referenceCount == 0) {
+                    return;
+                }
+                decrementReferenceCount();
+                if (this.referenceCount == 0) {
+                    closeFileChannel();
+                }
+            }
+        }
+
+        private void decrementReferenceCount() {
+            this.referenceCount--;
+            debug.log("Reference count for '%s' decremented to %s", this.path, this.referenceCount);
+        }
+
+        private void closeFileChannel() throws IOException {
+            debug.log("Closing '%s'", this.path);
+            this.buffer = null;
+            this.bufferPosition = -1;
+            this.bufferSize = 0;
+            this.fileChannel.close();
+            if (tracker != null) {
+                tracker.closedFileChannel(this.path, this.fileChannel);
+            }
+            this.fileChannel = null;
+        }
+
+        <E extends Exception> void ensureOpen(Supplier<E> exceptionSupplier) throws E {
+            synchronized (this.lock) {
+                if (this.referenceCount == 0 || !this.fileChannel.isOpen()) {
+                    throw exceptionSupplier.get();
+                }
+            }
+        }
+
+        @Override
+        public String toString() {
+            return this.path.toString();
+        }
+    }
+
+    interface Tracker {
+        void openedFileChannel(Path path, FileChannel fileChannel);
+        void closedFileChannel(Path path, FileChannel fileChannel);
+    }
+}
+```
+
+### Summary of Changes:
+1. **Validation and Utility Methods**: Validation of input parameters and buffer management during reading are extracted into separate methods for better readability and to avoid duplicated code fragments.
+2. **Buffer Read Logic**: Separate the logic that handles reading from the file channel or buffer into distinct methods to clarify the flow of operations.
+3. **File Channel Management**: Extracted operations for handling interruptions during file read and opening/closing of the file channel to separate methods.
+4. **Increment/Decrement Reference**: Extracted logic to keep track of reference counting to dedicated methods to make the code cleaner.
+
+These changes improve the structure of the code, making it easier to understand, maintain and test individual parts.

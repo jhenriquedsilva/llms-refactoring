@@ -1,0 +1,66 @@
+2026-03-28 17:24:50
+
+In the provided code snippet, there are several repeated patterns where the `fieldModelContributor.add()` method is called with a lambda expression. These repetitive snippets are candidates for extraction into a separate method to improve the code's readability and maintainability. Here is a refactored version of the code with extracted methods to handle these common patterns:
+
+```java
+package org.hibernate.search.mapper.pojo.mapping.definition.programmatic.impl;
+
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.VectorSimilarity;
+import org.hibernate.search.mapper.pojo.bridge.binding.spi.FieldModelContributorContext;
+import org.hibernate.search.mapper.pojo.extractor.mapping.programmatic.ContainerExtractorPath;
+import org.hibernate.search.mapper.pojo.mapping.building.spi.PojoPropertyMetadataContributor;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingStep;
+import org.hibernate.search.mapper.pojo.mapping.definition.programmatic.PropertyMappingVectorFieldStep;
+
+class PropertyMappingVectorFieldStepImpl extends AbstractPropertyMappingFieldOptionsStep<PropertyMappingVectorFieldStepImpl>
+        implements PropertyMappingVectorFieldStep, PojoPropertyMetadataContributor {
+
+    PropertyMappingVectorFieldStepImpl(PropertyMappingStep parent, int dimension, String relativeFieldName) {
+        super( parent, relativeFieldName, FieldModelContributorContext::vectorTypeOptionsStep );
+        extractors( ContainerExtractorPath.noExtractors() );
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep projectable(Projectable projectable) {
+        addToFieldModelContributor(c -> c.vectorTypeOptionsStep().projectable(projectable));
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep searchable(Searchable searchable) {
+        return this; // assuming there's no implementation needed as in the original code
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep vectorSimilarity(VectorSimilarity vectorSimilarity) {
+        addToFieldModelContributor(c -> c.vectorTypeOptionsStep().vectorSimilarity(vectorSimilarity));
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep beamWidth(int beamWidth) {
+        addToFieldModelContributor(c -> c.vectorTypeOptionsStep().beamWidth(beamWidth));
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep maxConnections(int maxConnections) {
+        addToFieldModelContributor(c -> c.vectorTypeOptionsStep().maxConnections(maxConnections));
+        return this;
+    }
+
+    @Override
+    public PropertyMappingVectorFieldStep indexNullAs(String indexNullAs) {
+        addToFieldModelContributor(c -> c.indexNullAs(indexNullAs));
+        return this;
+    }
+
+    private void addToFieldModelContributor(java.util.function.Consumer<FieldModelContributorContext> action) {
+        fieldModelContributor.add(action);
+    }
+}
+```
+
+In this refactored version, I've extracted a private method `addToFieldModelContributor` that takes a `Consumer<FieldModelContributorContext>` as a parameter. This method consolidates the repeated call to `fieldModelContributor.add()` within the class methods, improving the overall structure and readability of the code.

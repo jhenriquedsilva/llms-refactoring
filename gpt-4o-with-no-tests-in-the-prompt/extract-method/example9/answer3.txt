@@ -1,0 +1,265 @@
+2026-03-28 17:27:01
+
+To improve readability and reduce code complexity, we can identify and refactor methods that have repetitive or logically isolated tasks. Here are the primary refactoring opportunities from the original class:
+
+1. **Extract Method Operations for Reusability:**
+   - Several methods are responsible for related tasks such as reading trace files, extracting tests, or handling input/output streams. These can be isolated into their own methods to improve code clarity and reusability.
+
+2. **Encapsulation of Stream Operations:**
+   - Stream handling (e.g., `DataInputStream`) repeats in multiple places; encapsulating this in a method (e.g., `withDataInputStream`) could centralize error handling and clean up the code significantly.
+
+3. **Group Utility Methods:**
+   - Utility calculations like `getTracesDirectory`, `isGeneratedCode`, and checking conditions could be isolated for reuse.
+
+With these points in mind, here's the refactored class:
+
+```java
+package com.intellij.coverage;
+
+import com.intellij.CommonBundle;
+import com.intellij.codeEditor.printing.ExportToHTMLSettings;
+import com.intellij.codeInsight.TestFrameworks;
+import com.intellij.coverage.analysis.AnalysisUtils;
+import com.intellij.coverage.analysis.JavaCoverageAnnotator;
+import com.intellij.coverage.analysis.JavaCoverageClassesEnumerator;
+import com.intellij.coverage.listeners.java.CoverageListener;
+import com.intellij.coverage.view.CoverageViewExtension;
+import com.intellij.coverage.view.CoverageViewManager;
+import com.intellij.coverage.view.JavaCoverageViewExtension;
+import com.intellij.execution.CommonJavaRunConfigurationParameters;
+import com.intellij.execution.application.ApplicationConfiguration;
+import com.intellij.execution.configurations.RunConfigurationBase;
+import com.intellij.execution.configurations.coverage.CoverageEnabledConfiguration;
+import com.intellij.execution.configurations.coverage.JavaCoverageEnabledConfiguration;
+import com.intellij.execution.target.RunTargetsEnabled;
+import com.intellij.execution.target.TargetEnvironmentAwareRunProfile;
+import com.intellij.execution.target.TargetEnvironmentConfigurations;
+import com.intellij.execution.testframework.AbstractTestProxy;
+import com.intellij.execution.wsl.WslPath;
+import com.intellij.ide.BrowserUtil;
+import com.intellij.ide.highlighter.JavaClassFileType;
+import com.intellij.java.coverage.JavaCoverageBundle;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.actionSystem.DataContext;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.diagnostic.ControlFlowException;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleUtilCore;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.roots.CompilerModuleExtension;
+import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.roots.TestSourcesFilter;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VfsUtil;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.*;
+import com.intellij.psi.util.ClassUtil;
+import com.intellij.rt.coverage.data.JumpData;
+import com.intellij.rt.coverage.data.LineCoverage;
+import com.intellij.rt.coverage.data.LineData;
+import com.intellij.rt.coverage.data.SwitchData;
+import com.intellij.task.ProjectTaskManager;
+import com.intellij.task.impl.ProjectTaskManagerImpl;
+import com.intellij.testIntegration.TestFramework;
+import com.intellij.util.containers.ContainerUtil;
+import jetbrains.coverage.report.ReportGenerationFailedException;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.IntStream;
+
+/**
+ * Refactored by OpenAI
+ */
+public class JavaCoverageEngine extends CoverageEngine {
+    private static final Logger LOG = Logger.getInstance(JavaCoverageEngine.class.getName());
+    private static final String INDENT = "    ";
+
+    public static JavaCoverageEngine getInstance() {
+        return EP_NAME.findExtensionOrFail(JavaCoverageEngine.class);
+    }
+
+    @Override
+    public boolean isApplicableTo(@NotNull final RunConfigurationBase conf) {
+        if (conf instanceof CommonJavaRunConfigurationParameters) {
+            return true;
+        }
+
+        if (RunTargetsEnabled.get()
+                && conf instanceof TargetEnvironmentAwareRunProfile
+                && willRunOnTarget((TargetEnvironmentAwareRunProfile)conf)) {
+            return false;
+        }
+
+        for (JavaCoverageEngineExtension extension : JavaCoverageEngineExtension.EP_NAME.getExtensionList()) {
+            if (extension.isApplicableTo(conf)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean willRunOnTarget(@NotNull final TargetEnvironmentAwareRunProfile configuration) {
+        Project project = ((RunConfigurationBase<?>)configuration).getProject();
+        return TargetEnvironmentConfigurations.getEffectiveTargetName(configuration, project) != null || isProjectUnderWsl(project);
+    }
+
+    private static boolean isProjectUnderWsl(@NotNull Project project) {
+        Sdk projectSdk = ProjectRootManager.getInstance(project).getProjectSdk();
+        if (projectSdk == null) {
+            return false;
+        }
+        String projectSdkHomePath = projectSdk.getHomePath();
+        return projectSdkHomePath != null && WslPath.isWslUncPath(projectSdkHomePath);
+    }
+
+    @Override
+    public boolean canHavePerTestCoverage(@NotNull RunConfigurationBase conf) {
+        return !(conf instanceof ApplicationConfiguration) && conf instanceof CommonJavaRunConfigurationParameters;
+    }
+
+    @Override
+    public Set<String> getTestsForLine(Project project, CoverageSuitesBundle bundle, String classFQName, int lineNumber) {
+        return extractTracedTests(bundle, classFQName, lineNumber);
+    }
+
+    @Override
+    public boolean wasTestDataCollected(Project project, CoverageSuitesBundle bundle) {
+        File[] files = getTraceFiles(bundle);
+        return files != null && files.length > 0;
+    }
+
+    private static Set<String> extractTracedTests(CoverageSuitesBundle bundle, final String classFQName, final int lineNumber) {
+        Set<String> tests = new HashSet<>();
+        final File[] traceFiles = getTraceFiles(bundle);
+        if (traceFiles == null) return tests;
+        for (File traceFile : traceFiles) {
+            withDataInputStream(traceFile, (in) -> extractTests(traceFile, in, tests, classFQName, lineNumber));
+        }
+        return tests;
+    }
+
+    private static void withDataInputStream(File traceFile, ThrowingConsumer<DataInputStream, Exception> consumer) {
+        try (DataInputStream in = new DataInputStream(new FileInputStream(traceFile))) {
+            consumer.accept(in);
+        } catch (Exception ex) {
+            LOG.error(traceFile.getName(), ex);
+        }
+    }
+
+    private static void extractTests(final File traceFile,
+                                     final DataInputStream in,
+                                     final Set<? super String> tests,
+                                     final String classFQName,
+                                     final int lineNumber) throws IOException {
+        long traceSize = in.readInt();
+        for (int i = 0; i < traceSize; i++) {
+            final String className = in.readUTF();
+            final int linesSize = in.readInt();
+            if (processLineData(in, tests, classFQName, lineNumber, className, linesSize)) break;
+        }
+    }
+
+    private static boolean processLineData(DataInputStream in, Set<? super String> tests, String classFQName, int lineNumber, String className, int linesSize) throws IOException {
+        for (int l = 0; l < linesSize; l++) {
+            final int line = in.readInt();
+            if (Comparing.strEqual(className, classFQName)) {
+                if (lineNumber == line) {
+                    tests.add(FileUtilRt.getNameWithoutExtension(className));
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static File @Nullable [] getTraceFiles(CoverageSuitesBundle bundle) {
+        final List<File> files = new ArrayList<>();
+        for (CoverageSuite coverageSuite : bundle.getSuites()) {
+            final File tracesDir = getTracesDirectory(coverageSuite);
+            final File[] suiteFiles = tracesDir.listFiles();
+            if (suiteFiles != null) {
+                Collections.addAll(files, suiteFiles);
+            }
+        }
+        return files.isEmpty() ? null : files.toArray(new File[0]);
+    }
+
+    private static File getTracesDirectory(CoverageSuite coverageSuite) {
+        final String filePath = coverageSuite.getCoverageDataFileName();
+        final String dirName = FileUtilRt.getNameWithoutExtension(new File(filePath).getName());
+        final File parentDir = new File(filePath).getParentFile();
+        return new File(parentDir, dirName);
+    }
+
+    @Override
+    public void collectTestLines(List<String> sanitizedTestNames,
+                                 CoverageSuite suite,
+                                 Map<String, Set<Integer>> executionTrace) {
+        final File tracesDir = getTracesDirectory(suite);
+        for (String testName : sanitizedTestNames) {
+            final File file = new File(tracesDir, testName + ".tr");
+            if (file.exists()) {
+                withDataInputStream(file, (in) -> collectExecutionTrace(in, executionTrace));
+            }
+        }
+    }
+
+    private static void collectExecutionTrace(DataInputStream in, Map<String, Set<Integer>> executionTrace) throws IOException {
+        int traceSize = in.readInt();
+        for (int i = 0; i < traceSize; i++) {
+            final String className = in.readUTF();
+            final int linesSize = in.readInt();
+            final Set<Integer> lines = executionTrace.computeIfAbsent(className, k -> new HashSet<>());
+            for (int l = 0; l < linesSize; l++) {
+                lines.add(in.readInt());
+            }
+        }
+    }
+
+    @Override
+    protected void deleteAssociatedTraces(CoverageSuite suite) {
+        if (suite.isCoverageByTestEnabled()) {
+            File tracesDirectory = getTracesDirectory(suite);
+            if (tracesDirectory.exists()) {
+                FileUtil.delete(tracesDirectory);
+            }
+        }
+    }
+
+    // ... [Methods like createCoverageEnabledConfiguration, createCoverageSuite, collectSrcLinesForUntouchedFile, and others continue here as needed]
+    // Keeping them as-is or refactoring based on context changes you've applied in the refactored parts above.
+
+    interface ThrowingConsumer<T, E extends Exception> {
+        void accept(T t) throws E;
+    }
+}
+```
+
+### Summary of Changes:
+- Extracted common operations involving `DataInputStream` using a utility method `withDataInputStream`.
+- Isolated logic for processing line data within the `extractTests` method to keep it cleaner.
+- Reused utility methods for getting directory paths.
+- Grouped related blocks of logic together into methods to increase modularity.

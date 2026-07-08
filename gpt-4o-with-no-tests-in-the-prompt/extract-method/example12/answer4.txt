@@ -1,0 +1,249 @@
+2026-03-28 17:38:19
+
+Reviewing the provided `FileBasedConfig` class, there are indeed a few opportunities for extract method refactorings. These refactorings can help improve readability and maintainability by isolating complex tasks into well-named, smaller methods. Let's execute some key refactorings while keeping the functionality intact.
+
+Here is the refactored code:
+
+```java
+package org.eclipse.jgit.storage.file;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.text.MessageFormat;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.eclipse.jgit.errors.ConfigInvalidException;
+import org.eclipse.jgit.errors.LockFailedException;
+import org.eclipse.jgit.internal.JGitText;
+import org.eclipse.jgit.internal.storage.file.FileSnapshot;
+import org.eclipse.jgit.internal.storage.file.LockFile;
+import org.eclipse.jgit.lib.Config;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.util.FS;
+import org.eclipse.jgit.util.FileUtils;
+import org.eclipse.jgit.util.IO;
+import org.eclipse.jgit.util.RawParseUtils;
+
+/**
+ * The configuration file that is stored in the file of the file system.
+ */
+public class FileBasedConfig extends StoredConfig {
+
+    private final File configFile;
+
+    private final FS fs;
+
+    private final ReentrantReadWriteLock lock;
+
+    private boolean utf8Bom;
+
+    private volatile FileSnapshot snapshot;
+
+    private volatile ObjectId hash;
+
+    private AtomicBoolean exists = new AtomicBoolean();
+
+    public FileBasedConfig(File cfgLocation, FS fs) {
+        this(null, cfgLocation, fs);
+    }
+
+    public FileBasedConfig(Config base, File cfgLocation, FS fs) {
+        super(base);
+        configFile = cfgLocation;
+        this.fs = fs;
+        this.snapshot = FileSnapshot.DIRTY;
+        this.hash = ObjectId.zeroId();
+        this.lock = new ReentrantReadWriteLock(false);
+    }
+
+    @Override
+    protected boolean notifyUponTransientChanges() {
+        return false;
+    }
+
+    public final File getFile() {
+        return configFile;
+    }
+
+    boolean exists() {
+        return exists.get();
+    }
+
+    @Override
+    public void load() throws IOException, ConfigInvalidException {
+        lock.readLock().lock();
+        try {
+            Boolean wasRead = FileUtils.readWithRetries(getFile(), f -> loadFile(f));
+            if (wasRead == null) {
+                clear();
+                snapshot = FileSnapshot.MISSING_FILE;
+            }
+            exists.set(wasRead != null);
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ConfigInvalidException(MessageFormat
+                    .format(JGitText.get().cannotReadFile, getFile()), e);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private Boolean loadFile(File file) throws IOException, ConfigInvalidException {
+        FileSnapshot oldSnapshot = snapshot;
+        FileSnapshot newSnapshot = FileSnapshot.saveNoConfig(file);
+        byte[] in = IO.readFully(file);
+        ObjectId newHash = hash(in);
+        if (hash.equals(newHash)) {
+            updateSnapshotIfUnchanged(oldSnapshot, newSnapshot);
+        } else {
+            decodeAndLoadText(in);
+            snapshot = newSnapshot;
+            hash = newHash;
+        }
+        return Boolean.TRUE;
+    }
+
+    private void updateSnapshotIfUnchanged(FileSnapshot oldSnapshot, FileSnapshot newSnapshot) {
+        if (oldSnapshot.equals(newSnapshot)) {
+            oldSnapshot.setClean(newSnapshot);
+        } else {
+            snapshot = newSnapshot;
+        }
+    }
+
+    private void decodeAndLoadText(byte[] in) throws ConfigInvalidException {
+        String decoded;
+        if (isUtf8(in)) {
+            decoded = RawParseUtils.decode(UTF_8, in, 3, in.length);
+            utf8Bom = true;
+        } else {
+            decoded = RawParseUtils.decode(in);
+        }
+        fromText(decoded);
+    }
+
+    @Override
+    public void save() throws IOException {
+        lock.writeLock().lock();
+        try {
+            byte[] out = prepareOutput();
+            writeToFile(out);
+            snapshot = LockFile.getCommitSnapshot();
+            hash = hash(out);
+            exists.set(true);
+        } finally {
+            lock.writeLock().unlock();
+        }
+        fireConfigChangedEvent();
+    }
+
+    private byte[] prepareOutput() {
+        byte[] out;
+        String text = toText();
+        if (utf8Bom) {
+            out = addUtf8Bom(text);
+        } else {
+            out = Constants.encode(text);
+        }
+        return out;
+    }
+
+    private byte[] addUtf8Bom(String text) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        bos.write(0xEF);
+        bos.write(0xBB);
+        bos.write(0xBF);
+        bos.write(text.getBytes(UTF_8));
+        return bos.toByteArray();
+    }
+
+    private void writeToFile(byte[] out) throws IOException, LockFailedException {
+        LockFile lf = new LockFile(getFile());
+        try {
+            if (!lf.lock()) {
+                throw new LockFailedException(getFile());
+            }
+            lf.setNeedSnapshotNoConfig(true);
+            lf.write(out);
+            if (!lf.commit()) {
+                throw new IOException(MessageFormat.format(
+                        JGitText.get().cannotCommitWriteTo, getFile()));
+            }
+        } finally {
+            lf.unlock();
+        }
+    }
+
+    @Override
+    public void clear() {
+        hash = hash(new byte[0]);
+        super.clear();
+    }
+
+    private static ObjectId hash(byte[] rawText) {
+        return ObjectId.fromRaw(Constants.newMessageDigest().digest(rawText));
+    }
+
+    @SuppressWarnings("nls")
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "[" + getFile().getPath() + "]";
+    }
+
+    public boolean isOutdated() {
+        return snapshot.isModified(getFile());
+    }
+
+    @Override
+    protected byte[] readIncludedConfig(String relPath)
+            throws ConfigInvalidException {
+        final File file = resolveConfigFile(relPath);
+
+        if (!file.exists()) {
+            return null;
+        }
+
+        try {
+            return IO.readFully(file);
+        } catch (FileNotFoundException e) {
+            return null;
+        } catch (IOException ioe) {
+            throw new ConfigInvalidException(MessageFormat
+                    .format(JGitText.get().cannotReadFile, relPath), ioe);
+        }
+    }
+
+    private File resolveConfigFile(String relPath) {
+        if (relPath.startsWith("~/")) {
+            return fs.resolve(fs.userHome(), relPath.substring(2));
+        } else {
+            return fs.resolve(configFile.getParentFile(), relPath);
+        }
+    }
+
+    private boolean isUtf8(byte[] in) {
+        return in.length >= 3 && in[0] == (byte) 0xEF && in[1] == (byte) 0xBB && in[2] == (byte) 0xBF;
+    }
+}
+```
+
+### Explanation of Refactorings:
+
+1. **Load Method**
+   - Extracted `loadFile`, `decodeAndLoadText`, and `updateSnapshotIfUnchanged` methods to make the `load` method less complex and more descriptive.
+
+2. **Save Method**
+   - Extracted `prepareOutput`, `addUtf8Bom`, and `writeToFile` methods to simplify the `save` method, improving its readability.
+
+3. **Utility Method Extraction**
+   - Extracted `resolveConfigFile` and `isUtf8` methods for code that was specific and repeated, moving towards single responsibility in various parts of the code.
+
+This refactoring enhances the code readability and maintenance, but functionality remains unchanged.
